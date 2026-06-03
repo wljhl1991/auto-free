@@ -10,6 +10,7 @@ use crate::types::game_script::{
 };
 use crate::types::asset::{LocalAsset, AIModality};
 use crate::types::ai_provider::ProviderStatus;
+use rand::Rng;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -61,6 +62,178 @@ impl GenerationPipeline {
 
     pub fn set_app_handle(&mut self, handle: AppHandle) {
         self.app_handle = Some(handle);
+    }
+
+    /// 按游戏类型随机生成游戏大纲
+    pub async fn generate_random_outline(
+        &self,
+        game_type: Option<String>,
+        themes: Vec<String>,
+    ) -> Result<String, ProviderError> {
+        // 1. 如果未指定游戏类型，随机选择一个
+        let game_type = game_type.unwrap_or_else(|| {
+            let types = ["visual_novel", "rpg", "mystery", "horror", "simulation"];
+            let idx = rand::thread_rng().gen_range(0..types.len());
+            types[idx].to_string()
+        });
+
+        // 2. 构造随机生成 Prompt
+        let prompt = self.build_random_outline_prompt(&game_type, &themes);
+
+        // 3. 尝试调用文本 AI 生成大纲
+        let config_manager = self.config_manager.read().await;
+        let config = config_manager.get_config();
+
+        // 优先查找 DeepSeek provider
+        let ds_config = config
+            .providers
+            .iter()
+            .find(|p| p.vendor == "deepseek" && p.status == ProviderStatus::Connected)
+            .or_else(|| config.providers.iter().find(|p| p.vendor == "deepseek"))
+            .cloned();
+
+        // 其次查找任意支持 Text 模态的 provider
+        let text_config = if ds_config.is_none() {
+            config
+                .providers
+                .iter()
+                .find(|p| {
+                    p.modality.contains(&AIModality::Text) && p.status == ProviderStatus::Connected
+                })
+                .cloned()
+        } else {
+            None
+        };
+
+        drop(config_manager);
+
+        if let Some(provider_config) = ds_config {
+            let deepseek = DeepSeekProvider::new(&provider_config, self.asset_manager.base_path())?;
+            let messages = vec![
+                crate::providers::deepseek::ChatMessage {
+                    role: "system".to_string(),
+                    content: "你是一个创意游戏设计师。".to_string(),
+                },
+                crate::providers::deepseek::ChatMessage {
+                    role: "user".to_string(),
+                    content: prompt,
+                },
+            ];
+            let outline = deepseek.chat(messages, None).await?;
+            Ok(outline)
+        } else if let Some(provider_config) = text_config {
+            // 对于非 DeepSeek 的文本 provider，也使用 DeepSeek 的 chat 接口
+            // 因为其他文本 provider 可能也兼容 OpenAI API 格式
+            let deepseek = DeepSeekProvider::new(&provider_config, self.asset_manager.base_path())?;
+            let messages = vec![
+                crate::providers::deepseek::ChatMessage {
+                    role: "system".to_string(),
+                    content: "你是一个创意游戏设计师。".to_string(),
+                },
+                crate::providers::deepseek::ChatMessage {
+                    role: "user".to_string(),
+                    content: prompt,
+                },
+            ];
+            let outline = deepseek.chat(messages, None).await?;
+            Ok(outline)
+        } else {
+            // 4. 文本 AI 未配置，使用预设的示例大纲
+            Ok(self.fallback_random_outline(&game_type))
+        }
+    }
+
+    /// 构造随机大纲生成 Prompt
+    fn build_random_outline_prompt(&self, game_type: &str, themes: &[String]) -> String {
+        let game_type_display = match game_type {
+            "visual_novel" => "视觉小说",
+            "rpg" => "RPG",
+            "mystery" => "悬疑解谜",
+            "horror" => "恐怖生存",
+            "simulation" => "模拟经营",
+            _ => game_type,
+        };
+
+        let themes_str = if themes.is_empty() {
+            "随机选择".to_string()
+        } else {
+            themes.join("、")
+        };
+
+        let moods = ["神秘", "温馨", "紧张", "荒诞", "浪漫", "黑暗", "欢快", "忧郁"];
+        let mood = moods[rand::thread_rng().gen_range(0..moods.len())];
+
+        format!(
+            r#"请根据以下要求随机生成一个有趣的游戏大纲。
+
+游戏类型：{game_type_display}
+主题关键词：{themes_str}
+氛围：{mood}
+
+要求：
+1. 生成一个引人入胜的游戏名称
+2. 设计 3 个章节，每章有独特的主题和冲突
+3. 创建 3-5 个有深度的角色
+4. 每章至少一个关键选择分支
+5. 设计至少 2 个不同结局
+6. 确保故事有悬念和转折
+
+输出格式：
+游戏名称：...
+类型：...
+描述：...
+
+第一章：[章节名]
+- 场景1：...
+- 场景2：...
+- 关键选择：...
+
+第二章：[章节名]
+...
+
+第三章：[章节名]
+...
+
+结局：
+- 结局A：...
+- 结局B：..."#,
+            game_type_display = game_type_display,
+            themes_str = themes_str,
+            mood = mood,
+        )
+    }
+
+    /// 文本 AI 未配置时的预设示例大纲
+    fn fallback_random_outline(&self, game_type: &str) -> String {
+        let outlines: &[(&str, &str)] = match game_type {
+            "visual_novel" => &[
+                ("樱花物语", "一个转学生来到樱花飘落的小镇，在古老的校园中遇见了三位性格迥异的少女。随着季节流转，他逐渐发现校园中隐藏的关于「时间回溯」的秘密，而每一次选择都将改变他与她们之间的命运。"),
+                ("星尘记忆", "在一座漂浮于云端的城市里，一位失去记忆的少年遇到了自称是他恋人的少女。随着记忆碎片逐渐拼凑，他发现两人之间存在着跨越三生三世的约定，而这次是最后的机会。"),
+            ],
+            "rpg" => &[
+                ("裂隙守护者", "世界之间的裂隙正在扩大，怪物从裂缝中不断涌出。你是一名被选中的守护者，需要穿越五个不同的领域，寻找封印裂隙的古老神器。每个领域都有独特的文明和挑战等待着你。"),
+                ("龙魂觉醒", "你是一名普通的铁匠学徒，却在一次意外中觉醒了远古龙族的血脉。为了阻止黑暗龙的复活，你必须踏上寻找龙魂碎片的旅途，招募同伴，揭开大陆被遗忘的历史。"),
+            ],
+            "mystery" => &[
+                ("消失的第十三天", "一座偏远的灯塔中，看守人每隔十二天就会消失一天，而他自己对此毫无记忆。当一位侦探前来调查时，发现灯塔中隐藏着通往平行世界的入口，而另一个自己正在试图取代他。"),
+                ("回声庄园", "六位互不相识的人收到了同一封邀请函，来到一座古老的庄园。每当午夜钟声响起，就会有一人消失，而剩下的墙壁上会多出一幅画像。他们必须在黎明前找出庄园主人的真实身份。"),
+            ],
+            "horror" => &[
+                ("深渊医院", "你在一座废弃的地下医院中醒来，身上插满了管子，记忆全无。走廊深处传来拖拽声，墙壁上的旧病历记录着一项关于「永生」的禁忌实验——而你可能就是实验体7号。"),
+                ("镜中世界", "你发现自己家中的镜子开始映出不存在的房间。当你伸手触碰镜面时，一只冰冷的手从镜中伸出将你拉入。镜中世界与现实完全相反，而你的镜像已经取代了你的生活。"),
+            ],
+            "simulation" => &[
+                ("星际酒馆", "在银河系边缘的小行星带上，你继承了一家破旧的太空酒馆。各路星际旅人、赏金猎人、走私商人来来往往，你需要经营酒馆、收集情报、结交盟友，在星际势力的夹缝中生存发展。"),
+                ("浮岛物语", "你在一座漂浮于云海之上的小岛上醒来，身边只有一把锄头和几颗种子。通过耕种、建造和探索，将荒芜的浮岛发展成繁荣的空中家园，并揭开浮岛文明消失的真相。"),
+            ],
+            _ => &[
+                ("未知旅途", "一段充满未知的冒险旅程，你的每一个选择都将影响故事的走向。在这条路上，你会遇到各种各样的角色，面对不同的挑战，最终走向属于你的结局。"),
+            ],
+        };
+
+        let idx = rand::thread_rng().gen_range(0..outlines.len());
+        let (title, desc) = outlines[idx];
+        format!("游戏名称：{}\n类型：{}\n\n{}\n\n第一章：启程\n- 场景1：故事开始\n- 场景2：初遇挑战\n- 关键选择：前进的方向\n\n第二章：深入\n- 场景1：真相浮现\n- 场景2：危机四伏\n- 关键选择：信任与背叛\n\n第三章：终局\n- 场景1：最终对决\n- 场景2：命运抉择\n\n结局：\n- 结局A：光明\n- 结局B：黑暗", title, game_type, desc)
     }
 
     /// 完整的游戏创建流程 — 渐进式加载：第一章优先生成，后续章节后台生成

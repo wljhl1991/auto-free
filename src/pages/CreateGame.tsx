@@ -19,11 +19,12 @@ const EXAMPLE_OUTLINES = [
 
 export default function CreateGame() {
   const navigate = useNavigate();
-  const { createGame } = useGame();
+  const { createGame, getRandomOutline } = useGame();
 
   const [outline, setOutline] = useState('');
   const [gameType, setGameType] = useState('');
   const [loading, setLoading] = useState(false);
+  const [randomLoading, setRandomLoading] = useState(false);
   const [error, setError] = useState('');
 
   const handleSubmit = async () => {
@@ -43,10 +44,20 @@ export default function CreateGame() {
     }
   };
 
-  const handleRandomOutline = () => {
-    // 占位：后续节点实现随机生成
-    const randomExample = EXAMPLE_OUTLINES[Math.floor(Math.random() * EXAMPLE_OUTLINES.length)];
-    setOutline(randomExample);
+  const handleRandomOutline = async () => {
+    setRandomLoading(true);
+    setError('');
+    try {
+      const themes: string[] = [];
+      const result = await getRandomOutline(gameType || undefined, themes.length > 0 ? themes : undefined);
+      setOutline(result);
+    } catch (e: any) {
+      // 如果 AI 生成失败，使用本地示例
+      const randomExample = EXAMPLE_OUTLINES[Math.floor(Math.random() * EXAMPLE_OUTLINES.length)];
+      setOutline(randomExample);
+    } finally {
+      setRandomLoading(false);
+    }
   };
 
   return (
@@ -82,8 +93,8 @@ export default function CreateGame() {
           </select>
         </div>
 
-        <button className="btn btn-secondary" onClick={handleRandomOutline}>
-          🎲 随机大纲
+        <button className="btn btn-secondary" onClick={handleRandomOutline} disabled={randomLoading}>
+          {randomLoading ? '⏳ 生成中...' : '🎲 随机大纲'}
         </button>
       </div>
 

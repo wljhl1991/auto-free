@@ -66,8 +66,13 @@ pub async fn create_game(
 }
 
 #[command]
-pub async fn random_outline(_game_type: Option<String>, _themes: Vec<String>) -> Result<String, String> {
-    Err("not implemented".to_string())
+pub async fn random_outline(
+    game_type: Option<String>,
+    themes: Vec<String>,
+    pipeline: tauri::State<'_, Arc<RwLock<GenerationPipeline>>>,
+) -> Result<String, String> {
+    let p = pipeline.read().await;
+    p.generate_random_outline(game_type, themes).await.map_err(|e| format!("{:?}", e))
 }
 
 #[command]
