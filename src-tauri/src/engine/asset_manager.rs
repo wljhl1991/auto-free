@@ -1,5 +1,5 @@
 use crate::types::asset::{AssetType, LocalAsset, AssetSource};
-use crate::types::game_script::{GameType, AssetRef};
+use crate::types::game_script::{GameScript, GameType, AssetRef};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -316,6 +316,31 @@ impl AssetManager {
         std::fs::create_dir_all(&asset_dir)
             .map_err(|e| format!("Failed to create game directories: {}", e))?;
         Ok(())
+    }
+
+    /// 获取基础路径
+    pub fn base_path(&self) -> &Path {
+        &self.base_path
+    }
+
+    /// 保存 GameScript 到游戏目录的 script.json
+    pub fn save_game_script(&self, game_id: &str, script: &GameScript) -> Result<(), String> {
+        self.ensure_game_dirs(game_id)?;
+        let script_path = self.get_game_asset_dir(game_id).join("script.json");
+        let json = serde_json::to_string_pretty(script)
+            .map_err(|e| format!("Failed to serialize GameScript: {}", e))?;
+        std::fs::write(&script_path, json)
+            .map_err(|e| format!("Failed to write script.json: {}", e))?;
+        Ok(())
+    }
+
+    /// 从游戏目录加载 GameScript
+    pub fn load_game_script(&self, game_id: &str) -> Result<GameScript, String> {
+        let script_path = self.get_game_asset_dir(game_id).join("script.json");
+        let json = std::fs::read_to_string(&script_path)
+            .map_err(|e| format!("Failed to read script.json: {}", e))?;
+        serde_json::from_str(&json)
+            .map_err(|e| format!("Failed to parse GameScript: {}", e))
     }
 
     /// 将 game_script 的 AssetType 转换为 asset 模块的 AssetType
