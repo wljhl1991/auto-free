@@ -1,7 +1,9 @@
 pub mod builtin;
 pub mod deepseek;
 pub mod edge_tts;
+pub mod kling;
 pub mod siliconflow;
+pub mod skymusic;
 
 use async_trait::async_trait;
 use crate::types::asset::{LocalAsset, AIModality};
@@ -53,6 +55,12 @@ impl ProviderFactory {
             }
             "siliconflow" => {
                 Ok(Box::new(siliconflow::SiliconFlowProvider::new(config, asset_base_path.to_path_buf())?))
+            }
+            "kling" => {
+                Ok(Box::new(kling::KlingProvider::new(config, asset_base_path.to_path_buf())?))
+            }
+            "skymusic" => {
+                Ok(Box::new(skymusic::SkyMusicProvider::new(config, asset_base_path.to_path_buf())?))
             }
             _ => Err(ProviderError::InvalidConfig(format!(
                 "Unknown provider vendor: {}",
