@@ -1,3 +1,5 @@
+mod types;
+
 use tauri::command;
 
 #[command]
