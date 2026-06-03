@@ -10,7 +10,7 @@ pub enum AIModality {
     Voice,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum AssetType {
     Image,
