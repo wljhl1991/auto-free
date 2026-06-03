@@ -1,5 +1,6 @@
 pub mod builtin;
 pub mod deepseek;
+pub mod edge_tts;
 
 use async_trait::async_trait;
 use crate::types::asset::{LocalAsset, AIModality};
@@ -45,6 +46,9 @@ impl ProviderFactory {
             }
             "deepseek" => {
                 Ok(Box::new(deepseek::DeepSeekProvider::new(config, asset_base_path)?))
+            }
+            "edge-tts" => {
+                Ok(Box::new(edge_tts::EdgeTTSProvider::new(config, asset_base_path)?))
             }
             _ => Err(ProviderError::InvalidConfig(format!(
                 "Unknown provider vendor: {}",
