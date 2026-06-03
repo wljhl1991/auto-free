@@ -1,0 +1,3 @@
+# Use MSVC toolchain (recommended for Tauri on Windows)
+# Requires Visual Studio Build Tools with C++ workload installed
+# Install: https://visualstudio.microsoft.com/visual-cpp-build-tools/
