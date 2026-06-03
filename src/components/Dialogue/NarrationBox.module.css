@@ -1,0 +1,35 @@
+.container {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  max-width: 70%;
+  padding: 1.5rem 2.5rem;
+  background: rgba(10, 10, 26, 0.85);
+  border-radius: 12px;
+  border: 1px solid rgba(74, 144, 217, 0.2);
+  cursor: pointer;
+  user-select: none;
+}
+
+.text {
+  font-size: 1.05rem;
+  line-height: 1.8;
+  color: #c8c8e0;
+  font-style: italic;
+  text-align: center;
+}
+
+.cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  background-color: #7b68ee;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: blink 0.8s step-end infinite;
+}
+
+@keyframes blink {
+  50% { opacity: 0; }
+}

@@ -1,0 +1,66 @@
+.container {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  background: linear-gradient(to top, rgba(10, 10, 26, 0.9) 0%, rgba(10, 10, 26, 0.6) 60%, transparent 100%);
+}
+
+.prompt {
+  font-size: 1rem;
+  color: #9999bb;
+  margin-bottom: 0.5rem;
+  text-align: center;
+}
+
+.optionList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 500px;
+}
+
+.optionBtn {
+  width: 100%;
+  padding: 0.85rem 1.5rem;
+  font-size: 1rem;
+  font-family: inherit;
+  line-height: 1.4;
+  color: #e0e0f0;
+  background-color: rgba(30, 30, 46, 0.9);
+  border: 1px solid #2a2a3a;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+  outline: none;
+}
+
+.optionBtn:hover:not(:disabled) {
+  background-color: rgba(42, 42, 62, 0.95);
+  border-color: #4a90d9;
+  color: #fff;
+  transform: translateX(4px);
+}
+
+.optionBtn:active:not(:disabled) {
+  transform: translateX(2px);
+}
+
+.optionBtn:disabled {
+  color: #555570;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.optionBtn.selected {
+  background-color: rgba(74, 144, 217, 0.2);
+  border-color: #4a90d9;
+  color: #fff;
+}

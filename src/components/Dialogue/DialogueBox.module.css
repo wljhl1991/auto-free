@@ -1,0 +1,78 @@
+.container {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 1.5rem 2rem;
+  background: linear-gradient(to top, rgba(10, 10, 26, 0.95) 0%, rgba(10, 10, 26, 0.8) 70%, transparent 100%);
+  min-height: 30%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  cursor: pointer;
+  user-select: none;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #4a90d9;
+  flex-shrink: 0;
+}
+
+.avatarPlaceholder {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #4a90d9, #7b68ee);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.speakerName {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #e0e0f0;
+}
+
+.emotionNeutral { border-color: #4a90d9; }
+.emotionHappy { border-color: #4ade80; }
+.emotionSad { border-color: #60a5fa; }
+.emotionAngry { border-color: #f87171; }
+.emotionSurprised { border-color: #facc15; }
+.emotionFear { border-color: #a78bfa; }
+
+.text {
+  font-size: 1rem;
+  line-height: 1.8;
+  color: #d0d0e0;
+  padding-left: 0.25rem;
+}
+
+.cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  background-color: #4a90d9;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: blink 0.8s step-end infinite;
+}
+
+@keyframes blink {
+  50% { opacity: 0; }
+}

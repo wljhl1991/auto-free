@@ -1,0 +1,72 @@
+.container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.defaultBg {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(160deg, #0a0a1a 0%, #12122a 40%, #1a0a2a 100%);
+}
+
+.bgImage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.bgVideo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.contentLayer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  pointer-events: none;
+}
+
+.contentLayer > * {
+  pointer-events: auto;
+}
+
+/* Transition animations */
+.transitionFade {
+  animation: fadeIn var(--transition-duration, 500ms) ease-in-out;
+}
+
+.transitionDissolve {
+  animation: dissolve var(--transition-duration, 500ms) ease-in-out;
+}
+
+.transitionSlide {
+  animation: slideIn var(--transition-duration, 500ms) ease-out;
+}
+
+.transitionInstant {
+  animation: none;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes dissolve {
+  0% { opacity: 0; filter: blur(4px); }
+  100% { opacity: 1; filter: blur(0); }
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(40px); }
+  to { opacity: 1; transform: translateX(0); }
+}
