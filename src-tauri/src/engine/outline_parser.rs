@@ -1,11 +1,9 @@
+use crate::engine::validator::GameScriptValidator;
 use crate::providers::deepseek::DeepSeekProvider;
 use crate::providers::ProviderError;
 use crate::types::game_script::{
-    ActionNode, AssetRef, AssetSource, AssetStatus, AssetType, CGNode, Chapter, ChoiceNode,
-    ChoiceOption, ConditionNode, DialogueNode, GameScript, GameType, NarrationNode, Scene,
-    SceneAssets, SceneNode, SceneTransitionNode, TransitionKind, VariableDef, VariableType,
+    AssetRef, AssetStatus, GameScript, GameType, SceneAssets, SceneNode,
 };
-use std::collections::HashSet;
 use std::path::PathBuf;
 
 pub struct OutlineParser {
@@ -168,61 +166,24 @@ impl OutlineParser {
 
     /// 校验并修复 GameScript
     fn validate_and_fix(&self, script: &mut GameScript) -> Result<(), ProviderError> {
-        // 收集所有已有 id
-        let mut all_ids: HashSet<String> = HashSet::new();
-        let mut missing_id_nodes: Vec<(String, String)> = Vec::new(); // (chapter_id, scene_id) for context
-
-        // 第一遍：收集所有已有 id，找出缺失 id 的节点
-        for chapter in &script.chapters {
-            all_ids.insert(chapter.id.clone());
-            for scene in &chapter.scenes {
-                all_ids.insert(scene.id.clone());
-                for node in &scene.sequence {
-                    let node_id = Self::get_node_id(node);
-                    if node_id.is_empty() {
-                        missing_id_nodes.push((chapter.id.clone(), scene.id.clone()));
-                    } else {
-                        all_ids.insert(node_id);
-                    }
-                }
-            }
-        }
-
-        // 第二遍：为缺失 id 的节点生成 UUID，修复 AssetRef status
+        // 先修复 AssetRef status（validator 不处理此逻辑）
         for chapter in &mut script.chapters {
             for scene in &mut chapter.scenes {
                 Self::fix_scene_assets(&mut scene.assets);
                 for node in &mut scene.sequence {
-                    Self::fix_node_id(node);
                     Self::fix_node_assets(node);
                 }
             }
         }
 
-        // 第三遍：验证 nextNodeId 引用
-        let mut valid_ids: HashSet<String> = HashSet::new();
-        for chapter in &script.chapters {
-            valid_ids.insert(chapter.id.clone());
-            for scene in &chapter.scenes {
-                valid_ids.insert(scene.id.clone());
-                for node in &scene.sequence {
-                    let node_id = Self::get_node_id(node);
-                    if !node_id.is_empty() {
-                        valid_ids.insert(node_id);
-                    }
-                }
-            }
+        let validator = GameScriptValidator::new();
+        let result = validator.validate_and_fix(script);
+        if !result.is_valid {
+            eprintln!(
+                "GameScript validation warnings: {:?}",
+                result.warnings
+            );
         }
-
-        // 移除无效的 nextNodeId 引用（设为 None）
-        for chapter in &mut script.chapters {
-            for scene in &mut chapter.scenes {
-                for node in &mut scene.sequence {
-                    Self::fix_node_next_refs(node, &valid_ids);
-                }
-            }
-        }
-
         Ok(())
     }
 
@@ -282,36 +243,6 @@ impl OutlineParser {
         ))
     }
 
-    /// 获取节点的 id
-    fn get_node_id(node: &SceneNode) -> String {
-        match node {
-            SceneNode::Narration(n) => n.id.clone(),
-            SceneNode::Dialogue(d) => d.id.clone(),
-            SceneNode::Choice(c) => c.id.clone(),
-            SceneNode::Condition(c) => c.id.clone(),
-            SceneNode::Action(a) => a.id.clone(),
-            SceneNode::Cg(c) => c.id.clone(),
-            SceneNode::SceneTransition(s) => s.id.clone(),
-        }
-    }
-
-    /// 为缺失 id 的节点生成 UUID
-    fn fix_node_id(node: &mut SceneNode) {
-        let id = Self::get_node_id(node);
-        if id.is_empty() {
-            let new_id = uuid::Uuid::new_v4().to_string();
-            match node {
-                SceneNode::Narration(n) => n.id = new_id,
-                SceneNode::Dialogue(d) => d.id = new_id,
-                SceneNode::Choice(c) => c.id = new_id,
-                SceneNode::Condition(c) => c.id = new_id,
-                SceneNode::Action(a) => a.id = new_id,
-                SceneNode::Cg(c) => c.id = new_id,
-                SceneNode::SceneTransition(s) => s.id = new_id,
-            }
-        }
-    }
-
     /// 修复场景资源中的 AssetRef status
     fn fix_scene_assets(assets: &mut SceneAssets) {
         if let Some(ref mut bg) = assets.background_image {
@@ -364,44 +295,6 @@ impl OutlineParser {
             AssetStatus::Ready | AssetStatus::Fallback => {
                 if asset.url.is_none() && asset.builtin_asset_id.is_none() {
                     asset.status = AssetStatus::Pending;
-                }
-            }
-            _ => {}
-        }
-    }
-
-    /// 修复节点中无效的 nextNodeId 引用
-    fn fix_node_next_refs(node: &mut SceneNode, valid_ids: &HashSet<String>) {
-        match node {
-            SceneNode::Action(a) => {
-                if let Some(ref next_id) = a.next_node_id {
-                    if !valid_ids.contains(next_id) {
-                        a.next_node_id = None;
-                    }
-                }
-            }
-            SceneNode::Cg(c) => {
-                if let Some(ref next_id) = c.next_node_id {
-                    if !valid_ids.contains(next_id) {
-                        c.next_node_id = None;
-                    }
-                }
-            }
-            SceneNode::Choice(c) => {
-                for opt in &mut c.options {
-                    if let Some(ref next_id) = opt.next_node_id {
-                        if !valid_ids.contains(next_id) {
-                            opt.next_node_id = None;
-                        }
-                    }
-                }
-            }
-            SceneNode::Condition(c) => {
-                if !valid_ids.contains(&c.true_branch) {
-                    c.true_branch = String::new();
-                }
-                if !valid_ids.contains(&c.false_branch) {
-                    c.false_branch = String::new();
                 }
             }
             _ => {}

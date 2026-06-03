@@ -4,6 +4,7 @@ pub mod edge_tts;
 pub mod kling;
 pub mod siliconflow;
 pub mod skymusic;
+pub mod xfyun_spark;
 
 use async_trait::async_trait;
 use crate::types::asset::{LocalAsset, AIModality};
@@ -61,6 +62,9 @@ impl ProviderFactory {
             }
             "skymusic" => {
                 Ok(Box::new(skymusic::SkyMusicProvider::new(config, asset_base_path.to_path_buf())?))
+            }
+            "xfyun-spark-lite" => {
+                Ok(Box::new(xfyun_spark::XfyunSparkProvider::new(config, asset_base_path.to_path_buf())?))
             }
             _ => Err(ProviderError::InvalidConfig(format!(
                 "Unknown provider vendor: {}",
