@@ -1,4 +1,4 @@
-import { convertFileSrc } from '@tauri-apps/api/core';
+import { convertFileSrc } from '../adapters/tauri';
 import type { AssetRef } from '../../shared/types/game-script';
 
 export class AssetLoader {

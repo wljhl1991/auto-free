@@ -1,8 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { listen } from '@tauri-apps/api/event';
-import { convertFileSrc } from '@tauri-apps/api/core';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke, listen, convertFileSrc } from '../adapters/tauri';
 import { SceneExecutor, SceneEventType } from '../engine/SceneExecutor';
 import { StateManager } from '../engine/StateManager';
 import { AssetLoader } from '../engine/AssetLoader';

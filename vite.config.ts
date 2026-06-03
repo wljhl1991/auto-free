@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
 const host = process.env.TAURI_DEV_HOST;
+const isTauri = !!process.env.TAURI_ENV_PLATFORM;
 
 export default defineConfig(async () => ({
   plugins: [react()],
@@ -28,5 +29,14 @@ export default defineConfig(async () => ({
     watch: {
       ignored: ["**/src-tauri/**"],
     },
+    // Web 模式 API 代理
+    ...(!isTauri && {
+      proxy: {
+        '/api': {
+          target: 'http://localhost:3000',
+          changeOrigin: true,
+        },
+      },
+    }),
   },
 }));

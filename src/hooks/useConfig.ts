@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../adapters/tauri';
 
 export function useConfig() {
   return {

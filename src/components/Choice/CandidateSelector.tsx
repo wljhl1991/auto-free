@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { convertFileSrc } from '@tauri-apps/api/core';
+import { convertFileSrc } from '../../adapters/tauri';
 
 interface LocalAsset {
   id: string;
