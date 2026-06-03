@@ -1,10 +1,17 @@
 pub mod builtin;
 pub mod deepseek;
 pub mod edge_tts;
+pub mod hailuo;
+pub mod jimeng;
 pub mod kling;
+pub mod netease_music;
+pub mod qwen;
 pub mod siliconflow;
 pub mod skymusic;
+pub mod vidu;
+pub mod volcengine_tts;
 pub mod xfyun_spark;
+pub mod zhipu;
 
 use async_trait::async_trait;
 use crate::types::asset::{LocalAsset, AIModality};
@@ -65,6 +72,27 @@ impl ProviderFactory {
             }
             "xfyun-spark-lite" => {
                 Ok(Box::new(xfyun_spark::XfyunSparkProvider::new(config, asset_base_path.to_path_buf())?))
+            }
+            "qwen" => {
+                Ok(Box::new(qwen::QwenProvider::new(config, asset_base_path)?))
+            }
+            "zhipu" => {
+                Ok(Box::new(zhipu::ZhipuProvider::new(config, asset_base_path)?))
+            }
+            "hailuo" => {
+                Ok(Box::new(hailuo::HailuoProvider::new(config, asset_base_path.to_path_buf())?))
+            }
+            "jimeng" => {
+                Ok(Box::new(jimeng::JimengProvider::new(config, asset_base_path.to_path_buf())?))
+            }
+            "vidu" => {
+                Ok(Box::new(vidu::ViduProvider::new(config, asset_base_path.to_path_buf())?))
+            }
+            "volcengine-tts" => {
+                Ok(Box::new(volcengine_tts::VolcengineTTSProvider::new(config, asset_base_path)?))
+            }
+            "netease-music" => {
+                Ok(Box::new(netease_music::NeteaseMusicProvider::new(config, asset_base_path.to_path_buf())?))
             }
             _ => Err(ProviderError::InvalidConfig(format!(
                 "Unknown provider vendor: {}",
