@@ -1,6 +1,7 @@
 mod types;
 mod engine;
 mod config;
+mod providers;
 
 use tauri::command;
 

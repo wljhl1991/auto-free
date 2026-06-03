@@ -1,0 +1,51 @@
+pub mod builtin;
+
+use async_trait::async_trait;
+use crate::types::asset::{LocalAsset, AIModality};
+use crate::types::game_script::AssetRef;
+use crate::types::ai_provider::{AIProviderConfig, ConnectivityCheck};
+
+/// 统一资源获取接口 — 无论来源，调用方式相同
+#[async_trait]
+pub trait IAssetProvider: Send + Sync {
+    /// 获取资源
+    async fn get_asset(&self, asset_ref: &AssetRef) -> Result<LocalAsset, ProviderError>;
+    /// 检测连通性
+    async fn check_connectivity(&self) -> Result<ConnectivityCheck, ProviderError>;
+    /// 获取支持的模态
+    fn supported_modalities(&self) -> Vec<AIModality>;
+    /// 获取 Provider ID
+    fn provider_id(&self) -> &str;
+}
+
+/// Provider 错误类型
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub enum ProviderError {
+    NetworkError(String),
+    AuthFailed(String),
+    QuotaExceeded(String),
+    GenerationFailed(String),
+    InvalidConfig(String),
+    NotFound(String),
+    Timeout(String),
+}
+
+/// Provider 工厂 — 根据配置创建 Provider 实例
+pub struct ProviderFactory;
+
+impl ProviderFactory {
+    /// 根据服务商配置创建对应的 Provider
+    pub fn create(config: &AIProviderConfig, asset_base_path: &std::path::Path) -> Result<Box<dyn IAssetProvider>, ProviderError> {
+        match config.vendor.as_str() {
+            "builtin" => {
+                let builtin_assets_path = asset_base_path.join("builtin-assets");
+                let game_assets_path = asset_base_path.join("games");
+                Ok(Box::new(builtin::BuiltinAssetProvider::new(builtin_assets_path, game_assets_path)))
+            }
+            _ => Err(ProviderError::InvalidConfig(format!(
+                "Unknown provider vendor: {}",
+                config.vendor
+            ))),
+        }
+    }
+}
