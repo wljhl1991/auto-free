@@ -1,29 +1,21 @@
-import { invoke } from "@tauri-apps/api/core";
-import { useState } from "react";
-import "./App.css";
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import MainMenu from './pages/MainMenu';
+import CreateGame from './pages/CreateGame';
+import GenerationProgress from './pages/GenerationProgress';
+import GamePlay from './pages/GamePlay';
+import Settings from './pages/Settings';
 
 function App() {
-  const [greeting, setGreeting] = useState("");
-  const [name, setName] = useState("");
-
-  async function greet() {
-    const result = await invoke<string>("greet", { name });
-    setGreeting(result);
-  }
-
   return (
-    <div className="app">
-      <h1>AutoFree</h1>
-      <div className="card">
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="输入名字..."
-        />
-        <button onClick={greet}>Greet</button>
-      </div>
-      {greeting && <p className="greeting">{greeting}</p>}
-    </div>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<MainMenu />} />
+        <Route path="/create" element={<CreateGame />} />
+        <Route path="/generate/:gameId" element={<GenerationProgress />} />
+        <Route path="/play/:gameId" element={<GamePlay />} />
+        <Route path="/settings" element={<Settings />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
 

@@ -1,10 +1,10 @@
 :root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
+  font-family: 'Segoe UI', Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.6;
   font-weight: 400;
 
-  color: #0f0f0f;
-  background-color: #f6f6f6;
+  color: #e0e0e0;
+  background-color: #0a0a1a;
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -22,4 +22,289 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  background-color: #0a0a1a;
+  color: #e0e0e0;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* ===== Page Layout ===== */
+.page {
+  min-height: 100vh;
+  padding: 2rem;
+  max-width: 800px;
+  margin: 0 auto;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ===== Buttons ===== */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 500;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  outline: none;
+  font-family: inherit;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background-color: #4a90d9;
+  color: #fff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background-color: #3a7bc8;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(74, 144, 217, 0.3);
+}
+
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn-secondary {
+  background-color: #1e1e2e;
+  color: #c0c0d0;
+  border: 1px solid #2a2a3a;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background-color: #2a2a3e;
+  border-color: #4a90d9;
+  color: #e0e0f0;
+}
+
+.btn-back {
+  background: none;
+  color: #8888aa;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+}
+
+.btn-back:hover {
+  color: #4a90d9;
+}
+
+.btn-submit {
+  width: 100%;
+  margin-top: 1.5rem;
+  padding: 1rem;
+  font-size: 1.1rem;
+}
+
+/* ===== Main Menu ===== */
+.main-menu {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.menu-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.app-title {
+  font-size: 3.5rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #4a90d9, #7b68ee);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: 2px;
+}
+
+.app-subtitle {
+  font-size: 1.1rem;
+  color: #8888aa;
+  margin-bottom: 2.5rem;
+}
+
+.menu-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 280px;
+}
+
+.menu-buttons .btn {
+  width: 100%;
+  padding: 1rem;
+  font-size: 1.05rem;
+}
+
+.version-footer {
+  position: absolute;
+  bottom: 1.5rem;
+  color: #555566;
+  font-size: 0.8rem;
+}
+
+/* ===== Page Titles ===== */
+.page-title {
+  font-size: 1.8rem;
+  font-weight: 600;
+  margin-bottom: 1.5rem;
+  color: #e0e0f0;
+}
+
+/* ===== Forms ===== */
+.form-group {
+  margin-bottom: 1.25rem;
+}
+
+.form-label {
+  display: block;
+  font-size: 0.9rem;
+  color: #9999bb;
+  margin-bottom: 0.4rem;
+}
+
+.form-textarea {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  font-size: 0.95rem;
+  font-family: inherit;
+  line-height: 1.6;
+  background-color: #12121f;
+  color: #e0e0e0;
+  border: 1px solid #2a2a3a;
+  border-radius: 8px;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.form-textarea::placeholder {
+  color: #555570;
+}
+
+.form-textarea:focus {
+  border-color: #4a90d9;
+  box-shadow: 0 0 0 2px rgba(74, 144, 217, 0.15);
+}
+
+.form-select {
+  padding: 0.6rem 1rem;
+  font-size: 0.95rem;
+  font-family: inherit;
+  background-color: #12121f;
+  color: #e0e0e0;
+  border: 1px solid #2a2a3a;
+  border-radius: 8px;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+
+.form-select:focus {
+  border-color: #4a90d9;
+}
+
+.form-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.form-group-inline {
+  flex: 1;
+  min-width: 180px;
+}
+
+.form-hint {
+  font-size: 0.8rem;
+  color: #666680;
+  margin-bottom: 0.4rem;
+}
+
+.form-error {
+  color: #e06060;
+  font-size: 0.9rem;
+  margin-top: 0.5rem;
+}
+
+/* ===== Example Chips ===== */
+.example-section {
+  margin-top: 1rem;
+}
+
+.example-chips {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.chip {
+  padding: 0.35rem 0.85rem;
+  font-size: 0.8rem;
+  font-family: inherit;
+  background-color: #1a1a2a;
+  color: #8888bb;
+  border: 1px solid #2a2a3a;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.chip:hover {
+  background-color: #2a2a3e;
+  border-color: #4a90d9;
+  color: #4a90d9;
+}
+
+/* ===== Placeholder Pages ===== */
+.game-id {
+  font-size: 0.9rem;
+  color: #666680;
+  margin-bottom: 1.5rem;
+  font-family: monospace;
+}
+
+.placeholder-text {
+  color: #555570;
+  font-style: italic;
+  margin-bottom: 1.5rem;
+}
+
+/* ===== Scrollbar ===== */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0a0a1a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2a2a3a;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3a3a4a;
 }
