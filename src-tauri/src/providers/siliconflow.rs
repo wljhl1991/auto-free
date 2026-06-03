@@ -1,0 +1,418 @@
+use async_trait::async_trait;
+use super::{IAssetProvider, ProviderError};
+use crate::types::game_script::AssetRef;
+use crate::types::asset::{LocalAsset, AIModality, AssetType, AssetSource};
+use crate::types::ai_provider::{AIProviderConfig, ConnectivityCheck, ConnectivityStatus};
+use reqwest::Client;
+use serde::{Serialize, Deserialize};
+use std::path::PathBuf;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+const MAX_RETRIES: u32 = 3;
+const DEFAULT_ENDPOINT: &str = "https://api.siliconflow.cn/v1/images/generations";
+const DEFAULT_IMAGE_MODEL: &str = "black-forest-labs/FLUX.1-schnell";
+const DEFAULT_TEXT_MODEL: &str = "deepseek-ai/DeepSeek-V3";
+
+#[derive(Debug, Serialize)]
+struct ImageGenerationRequest {
+    model: String,
+    prompt: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    negative_prompt: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    image_size: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    num_inference_steps: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    seed: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ImageGenerationResponse {
+    images: Vec<ImageData>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ImageData {
+    url: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ApiError {
+    error: Option<ApiErrorDetail>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ApiErrorDetail {
+    message: Option<String>,
+}
+
+pub struct SiliconFlowProvider {
+    config: AIProviderConfig,
+    client: Client,
+    api_key: String,
+    default_image_model: String,
+    default_text_model: String, // reserved for future text generation support
+    endpoint: String,
+    asset_base_path: PathBuf,
+}
+
+impl SiliconFlowProvider {
+    pub fn new(config: &AIProviderConfig, asset_base_path: PathBuf) -> Result<Self, ProviderError> {
+        let api_key = config.auth_config.api_key
+            .as_ref()
+            .map(|k| k.value.clone())
+            .filter(|v| !v.is_empty())
+            .ok_or_else(|| ProviderError::InvalidConfig("SiliconFlow API Key not configured".to_string()))?;
+
+        let default_image_model = config.models
+            .iter()
+            .find(|m| m.is_default && m.modality == AIModality::Image)
+            .map(|m| m.id.clone())
+            .or_else(|| config.models.iter().find(|m| m.modality == AIModality::Image).map(|m| m.id.clone()))
+            .unwrap_or_else(|| DEFAULT_IMAGE_MODEL.to_string());
+
+        let default_text_model = config.models
+            .iter()
+            .find(|m| m.is_default && m.modality == AIModality::Text)
+            .map(|m| m.id.clone())
+            .or_else(|| config.models.iter().find(|m| m.modality == AIModality::Text).map(|m| m.id.clone()))
+            .unwrap_or_else(|| DEFAULT_TEXT_MODEL.to_string());
+
+        let endpoint = config.models
+            .iter()
+            .find(|m| m.is_default)
+            .and_then(|m| {
+                let ep = m.endpoint.trim().to_string();
+                if ep.is_empty() { None } else { Some(ep) }
+            })
+            .unwrap_or_else(|| DEFAULT_ENDPOINT.to_string());
+
+        let client = Client::builder()
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(180))
+            .build()
+            .map_err(|e| ProviderError::NetworkError(format!("Failed to create HTTP client: {}", e)))?;
+
+        Ok(Self {
+            config: config.clone(),
+            client,
+            api_key,
+            default_image_model,
+            default_text_model,
+            endpoint,
+            asset_base_path,
+        })
+    }
+
+    /// 生成图片
+    pub async fn generate_image(
+        &self,
+        prompt: &str,
+        negative_prompt: Option<&str>,
+        size: Option<&str>,
+        model: Option<&str>,
+    ) -> Result<Vec<u8>, ProviderError> {
+        let model = model.unwrap_or(&self.default_image_model);
+
+        let request = ImageGenerationRequest {
+            model: model.to_string(),
+            prompt: prompt.to_string(),
+            negative_prompt: negative_prompt.map(|s| s.to_string()),
+            image_size: size.map(|s| s.to_string()),
+            num_inference_steps: None,
+            seed: None,
+        };
+
+        let mut last_error = None;
+        for attempt in 0..=MAX_RETRIES {
+            if attempt > 0 {
+                tokio::time::sleep(Duration::from_millis(500 * attempt as u64)).await;
+            }
+
+            match self.send_image_request(&request).await {
+                Ok(image_url) => {
+                    return self.download_image(&image_url).await;
+                }
+                Err(e) => {
+                    let should_retry = matches!(
+                        &e,
+                        ProviderError::NetworkError(_) | ProviderError::Timeout(_)
+                    ) || matches!(&e, ProviderError::GenerationFailed(msg) if msg.contains("5"));
+                    if should_retry && attempt < MAX_RETRIES {
+                        last_error = Some(e);
+                        continue;
+                    }
+                    return Err(e);
+                }
+            }
+        }
+        Err(last_error.unwrap_or_else(|| ProviderError::NetworkError("Unknown error after retries".to_string())))
+    }
+
+    async fn send_image_request(&self, request: &ImageGenerationRequest) -> Result<String, ProviderError> {
+        let response = self.client
+            .post(&self.endpoint)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(request)
+            .send()
+            .await
+            .map_err(|e| {
+                if e.is_timeout() {
+                    ProviderError::Timeout(format!("Request timeout: {}", e))
+                } else {
+                    ProviderError::NetworkError(format!("Network error: {}", e))
+                }
+            })?;
+
+        let status = response.status();
+        let body = response.text().await
+            .map_err(|e| ProviderError::NetworkError(format!("Failed to read response: {}", e)))?;
+
+        if status.is_success() {
+            let gen_response: ImageGenerationResponse = serde_json::from_str(&body)
+                .map_err(|e| ProviderError::GenerationFailed(format!("Failed to parse response: {}", e)))?;
+            gen_response.images.first()
+                .map(|img| img.url.clone())
+                .ok_or_else(|| ProviderError::GenerationFailed("No images in response".to_string()))
+        } else {
+            self.handle_error_status(status.as_u16(), &body)
+        }
+    }
+
+    /// 下载图片
+    async fn download_image(&self, url: &str) -> Result<Vec<u8>, ProviderError> {
+        let response = self.client
+            .get(url)
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(format!("Failed to download image: {}", e)))?;
+
+        let status = response.status();
+        if !status.is_success() {
+            return Err(ProviderError::NetworkError(format!("Download failed with status: {}", status)));
+        }
+
+        response.bytes().await
+            .map(|b| b.to_vec())
+            .map_err(|e| ProviderError::NetworkError(format!("Failed to read image data: {}", e)))
+    }
+
+    /// 根据 AssetRef 构造 Prompt
+    /// 返回 (prompt, negative_prompt, image_size)
+    pub fn build_image_prompt(&self, asset_ref: &AssetRef) -> (String, Option<String>, String) {
+        let size = self.infer_image_size(asset_ref);
+
+        let style_prefix = asset_ref.style.as_deref().unwrap_or("").trim();
+        let base_prompt = asset_ref.prompt.trim();
+
+        let prompt = match asset_ref.asset_type {
+            crate::types::game_script::AssetType::Image => {
+                // 根据用途推断是背景图还是头像
+                let is_avatar = asset_ref.id.contains("avatar")
+                    || asset_ref.id.contains("portrait")
+                    || asset_ref.id.contains("head")
+                    || asset_ref.prompt.to_lowercase().contains("portrait")
+                    || asset_ref.prompt.to_lowercase().contains("avatar");
+
+                if is_avatar {
+                    let mut parts = Vec::new();
+                    if !style_prefix.is_empty() {
+                        parts.push(style_prefix.to_string());
+                    }
+                    parts.push(base_prompt.to_string());
+                    parts.push("portrait".to_string());
+                    parts.push("game character".to_string());
+                    parts.push("detailed face".to_string());
+                    parts.join(", ")
+                } else {
+                    let mut parts = Vec::new();
+                    if !style_prefix.is_empty() {
+                        parts.push(style_prefix.to_string());
+                    }
+                    parts.push(base_prompt.to_string());
+                    parts.push("game background".to_string());
+                    parts.push("high quality".to_string());
+                    parts.push("detailed".to_string());
+                    parts.join(", ")
+                }
+            }
+            crate::types::game_script::AssetType::Video => {
+                let mut parts = Vec::new();
+                if !style_prefix.is_empty() {
+                    parts.push(style_prefix.to_string());
+                }
+                parts.push(base_prompt.to_string());
+                parts.push("cinematic".to_string());
+                parts.push("dramatic lighting".to_string());
+                parts.push("high quality".to_string());
+                parts.join(", ")
+            }
+            _ => {
+                let mut parts = Vec::new();
+                if !style_prefix.is_empty() {
+                    parts.push(style_prefix.to_string());
+                }
+                parts.push(base_prompt.to_string());
+                parts.push("high quality".to_string());
+                parts.join(", ")
+            }
+        };
+
+        let negative_prompt = asset_ref.negative_prompt.clone();
+
+        (prompt, negative_prompt, size)
+    }
+
+    /// 从 AssetRef 推断图片尺寸
+    fn infer_image_size(&self, asset_ref: &AssetRef) -> String {
+        let is_avatar = asset_ref.id.contains("avatar")
+            || asset_ref.id.contains("portrait")
+            || asset_ref.id.contains("head")
+            || asset_ref.prompt.to_lowercase().contains("portrait")
+            || asset_ref.prompt.to_lowercase().contains("avatar");
+
+        if is_avatar {
+            "1024x1024".to_string() // 1:1
+        } else {
+            "1024x576".to_string() // 16:9
+        }
+    }
+
+    fn handle_error_status(&self, status_code: u16, body: &str) -> Result<String, ProviderError> {
+        let error_msg = serde_json::from_str::<ApiError>(body)
+            .ok()
+            .and_then(|e| e.error)
+            .and_then(|e| e.message)
+            .unwrap_or_else(|| body.to_string());
+
+        match status_code {
+            401 | 403 => Err(ProviderError::AuthFailed(format!("Authentication failed: {}", error_msg))),
+            429 => Err(ProviderError::QuotaExceeded(format!("Rate limited: {}", error_msg))),
+            s if s >= 500 => Err(ProviderError::GenerationFailed(format!("Server error ({}): {}", status_code, error_msg))),
+            _ => Err(ProviderError::GenerationFailed(format!("API error ({}): {}", status_code, error_msg))),
+        }
+    }
+
+    fn generate_cache_key(asset_ref: &AssetRef) -> String {
+        use sha2::{Sha256, Digest};
+        let mut hasher = Sha256::new();
+        hasher.update(asset_ref.id.as_bytes());
+        hasher.update(asset_ref.prompt.as_bytes());
+        format!("{:x}", hasher.finalize())[..16].to_string()
+    }
+}
+
+#[async_trait]
+impl IAssetProvider for SiliconFlowProvider {
+    async fn get_asset(&self, asset_ref: &AssetRef) -> Result<LocalAsset, ProviderError> {
+        let (prompt, negative_prompt, image_size) = self.build_image_prompt(asset_ref);
+
+        let image_data = self.generate_image(
+            &prompt,
+            negative_prompt.as_deref(),
+            Some(&image_size),
+            None,
+        )
+        .await?;
+
+        let cache_key = asset_ref.cache_key.clone()
+            .unwrap_or_else(|| Self::generate_cache_key(asset_ref));
+
+        let dest_dir = self.asset_base_path.join(&cache_key);
+        std::fs::create_dir_all(&dest_dir)
+            .map_err(|e| ProviderError::GenerationFailed(format!("Failed to create asset dir: {}", e)))?;
+
+        let dest_path = dest_dir.join(format!("{}.png", asset_ref.id));
+        std::fs::write(&dest_path, &image_data)
+            .map_err(|e| ProviderError::GenerationFailed(format!("Failed to write image file: {}", e)))?;
+
+        Ok(LocalAsset {
+            id: asset_ref.id.clone(),
+            asset_type: AssetType::Image,
+            local_path: dest_path.to_string_lossy().to_string(),
+            source: AssetSource::AiGenerated,
+            cache_key,
+            created_at: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+        })
+    }
+
+    async fn check_connectivity(&self) -> Result<ConnectivityCheck, ProviderError> {
+        let start = SystemTime::now();
+
+        // 生成最小图片验证连通性
+        let request = ImageGenerationRequest {
+            model: self.default_image_model.clone(),
+            prompt: "a single pixel".to_string(),
+            negative_prompt: None,
+            image_size: Some("256x256".to_string()),
+            num_inference_steps: Some(1),
+            seed: Some(42),
+        };
+
+        let result = self.send_image_request(&request).await;
+        let latency = SystemTime::now()
+            .duration_since(start)
+            .unwrap_or_default()
+            .as_millis() as u64;
+
+        match result {
+            Ok(_) => Ok(ConnectivityCheck {
+                provider_id: self.config.id.clone(),
+                timestamp: SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+                status: ConnectivityStatus::Ok,
+                latency: Some(latency),
+                error_message: None,
+                quota_info: None,
+            }),
+            Err(ProviderError::AuthFailed(msg)) => Ok(ConnectivityCheck {
+                provider_id: self.config.id.clone(),
+                timestamp: SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+                status: ConnectivityStatus::AuthFailed,
+                latency: Some(latency),
+                error_message: Some(msg),
+                quota_info: None,
+            }),
+            Err(ProviderError::QuotaExceeded(msg)) => Ok(ConnectivityCheck {
+                provider_id: self.config.id.clone(),
+                timestamp: SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+                status: ConnectivityStatus::QuotaExceeded,
+                latency: Some(latency),
+                error_message: Some(msg),
+                quota_info: None,
+            }),
+            Err(e) => Ok(ConnectivityCheck {
+                provider_id: self.config.id.clone(),
+                timestamp: SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+                status: ConnectivityStatus::NetworkError,
+                latency: Some(latency),
+                error_message: Some(format!("{:?}", e)),
+                quota_info: None,
+            }),
+        }
+    }
+
+    fn supported_modalities(&self) -> Vec<AIModality> {
+        vec![AIModality::Image]
+    }
+
+    fn provider_id(&self) -> &str {
+        &self.config.id
+    }
+}

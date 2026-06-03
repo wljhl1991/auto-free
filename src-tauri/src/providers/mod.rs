@@ -1,6 +1,7 @@
 pub mod builtin;
 pub mod deepseek;
 pub mod edge_tts;
+pub mod siliconflow;
 
 use async_trait::async_trait;
 use crate::types::asset::{LocalAsset, AIModality};
@@ -49,6 +50,9 @@ impl ProviderFactory {
             }
             "edge-tts" => {
                 Ok(Box::new(edge_tts::EdgeTTSProvider::new(config, asset_base_path)?))
+            }
+            "siliconflow" => {
+                Ok(Box::new(siliconflow::SiliconFlowProvider::new(config, asset_base_path.to_path_buf())?))
             }
             _ => Err(ProviderError::InvalidConfig(format!(
                 "Unknown provider vendor: {}",
