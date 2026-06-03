@@ -61,6 +61,7 @@ pub fn run() {
             game::list_saves,
             generation::get_generation_status,
             generation::regenerate_asset,
+            generation::regenerate_asset_candidates,
             generation::export_game,
             cmd_config::get_config,
             cmd_config::update_config,

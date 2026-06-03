@@ -585,6 +585,73 @@ impl GenerationPipeline {
         }
     }
 
+    /// 多候选重新生成 — 对图片和视频资源一次生成多个候选供用户选择
+    /// 文本类型资源不提供多候选，返回空 Vec
+    pub async fn regenerate_asset_with_candidates(
+        &self,
+        game_id: &str,
+        asset_ref_id: &str,
+        count: u32,
+    ) -> Result<Vec<LocalAsset>, ProviderError> {
+        // 从存储的 GameScript 中查找 AssetRef
+        let scripts = self.scripts.read().await;
+        let script = scripts.get(game_id).ok_or_else(|| {
+            ProviderError::NotFound(format!("Game script not found for game '{}'", game_id))
+        })?;
+
+        let asset_ref = Self::find_asset_ref_by_id(script, asset_ref_id).ok_or_else(|| {
+            ProviderError::NotFound(format!("AssetRef '{}' not found", asset_ref_id))
+        })?;
+
+        let mut asset_ref = asset_ref.clone();
+        // 强制使用 AI 生成
+        asset_ref.source = ScriptAssetSource::AiGenerated;
+        asset_ref.status = AssetStatus::Pending;
+
+        drop(scripts);
+
+        // 文本类型资源不支持多候选
+        if !Self::is_visual_asset_type(&asset_ref.asset_type) {
+            return Ok(Vec::new());
+        }
+
+        let modality = Self::asset_type_to_modality(&asset_ref.asset_type);
+        let provider = self.resolve_ai_provider(modality).await?;
+
+        let actual_count = count.max(2).min(4) as usize;
+        let mut candidates = Vec::with_capacity(actual_count);
+        let mut errors = Vec::new();
+
+        for _ in 0..actual_count {
+            match provider.get_asset(&asset_ref).await {
+                Ok(local_asset) => {
+                    candidates.push(local_asset);
+                }
+                Err(e) => {
+                    errors.push(e);
+                }
+            }
+        }
+
+        if candidates.is_empty() {
+            // 所有候选都失败了
+            let first_error = errors.into_iter().next().unwrap_or_else(|| {
+                ProviderError::GenerationFailed("All candidate generations failed".to_string())
+            });
+            self.on_asset_failed(game_id, &asset_ref, &first_error);
+            Err(first_error)
+        } else {
+            // 至少有一个候选成功，通知第一个就绪
+            self.on_asset_ready(game_id, &asset_ref, &candidates[0]);
+            Ok(candidates)
+        }
+    }
+
+    /// 判断资源类型是否为可视类型（图片或视频），只有可视类型支持多候选
+    fn is_visual_asset_type(asset_type: &ScriptAssetType) -> bool {
+        matches!(asset_type, ScriptAssetType::Image | ScriptAssetType::Video)
+    }
+
     /// 在 GameScript 中查找指定 ID 的 AssetRef
     fn find_asset_ref_by_id<'a>(script: &'a GameScript, asset_ref_id: &str) -> Option<&'a AssetRef> {
         for chapter in &script.chapters {
