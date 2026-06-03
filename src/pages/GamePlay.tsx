@@ -1,5 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useEffect, useState, useRef, useCallback } from 'react';
+import { listen } from '@tauri-apps/api/event';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import { SceneExecutor, SceneEventType } from '../engine/SceneExecutor';
 import { StateManager } from '../engine/StateManager';
 import { AssetLoader } from '../engine/AssetLoader';
@@ -13,11 +15,20 @@ import { GameMenu } from '../components/HUD/GameMenu';
 import { InventoryPanel } from '../components/HUD/InventoryPanel';
 import { StatsPanel } from '../components/HUD/StatsPanel';
 import { useGame } from '../hooks/useGame';
+import { useGeneration } from '../hooks/useGeneration';
+
+interface AssetInfo {
+  assetRefId: string;
+  assetType: string;
+  localPath: string;
+  source: string;
+}
 
 function GamePlay() {
   const { gameId } = useParams<{ gameId: string }>();
   const navigate = useNavigate();
   const game = useGame();
+  const generation = useGeneration();
 
   const executorRef = useRef<SceneExecutor | null>(null);
   const stateManagerRef = useRef<StateManager>(new StateManager());
@@ -27,11 +38,70 @@ function GamePlay() {
   const [currentEvent, setCurrentEvent] = useState<SceneEventType | null>(null);
   const [sceneBackground, setSceneBackground] = useState<string | undefined>();
   const [sceneVideo, setSceneVideo] = useState<string | undefined>();
+  const [currentBgAssetRefId] = useState<string | undefined>();
   const [chapterTitle] = useState('');
   const [showMenu, setShowMenu] = useState(false);
   const [showInventory, setShowInventory] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+
+  // 资源状态追踪：assetRefId -> { source, status }
+  const [assetStates, setAssetStates] = useState<Record<string, { source: string; status: 'generating' | 'ready' | 'fallback' }>>({});
+  // 热替换动画状态
+  const [hotSwapping, setHotSwapping] = useState(false);
+
+  // 监听 asset-ready 事件，实现热替换
+  useEffect(() => {
+    if (!gameId) return;
+
+    const unlisteners: (() => void)[] = [];
+
+    listen('asset-ready', (event: any) => {
+      const payload = event.payload;
+      if (!payload || payload.gameId !== gameId) return;
+
+      const { assetRefId, assetType, localPath, source } = payload as AssetInfo;
+
+      // 更新资源状态
+      setAssetStates(prev => ({
+        ...prev,
+        [assetRefId]: {
+          source: source,
+          status: source === 'Builtin' ? 'fallback' : 'ready',
+        },
+      }));
+
+      // 如果当前正在展示该资源，执行热替换
+      if (assetType === 'Image' && assetRefId === currentBgAssetRefId) {
+        setHotSwapping(true);
+        const resolvedUrl = resolveAssetUrl(localPath);
+        setSceneBackground(resolvedUrl);
+        setTimeout(() => setHotSwapping(false), 500);
+      }
+    }).then(unlisten => unlisteners.push(unlisten));
+
+    listen('asset-failed', (event: any) => {
+      const payload = event.payload;
+      if (!payload || payload.gameId !== gameId) return;
+
+      const { assetRefId } = payload;
+      setAssetStates(prev => ({
+        ...prev,
+        [assetRefId]: { source: 'builtin', status: 'fallback' },
+      }));
+    }).then(unlisten => unlisteners.push(unlisten));
+
+    return () => unlisteners.forEach(fn => fn());
+  }, [gameId, currentBgAssetRefId]);
+
+  // 将本地路径转换为可访问的 URL
+  const resolveAssetUrl = (localPath: string): string => {
+    try {
+      return convertFileSrc(localPath);
+    } catch {
+      return localPath;
+    }
+  };
 
   useEffect(() => {
     if (!gameId) return;
@@ -112,64 +182,105 @@ function GamePlay() {
     navigate('/');
   }, []);
 
+  // 重新生成资源
+  const handleRegenerate = useCallback(async (assetRefId: string) => {
+    if (!gameId) return;
+    setAssetStates(prev => ({
+      ...prev,
+      [assetRefId]: { source: 'ai_generated', status: 'generating' },
+    }));
+    try {
+      await generation.regenerateAsset(gameId, assetRefId);
+    } catch (err) {
+      console.error('Failed to regenerate asset:', err);
+    }
+  }, [gameId]);
+
+  // 获取当前背景图的资源状态
+  const currentBgState = currentBgAssetRefId ? assetStates[currentBgAssetRefId] : undefined;
+
   if (isLoading) {
     return <div className="gameplay-loading"><div className="spinner" /></div>;
   }
 
   return (
     <div className="gameplay-page" onClick={handleClick}>
-      <SceneRenderer
-        backgroundImage={sceneBackground}
-        backgroundVideo={sceneVideo}
-      >
-        <div className="gameplay-hud">
-          <span className="gameplay-chapter-title">{chapterTitle}</span>
-          <div className="gameplay-hud-buttons">
-            <button onClick={(e) => { e.stopPropagation(); setShowInventory(true); }}>物品栏</button>
-            <button onClick={(e) => { e.stopPropagation(); setShowStats(true); }}>状态</button>
-            <button onClick={(e) => { e.stopPropagation(); setShowMenu(true); }}>菜单</button>
+      <div className={`gameplay-scene-wrapper ${hotSwapping ? 'hot-swapping' : ''}`}>
+        <SceneRenderer
+          backgroundImage={sceneBackground}
+          backgroundVideo={sceneVideo}
+        >
+          <div className="gameplay-hud">
+            <span className="gameplay-chapter-title">{chapterTitle}</span>
+            <div className="gameplay-hud-buttons">
+              <button onClick={(e) => { e.stopPropagation(); setShowInventory(true); }}>物品栏</button>
+              <button onClick={(e) => { e.stopPropagation(); setShowStats(true); }}>状态</button>
+              <button onClick={(e) => { e.stopPropagation(); setShowMenu(true); }}>菜单</button>
+            </div>
           </div>
-        </div>
 
-        <div className="gameplay-content">
-          {currentEvent?.type === 'narration' && (
-            <NarrationBox
-              text={currentEvent.text}
-              isTyping={true}
-              onTypingComplete={handleTypingComplete}
-            />
-          )}
+          <div className="gameplay-content">
+            {currentEvent?.type === 'narration' && (
+              <NarrationBox
+                text={currentEvent.text}
+                isTyping={true}
+                onTypingComplete={handleTypingComplete}
+              />
+            )}
 
-          {currentEvent?.type === 'dialogue' && (
-            <DialogueBox
-              speaker={currentEvent.speaker}
-              text={currentEvent.text}
-              speakerAvatar={currentEvent.avatarUrl}
-              emotion={currentEvent.emotion}
-              isTyping={true}
-              onTypingComplete={handleTypingComplete}
-            />
-          )}
+            {currentEvent?.type === 'dialogue' && (
+              <DialogueBox
+                speaker={currentEvent.speaker}
+                text={currentEvent.text}
+                speakerAvatar={currentEvent.avatarUrl}
+                emotion={currentEvent.emotion}
+                isTyping={true}
+                onTypingComplete={handleTypingComplete}
+              />
+            )}
 
-          {currentEvent?.type === 'choice' && (
-            <ChoicePanel
-              prompt={currentEvent.prompt}
-              options={currentEvent.options}
-              onSelect={handleChoice}
-            />
-          )}
+            {currentEvent?.type === 'choice' && (
+              <ChoicePanel
+                prompt={currentEvent.prompt}
+                options={currentEvent.options}
+                onSelect={handleChoice}
+              />
+            )}
 
-          {currentEvent?.type === 'cg' && (
-            <CGPlayer
-              videoUrl={currentEvent.videoUrl}
-              duration={currentEvent.duration}
-              skipAllowed={currentEvent.skipAllowed}
-              onComplete={() => executorRef.current?.advance()}
-              onSkip={() => executorRef.current?.advance()}
-            />
-          )}
-        </div>
-      </SceneRenderer>
+            {currentEvent?.type === 'cg' && (
+              <CGPlayer
+                videoUrl={currentEvent.videoUrl}
+                duration={currentEvent.duration}
+                skipAllowed={currentEvent.skipAllowed}
+                onComplete={() => executorRef.current?.advance()}
+                onSkip={() => executorRef.current?.advance()}
+              />
+            )}
+          </div>
+        </SceneRenderer>
+
+        {/* 资源状态指示器和重新生成按钮 */}
+        {sceneBackground && currentBgAssetRefId && (
+          <div className="asset-status-overlay">
+            <span className={`asset-status-badge ${currentBgState?.status ?? 'fallback'}`}>
+              {currentBgState?.status === 'generating' && '生成中...'}
+              {currentBgState?.status === 'ready' && 'AI 已就绪'}
+              {currentBgState?.status === 'fallback' && '使用默认'}
+              {!currentBgState && '加载中...'}
+            </span>
+            <button
+              className="asset-regenerate-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleRegenerate(currentBgAssetRefId);
+              }}
+              title="重新生成"
+            >
+              ↻
+            </button>
+          </div>
+        )}
+      </div>
 
       {showMenu && (
         <GameMenu

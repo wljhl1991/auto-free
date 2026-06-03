@@ -14,8 +14,14 @@ pub async fn get_generation_status(
 }
 
 #[command]
-pub async fn regenerate_asset(_game_id: String, _asset_ref_id: String) -> Result<(), String> {
-    Err("not implemented".to_string())
+pub async fn regenerate_asset(
+    game_id: String,
+    asset_ref_id: String,
+    pipeline: tauri::State<'_, Arc<RwLock<GenerationPipeline>>>,
+) -> Result<(), String> {
+    let p = pipeline.read().await;
+    p.regenerate_asset(&game_id, &asset_ref_id).await
+        .map_err(|e| format!("{:?}", e))
 }
 
 #[command]

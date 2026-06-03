@@ -8,7 +8,14 @@ interface ChapterProgress {
   totalAssets: number;
   completedAssets: number;
   assetStatus: Record<string, 'pending' | 'generating' | 'ready' | 'failed'>;
-  status: 'generating' | 'ready' | 'partial';
+  assetSources: Record<string, 'ai_generated' | 'builtin'>;
+  status: 'pending' | 'generating' | 'ready' | 'partial';
+}
+
+interface GenerationStatusData {
+  firstChapterReady: boolean;
+  backgroundGenerationActive: boolean;
+  overallProgress: number;
 }
 
 const ASSET_LABELS: Record<string, string> = {
@@ -19,6 +26,11 @@ const ASSET_LABELS: Record<string, string> = {
   voice: '语音',
   item_image: '道具图片',
   effect_sound: '音效',
+};
+
+const SOURCE_LABELS: Record<string, string> = {
+  ai_generated: 'AI 生成',
+  builtin: '内置默认',
 };
 
 function AssetStatusIcon({ status }: { status: 'pending' | 'generating' | 'ready' | 'failed' }) {
@@ -35,7 +47,18 @@ function AssetStatusIcon({ status }: { status: 'pending' | 'generating' | 'ready
   }
 }
 
-function ChapterProgressCard({ chapter }: { chapter: ChapterProgress }) {
+function SourceBadge({ source }: { source?: string }) {
+  if (!source) return null;
+  const label = SOURCE_LABELS[source] || source;
+  const isAi = source === 'ai_generated';
+  return (
+    <span className={`source-badge ${isAi ? 'source-ai' : 'source-builtin'}`}>
+      {label}
+    </span>
+  );
+}
+
+function ChapterProgressCard({ chapter, isFirst }: { chapter: ChapterProgress; isFirst: boolean }) {
   const percent = chapter.totalAssets > 0
     ? Math.round((chapter.completedAssets / chapter.totalAssets) * 100)
     : 0;
@@ -43,7 +66,10 @@ function ChapterProgressCard({ chapter }: { chapter: ChapterProgress }) {
   return (
     <div className={`chapter-card chapter-${chapter.status}`}>
       <div className="chapter-header">
-        <h3 className="chapter-title">{chapter.chapterTitle}</h3>
+        <h3 className="chapter-title">
+          {chapter.chapterTitle}
+          {isFirst && <span className="chapter-first-badge">第一章</span>}
+        </h3>
         <span className="chapter-percent">{percent}%</span>
       </div>
 
@@ -59,12 +85,16 @@ function ChapterProgressCard({ chapter }: { chapter: ChapterProgress }) {
           <div key={key} className="asset-status-item">
             <AssetStatusIcon status={status} />
             <span className="asset-label">{ASSET_LABELS[key] || key}</span>
+            <SourceBadge source={chapter.assetSources[key]} />
           </div>
         ))}
       </div>
 
       {chapter.status === 'ready' && (
         <div className="chapter-badge">就绪</div>
+      )}
+      {chapter.status === 'pending' && (
+        <div className="chapter-badge chapter-badge-pending">等待中</div>
       )}
     </div>
   );
@@ -79,6 +109,11 @@ export default function GenerationProgress() {
   const [chapters, setChapters] = useState<ChapterProgress[]>([]);
   const [overallProgress, setOverallProgress] = useState(0);
   const [error, setError] = useState('');
+  const [genStatus, setGenStatus] = useState<GenerationStatusData>({
+    firstChapterReady: false,
+    backgroundGenerationActive: false,
+    overallProgress: 0,
+  });
 
   const updateChapterProgress = useCallback(
     (chapterId: string, updater: (ch: ChapterProgress) => ChapterProgress) => {
@@ -121,6 +156,7 @@ export default function GenerationProgress() {
             totalAssets: totalAssets ?? 0,
             completedAssets: completedAssets ?? 0,
             assetStatus: {},
+            assetSources: {},
             status: 'generating' as const,
           },
         ];
@@ -130,14 +166,17 @@ export default function GenerationProgress() {
     generation.onAssetReady((event: any) => {
       const payload = event.payload;
       if (!payload) return;
-      const { chapterId, assetType } = payload;
+      const { chapterId, assetType, source } = payload;
 
       updateChapterProgress(chapterId, ch => {
+        const sourceType: 'ai_generated' | 'builtin' = source === 'AiGenerated' ? 'ai_generated' : 'builtin';
         const newStatus = { ...ch.assetStatus, [assetType]: 'ready' as const };
+        const newSources = { ...ch.assetSources, [assetType]: sourceType };
         const readyCount = Object.values(newStatus).filter(s => s === 'ready').length;
         return {
           ...ch,
           assetStatus: newStatus,
+          assetSources: newSources,
           completedAssets: readyCount,
           totalAssets: ch.totalAssets || Object.keys(newStatus).length,
           status: readyCount >= (ch.totalAssets || Object.keys(newStatus).length) && (ch.totalAssets || Object.keys(newStatus).length) > 0
@@ -159,23 +198,34 @@ export default function GenerationProgress() {
       updateChapterProgress(chapterId, ch => ({
         ...ch,
         assetStatus: { ...ch.assetStatus, [assetType]: 'failed' as const },
+        assetSources: { ...ch.assetSources, [assetType]: 'builtin' as const },
       }));
     }).then(unlisten => unlisteners.push(unlisten));
 
     generation.onGenerationComplete((event: any) => {
       const payload = event.payload;
       if (!payload) return;
-      const { chapterId } = payload;
+      const { chapterId, allChapters } = payload;
+
+      if (allChapters) {
+        setGenStatus(prev => ({ ...prev, backgroundGenerationActive: false }));
+        return;
+      }
 
       updateChapterProgress(chapterId, ch => ({
         ...ch,
         completedAssets: ch.totalAssets,
         status: 'ready' as const,
       }));
+
+      // 第一章就绪
+      if (chapters.length > 0 && chapters[0].chapterId === chapterId) {
+        setGenStatus(prev => ({ ...prev, firstChapterReady: true }));
+      }
     }).then(unlisten => unlisteners.push(unlisten));
 
     return () => unlisteners.forEach(fn => fn());
-  }, [updateChapterProgress]);
+  }, [updateChapterProgress, chapters]);
 
   useEffect(() => {
     if (!gameId) return;
@@ -183,15 +233,25 @@ export default function GenerationProgress() {
     generation.getGenerationStatus(gameId).then((status: any) => {
       if (!status) return;
       if (status.gameTitle) setGameTitle(status.gameTitle);
-      if (status.chapters) {
+      if (status.firstChapterReady !== undefined) {
+        setGenStatus(prev => ({
+          ...prev,
+          firstChapterReady: status.firstChapterReady,
+          backgroundGenerationActive: status.backgroundGenerationActive ?? false,
+          overallProgress: status.overallProgress ?? 0,
+        }));
+      }
+      if (status.chapterStatus) {
+        const chapterStatusMap = status.chapterStatus as Record<string, any>;
         setChapters(
-          status.chapters.map((ch: any) => ({
+          Object.values(chapterStatusMap).map((ch: any) => ({
             chapterId: ch.chapterId,
             chapterTitle: ch.chapterTitle,
             totalAssets: ch.totalAssets ?? 0,
             completedAssets: ch.completedAssets ?? 0,
             assetStatus: ch.assetStatus ?? {},
-            status: ch.status ?? 'generating',
+            assetSources: ch.assetSources ?? {},
+            status: ch.status ?? 'pending',
           }))
         );
       }
@@ -210,7 +270,8 @@ export default function GenerationProgress() {
     setOverallProgress(total > 0 ? Math.round((completed / total) * 100) : 0);
   }, [chapters]);
 
-  const firstChapterReady = chapters.length > 0 && chapters[0].status === 'ready';
+  const firstChapterReady = chapters.length > 0 && (chapters[0].status === 'ready' || chapters[0].status === 'partial' || genStatus.firstChapterReady);
+  const hasRemainingChapters = chapters.length > 1;
 
   return (
     <div className="page generation-progress">
@@ -241,8 +302,12 @@ export default function GenerationProgress() {
       )}
 
       <div className="chapter-list">
-        {chapters.map(chapter => (
-          <ChapterProgressCard key={chapter.chapterId} chapter={chapter} />
+        {chapters.map((chapter, index) => (
+          <ChapterProgressCard
+            key={chapter.chapterId}
+            chapter={chapter}
+            isFirst={index === 0}
+          />
         ))}
       </div>
 
@@ -250,6 +315,14 @@ export default function GenerationProgress() {
         <div className="empty-state">
           <div className="spinner" />
           <p>正在初始化生成任务...</p>
+        </div>
+      )}
+
+      {/* 后续章节后台生成提示 */}
+      {firstChapterReady && hasRemainingChapters && genStatus.backgroundGenerationActive && (
+        <div className="background-generation-hint">
+          <span className="hint-icon">⟳</span>
+          后续章节正在后台生成中，您可以先开始游玩第一章
         </div>
       )}
 

@@ -719,3 +719,140 @@ body {
   font-weight: 600;
   color: #4a90d9;
 }
+
+/* ===== GamePlay Hot Swap ===== */
+.gameplay-scene-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.gameplay-scene-wrapper.hot-swapping {
+  transition: opacity 0.5s ease;
+}
+
+.asset-status-overlay {
+  position: absolute;
+  bottom: 120px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  z-index: 15;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  pointer-events: auto;
+}
+
+.gameplay-scene-wrapper:hover .asset-status-overlay {
+  opacity: 1;
+}
+
+.asset-status-badge {
+  padding: 3px 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 12px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.asset-status-badge.generating {
+  color: #facc15;
+  background-color: rgba(250, 204, 21, 0.12);
+  border: 1px solid rgba(250, 204, 21, 0.25);
+}
+
+.asset-status-badge.ready {
+  color: #4ade80;
+  background-color: rgba(74, 222, 128, 0.12);
+  border: 1px solid rgba(74, 222, 128, 0.25);
+}
+
+.asset-status-badge.fallback {
+  color: #9999bb;
+  background-color: rgba(153, 153, 187, 0.12);
+  border: 1px solid rgba(153, 153, 187, 0.25);
+}
+
+.asset-regenerate-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  background-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.asset-regenerate-btn:hover {
+  background-color: rgba(74, 144, 217, 0.3);
+  border-color: rgba(74, 144, 217, 0.5);
+  color: #4a90d9;
+}
+
+/* ===== Generation Progress — Source Badges ===== */
+.source-badge {
+  display: inline-block;
+  padding: 1px 7px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border-radius: 8px;
+  margin-left: 4px;
+}
+
+.source-ai {
+  color: #7b68ee;
+  background-color: rgba(123, 104, 238, 0.12);
+  border: 1px solid rgba(123, 104, 238, 0.25);
+}
+
+.source-builtin {
+  color: #888899;
+  background-color: rgba(136, 136, 153, 0.1);
+  border: 1px solid rgba(136, 136, 153, 0.2);
+}
+
+.chapter-first-badge {
+  display: inline-block;
+  padding: 1px 7px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #4a90d9;
+  background-color: rgba(74, 144, 217, 0.12);
+  border: 1px solid rgba(74, 144, 217, 0.25);
+  border-radius: 8px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.chapter-badge-pending {
+  color: #888899;
+  background-color: rgba(136, 136, 153, 0.1);
+  border-color: rgba(136, 136, 153, 0.2);
+}
+
+.background-generation-hint {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  background-color: rgba(74, 144, 217, 0.08);
+  border: 1px solid rgba(74, 144, 217, 0.2);
+  border-radius: 8px;
+  color: #4a90d9;
+  font-size: 0.9rem;
+}
+
+.background-generation-hint .hint-icon {
+  animation: spin 1.2s linear infinite;
+  flex-shrink: 0;
+}

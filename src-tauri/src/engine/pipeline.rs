@@ -26,6 +26,8 @@ pub struct GenerationStatus {
     pub failed_assets: usize,
     pub chapter_status: HashMap<String, ChapterStatus>,
     pub overall_progress: f32,
+    pub first_chapter_ready: bool,
+    pub background_generation_active: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -41,7 +43,9 @@ pub struct GenerationPipeline {
     config_manager: Arc<RwLock<ConfigManager>>,
     asset_manager: Arc<AssetManager>,
     app_handle: Option<AppHandle>,
-    statuses: RwLock<HashMap<String, GenerationStatus>>,
+    statuses: Arc<RwLock<HashMap<String, GenerationStatus>>>,
+    /// 存储 game_id -> GameScript，供 regenerate_asset 使用
+    scripts: RwLock<HashMap<String, GameScript>>,
 }
 
 impl GenerationPipeline {
@@ -50,7 +54,8 @@ impl GenerationPipeline {
             config_manager,
             asset_manager,
             app_handle: None,
-            statuses: RwLock::new(HashMap::new()),
+            statuses: Arc::new(RwLock::new(HashMap::new())),
+            scripts: RwLock::new(HashMap::new()),
         }
     }
 
@@ -58,7 +63,7 @@ impl GenerationPipeline {
         self.app_handle = Some(handle);
     }
 
-    /// 完整的游戏创建流程
+    /// 完整的游戏创建流程 — 渐进式加载：第一章优先生成，后续章节后台生成
     pub async fn create_game(
         &self,
         input: &str,
@@ -89,19 +94,30 @@ impl GenerationPipeline {
             .save_game_script(&game_id, &game_script)
             .map_err(ProviderError::GenerationFailed)?;
 
-        // 8. 按优先级排序：场景背景图 > NPC头像 > BGM > 语音 > CG视频
+        // 8. 存储 GameScript 供后续 regenerate_asset 使用
+        self.scripts.write().await.insert(game_id.clone(), game_script.clone());
+
+        // 9. 按优先级排序：场景背景图 > NPC头像 > BGM > 语音 > CG视频
         asset_refs.sort_by(|a, b| {
             Self::asset_priority(&a.1.asset_type).cmp(&Self::asset_priority(&b.1.asset_type))
         });
 
-        // 9. 初始化生成状态
-        let total = asset_refs.len();
+        // 10. 分离第一章和后续章节的 AssetRef
+        let first_chapter_id = game_script.chapters.first().map(|c| c.id.clone());
+        let (first_chapter_refs, remaining_refs): (Vec<_>, Vec<_>) = asset_refs
+            .into_iter()
+            .partition(|(cid, _)| first_chapter_id.as_ref() == Some(cid));
+
+        // 11. 初始化生成状态
+        let total = first_chapter_refs.len() + remaining_refs.len();
         let mut chapter_map: HashMap<String, ChapterStatus> = HashMap::new();
         for chapter in &game_script.chapters {
-            let chapter_asset_count = asset_refs
-                .iter()
-                .filter(|(cid, _)| cid == &chapter.id)
-                .count();
+            let is_first = first_chapter_id.as_ref() == Some(&chapter.id);
+            let chapter_asset_count = if is_first {
+                first_chapter_refs.iter().filter(|(cid, _)| cid == &chapter.id).count()
+            } else {
+                remaining_refs.iter().filter(|(cid, _)| cid == &chapter.id).count()
+            };
             chapter_map.insert(
                 chapter.id.clone(),
                 ChapterStatus {
@@ -109,7 +125,7 @@ impl GenerationPipeline {
                     chapter_title: chapter.title.clone(),
                     total_assets: chapter_asset_count,
                     completed_assets: 0,
-                    status: "generating".to_string(),
+                    status: if is_first { "generating".to_string() } else { "pending".to_string() },
                 },
             );
         }
@@ -122,20 +138,22 @@ impl GenerationPipeline {
                 failed_assets: 0,
                 chapter_status: chapter_map,
                 overall_progress: 0.0,
+                first_chapter_ready: false,
+                background_generation_active: false,
             },
         );
 
-        // 10. 并行获取资源
-        let results = self.fetch_assets(&game_id, &asset_refs).await;
+        // 12. 优先生成第一章资源
+        let first_results = self.fetch_assets(&game_id, &first_chapter_refs).await;
 
-        // 11. 处理结果
+        // 13. 处理第一章结果
         let mut completed = 0usize;
         let mut failed = 0usize;
         let mut chapter_completed: HashMap<String, usize> = HashMap::new();
         let mut chapter_failed: HashMap<String, usize> = HashMap::new();
 
-        for (i, result) in results.into_iter().enumerate() {
-            let (chapter_id, asset_ref) = &asset_refs[i];
+        for (i, result) in first_results.into_iter().enumerate() {
+            let (chapter_id, asset_ref) = &first_chapter_refs[i];
             match result {
                 Ok(ref local_asset) => {
                     self.on_asset_ready(&game_id, asset_ref, local_asset);
@@ -150,42 +168,387 @@ impl GenerationPipeline {
             }
         }
 
-        // 12. 更新最终状态
-        let mut statuses = self.statuses.write().await;
-        if let Some(status) = statuses.get_mut(&game_id) {
-            status.completed_assets = completed;
-            status.failed_assets = failed;
-            status.overall_progress = if total > 0 {
-                (completed + failed) as f32 / total as f32
-            } else {
-                1.0
-            };
-            for (cid, cs) in status.chapter_status.iter_mut() {
-                cs.completed_assets = *chapter_completed.get(cid).unwrap_or(&0);
-                let chap_failed = *chapter_failed.get(cid).unwrap_or(&0);
-                cs.status = if cs.completed_assets + chap_failed >= cs.total_assets {
-                    if chap_failed > 0 {
-                        "partial".to_string()
-                    } else {
-                        "ready".to_string()
-                    }
-                } else if cs.completed_assets > 0 {
-                    "partial".to_string()
+        // 14. 更新第一章状态
+        {
+            let mut statuses = self.statuses.write().await;
+            if let Some(status) = statuses.get_mut(&game_id) {
+                status.completed_assets = completed;
+                status.failed_assets = failed;
+                status.overall_progress = if total > 0 {
+                    (completed + failed) as f32 / total as f32
                 } else {
-                    "generating".to_string()
+                    1.0
                 };
+                for (cid, cs) in status.chapter_status.iter_mut() {
+                    if first_chapter_id.as_ref() == Some(cid) {
+                        let chap_completed = *chapter_completed.get(cid).unwrap_or(&0);
+                        let chap_failed = *chapter_failed.get(cid).unwrap_or(&0);
+                        cs.completed_assets = chap_completed;
+                        cs.status = if chap_completed + chap_failed >= cs.total_assets {
+                            if chap_failed > 0 { "partial".to_string() } else { "ready".to_string() }
+                        } else if chap_completed > 0 {
+                            "partial".to_string()
+                        } else {
+                            "generating".to_string()
+                        };
+                    }
+                }
+                status.first_chapter_ready = status.chapter_status
+                    .get(first_chapter_id.as_deref().unwrap_or(""))
+                    .map(|cs| cs.status == "ready" || cs.status == "partial")
+                    .unwrap_or(false);
             }
         }
 
-        // 13. 发送 generation-complete 事件
+        // 15. 第一章就绪后立即发送 generation-complete 事件
         if let Some(ref handle) = self.app_handle {
             let _ = handle.emit(
                 "generation-complete",
-                serde_json::json!({ "gameId": game_id }),
+                serde_json::json!({ "gameId": game_id, "chapterId": first_chapter_id }),
             );
         }
 
+        // 16. 启动后台生成后续章节
+        if !remaining_refs.is_empty() {
+            self.start_background_generation(game_id.clone(), remaining_refs, first_chapter_id.clone());
+        }
+
         Ok((game_id, game_script))
+    }
+
+    /// 后台预生成后续章节
+    pub fn start_background_generation(
+        &self,
+        game_id: String,
+        remaining_refs: Vec<(String, AssetRef)>,
+        first_chapter_id: Option<String>,
+    ) {
+        let config_manager = self.config_manager.clone();
+        let asset_manager = self.asset_manager.clone();
+        let app_handle = self.app_handle.clone();
+        let statuses = self.statuses.clone();
+
+        tokio::spawn(async move {
+            // 标记后台生成已激活
+            {
+                let mut s = statuses.write().await;
+                if let Some(status) = s.get_mut(&game_id) {
+                    status.background_generation_active = true;
+                }
+            }
+
+            // 逐章节生成
+            let mut by_chapter: HashMap<String, Vec<(String, AssetRef)>> = HashMap::new();
+            for (cid, aref) in remaining_refs {
+                by_chapter.entry(cid.clone()).or_default().push((cid, aref));
+            }
+
+            // 按章节顺序排列
+            let mut chapter_ids: Vec<String> = by_chapter.keys().cloned().collect();
+            // 将 first_chapter_id 排除（已生成）
+            chapter_ids.retain(|id| first_chapter_id.as_ref() != Some(id));
+
+            for chapter_id in chapter_ids {
+                let refs = match by_chapter.get(&chapter_id) {
+                    Some(r) => r.clone(),
+                    None => continue,
+                };
+
+                // 更新章节状态为 generating
+                {
+                    let mut s = statuses.write().await;
+                    if let Some(status) = s.get_mut(&game_id) {
+                        if let Some(cs) = status.chapter_status.get_mut(&chapter_id) {
+                            cs.status = "generating".to_string();
+                        }
+                    }
+                }
+
+                // 发送章节开始生成事件
+                if let Some(ref handle) = app_handle {
+                    let _ = handle.emit(
+                        "generation-progress",
+                        serde_json::json!({ "gameId": game_id, "chapterId": chapter_id }),
+                    );
+                }
+
+                let results = Self::fetch_assets_static(
+                    &config_manager,
+                    &asset_manager,
+                    &game_id,
+                    &refs,
+                ).await;
+
+                // 处理结果
+                let mut chap_completed = 0usize;
+                let mut chap_failed = 0usize;
+
+                for (i, result) in results.into_iter().enumerate() {
+                    let (_, asset_ref) = &refs[i];
+                    match result {
+                        Ok(ref local_asset) => {
+                            // 发送 asset-ready 事件
+                            if let Some(ref handle) = app_handle {
+                                let _ = handle.emit(
+                                    "asset-ready",
+                                    serde_json::json!({
+                                        "gameId": game_id,
+                                        "assetRefId": asset_ref.id,
+                                        "assetType": format!("{:?}", asset_ref.asset_type),
+                                        "localPath": local_asset.local_path,
+                                        "source": format!("{:?}", local_asset.source),
+                                        "chapterId": chapter_id,
+                                    }),
+                                );
+                            }
+                            chap_completed += 1;
+                        }
+                        Err(ref error) => {
+                            // 发送 asset-failed 事件
+                            if let Some(ref handle) = app_handle {
+                                let _ = handle.emit(
+                                    "asset-failed",
+                                    serde_json::json!({
+                                        "gameId": game_id,
+                                        "assetRefId": asset_ref.id,
+                                        "error": format!("{:?}", error),
+                                        "fallbackToBuiltin": true,
+                                        "chapterId": chapter_id,
+                                    }),
+                                );
+                            }
+                            chap_failed += 1;
+                        }
+                    }
+                }
+
+                // 更新状态
+                {
+                    let mut s = statuses.write().await;
+                    if let Some(status) = s.get_mut(&game_id) {
+                        status.completed_assets += chap_completed;
+                        status.failed_assets += chap_failed;
+                        status.overall_progress = if status.total_assets > 0 {
+                            (status.completed_assets + status.failed_assets) as f32 / status.total_assets as f32
+                        } else {
+                            1.0
+                        };
+                        if let Some(cs) = status.chapter_status.get_mut(&chapter_id) {
+                            cs.completed_assets = chap_completed;
+                            cs.status = if chap_completed + chap_failed >= cs.total_assets {
+                                if chap_failed > 0 { "partial".to_string() } else { "ready".to_string() }
+                            } else if chap_completed > 0 {
+                                "partial".to_string()
+                            } else {
+                                "generating".to_string()
+                            };
+                        }
+
+                        // 检查是否所有章节都完成了
+                        let all_done = status.chapter_status.values().all(|cs| {
+                            cs.status == "ready" || cs.status == "partial"
+                        });
+                        if all_done {
+                            status.background_generation_active = false;
+                        }
+                    }
+                }
+
+                // 每个章节完成后发送 generation-complete 事件
+                if let Some(ref handle) = app_handle {
+                    let _ = handle.emit(
+                        "generation-complete",
+                        serde_json::json!({ "gameId": game_id, "chapterId": chapter_id }),
+                    );
+                }
+            }
+
+            // 全部完成后发送最终事件
+            if let Some(ref handle) = app_handle {
+                let _ = handle.emit(
+                    "generation-complete",
+                    serde_json::json!({ "gameId": game_id, "allChapters": true }),
+                );
+            }
+        });
+    }
+
+    /// 重新生成指定资源 — 强制使用 AI Provider
+    pub async fn regenerate_asset(
+        &self,
+        game_id: &str,
+        asset_ref_id: &str,
+    ) -> Result<(), ProviderError> {
+        // 从存储的 GameScript 中查找 AssetRef
+        let scripts = self.scripts.read().await;
+        let script = scripts.get(game_id).ok_or_else(|| {
+            ProviderError::NotFound(format!("Game script not found for game '{}'", game_id))
+        })?;
+
+        let asset_ref = Self::find_asset_ref_by_id(script, asset_ref_id).ok_or_else(|| {
+            ProviderError::NotFound(format!("AssetRef '{}' not found", asset_ref_id))
+        })?;
+
+        let mut asset_ref = asset_ref.clone();
+        // 强制使用 AI 生成
+        asset_ref.source = ScriptAssetSource::AiGenerated;
+        asset_ref.status = AssetStatus::Pending;
+
+        drop(scripts);
+
+        // 获取 AI Provider 并重新生成
+        let modality = Self::asset_type_to_modality(&asset_ref.asset_type);
+        let provider = self.resolve_ai_provider(modality).await?;
+
+        match provider.get_asset(&asset_ref).await {
+            Ok(local_asset) => {
+                self.on_asset_ready(game_id, &asset_ref, &local_asset);
+                Ok(())
+            }
+            Err(e) => {
+                self.on_asset_failed(game_id, &asset_ref, &e);
+                Err(e)
+            }
+        }
+    }
+
+    /// 在 GameScript 中查找指定 ID 的 AssetRef
+    fn find_asset_ref_by_id<'a>(script: &'a GameScript, asset_ref_id: &str) -> Option<&'a AssetRef> {
+        for chapter in &script.chapters {
+            for scene in &chapter.scenes {
+                if let Some(ref bg) = scene.assets.background_image {
+                    if bg.id == asset_ref_id { return Some(bg); }
+                }
+                if let Some(ref video) = scene.assets.background_video {
+                    if video.id == asset_ref_id { return Some(video); }
+                }
+                if let Some(ref bgm) = scene.assets.bgm {
+                    if bgm.id == asset_ref_id { return Some(bgm); }
+                }
+                if let Some(ref ambient) = scene.assets.ambient_sound {
+                    if ambient.id == asset_ref_id { return Some(ambient); }
+                }
+                if let Some(ref cg) = scene.assets.cg_animation {
+                    if cg.id == asset_ref_id { return Some(cg); }
+                }
+                for node in &scene.sequence {
+                    match node {
+                        SceneNode::Dialogue(d) => {
+                            if let Some(ref avatar) = d.speaker_avatar {
+                                if avatar.id == asset_ref_id { return Some(avatar); }
+                            }
+                            if let Some(ref voice) = d.voice_asset {
+                                if voice.id == asset_ref_id { return Some(voice); }
+                            }
+                        }
+                        SceneNode::Narration(n) => {
+                            if let Some(ref voice) = n.voice_asset {
+                                if voice.id == asset_ref_id { return Some(voice); }
+                            }
+                        }
+                        SceneNode::Cg(c) => {
+                            if c.video_asset.id == asset_ref_id { return Some(&c.video_asset); }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// 强制获取 AI Provider（用于重新生成）
+    async fn resolve_ai_provider(
+        &self,
+        modality: AIModality,
+    ) -> Result<Box<dyn IAssetProvider>, ProviderError> {
+        let config_manager = self.config_manager.read().await;
+        let config = config_manager.get_config();
+
+        let provider_config = config.providers.iter().find(|p| {
+            p.modality.contains(&modality) && p.status == ProviderStatus::Connected
+        });
+
+        if let Some(pc) = provider_config {
+            ProviderFactory::create(pc, self.asset_manager.base_path())
+        } else {
+            Err(ProviderError::InvalidConfig(format!(
+                "No AI provider configured for modality {:?}",
+                modality
+            )))
+        }
+    }
+
+    /// 静态版本的 fetch_assets，用于后台任务
+    async fn fetch_assets_static(
+        config_manager: &Arc<RwLock<ConfigManager>>,
+        asset_manager: &Arc<AssetManager>,
+        game_id: &str,
+        asset_refs: &[(String, AssetRef)],
+    ) -> Vec<Result<LocalAsset, ProviderError>> {
+        let mut handles: Vec<tokio::task::JoinHandle<Result<LocalAsset, ProviderError>>> =
+            Vec::with_capacity(asset_refs.len());
+
+        for (_chapter_id, asset_ref) in asset_refs {
+            let asset_ref = asset_ref.clone();
+            let config_manager = config_manager.clone();
+            let asset_base_path = asset_manager.base_path().to_path_buf();
+
+            let handle = tokio::spawn(async move {
+                let modality = Self::asset_type_to_modality(&asset_ref.asset_type);
+
+                let provider = {
+                    let config_mgr = config_manager.read().await;
+                    let config = config_mgr.get_config();
+                    let pc = config.providers.iter().find(|p| {
+                        p.modality.contains(&modality) && p.status == ProviderStatus::Connected
+                    });
+                    if let Some(pc) = pc {
+                        ProviderFactory::create(pc, &asset_base_path)?
+                    } else {
+                        let builtin_path = asset_base_path.join("builtin-assets");
+                        let games_path = asset_base_path.join("games");
+                        Box::new(BuiltinAssetProvider::new(builtin_path, games_path))
+                            as Box<dyn IAssetProvider>
+                    }
+                };
+
+                let result = provider.get_asset(&asset_ref).await;
+
+                match result {
+                    Ok(asset) => Ok(asset),
+                    Err(original_error) => {
+                        let retry_result = provider.get_asset(&asset_ref).await;
+                        match retry_result {
+                            Ok(asset) => Ok(asset),
+                            Err(_) => {
+                                let builtin_path = asset_base_path.join("builtin-assets");
+                                let games_path = asset_base_path.join("games");
+                                let builtin = BuiltinAssetProvider::new(builtin_path, games_path);
+                                match builtin.get_asset(&asset_ref).await {
+                                    Ok(asset) => Ok(asset),
+                                    Err(_) => Err(original_error),
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            handles.push(handle);
+        }
+
+        let mut results = Vec::with_capacity(handles.len());
+        for handle in handles {
+            match handle.await {
+                Ok(result) => results.push(result),
+                Err(e) => results.push(Err(ProviderError::GenerationFailed(format!(
+                    "Task error: {}",
+                    e
+                )))),
+            }
+        }
+        results
     }
 
     /// 解析大纲为 GameScript
