@@ -4,3 +4,8 @@ dist/
 src-tauri/target/
 app-icon.png
 *.log
+
+# 开发模式配置（不提交）
+dev-config.json
+.dev-config.json
+config.dev.json
