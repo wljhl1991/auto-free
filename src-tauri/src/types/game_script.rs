@@ -196,7 +196,7 @@ pub struct ConditionNode {
     #[serde(default)]
     pub id: String,
     #[serde(default)]
-    pub condition: Condition,
+    pub condition: Option<Condition>,
     #[serde(default)]
     pub true_branch: String,
     #[serde(default)]
