@@ -36,7 +36,6 @@ zip = "2"
 log = "0.4"
 fern = "0.7"
 chrono = "0.4"
-regex = "1"
 
 [features]
 default = []

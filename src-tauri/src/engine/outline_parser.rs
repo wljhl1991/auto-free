@@ -310,20 +310,73 @@ impl OutlineParser {
     }
 
     fn normalize_json(json_str: &str) -> String {
-        let re = regex::Regex::new(r#""effects"\s*:\s*"[^"]*""#).unwrap();
-        let normalized = re.replace_all(json_str, r#""effects": null"#);
+        let mut value: serde_json::Value = match serde_json::from_str(json_str) {
+            Ok(v) => v,
+            Err(_) => return json_str.to_string(),
+        };
 
-        let re = regex::Regex::new(r#""condition"\s*:\s*"[^"]*""#).unwrap();
-        let normalized = re.replace_all(&normalized, r#""condition": null"#);
+        let mut fixed = false;
+        Self::normalize_value(&mut value, &mut fixed);
 
-        let re = regex::Regex::new(r#""transitionType"\s*:\s*"glitch""#).unwrap();
-        let normalized = re.replace_all(&normalized, r#""transitionType": "fade""#);
-
-        if normalized != json_str {
+        if fixed {
             log::warn!("AI 返回的 JSON 包含非标准字段，已自动修正");
         }
 
-        normalized.to_string()
+        serde_json::to_string(&value).unwrap_or_else(|_| json_str.to_string())
+    }
+
+    fn normalize_value(value: &mut serde_json::Value, fixed: &mut bool) {
+        match value {
+            serde_json::Value::Object(map) => {
+                // gameType: camelCase → snake_case（如 "visualNovel" → "visual_novel"）
+                if let Some(v) = map.get_mut("gameType") {
+                    if let Some(s) = v.as_str() {
+                        let normalized = camel_to_snake(s);
+                        if normalized != s {
+                            *v = serde_json::Value::String(normalized);
+                            *fixed = true;
+                        }
+                    }
+                }
+
+                // transitionType: 非法值 → "fade"
+                if let Some(v) = map.get_mut("transitionType") {
+                    if let Some(s) = v.as_str() {
+                        if !["fade", "dissolve", "slide", "instant"].contains(&s) {
+                            *v = serde_json::Value::String("fade".to_string());
+                            *fixed = true;
+                        }
+                    }
+                }
+
+                // effects: 字符串 → null
+                if let Some(v) = map.get_mut("effects") {
+                    if v.is_string() {
+                        *v = serde_json::Value::Null;
+                        *fixed = true;
+                    }
+                }
+
+                // condition: 字符串 → null
+                if let Some(v) = map.get_mut("condition") {
+                    if v.is_string() {
+                        *v = serde_json::Value::Null;
+                        *fixed = true;
+                    }
+                }
+
+                // 递归处理嵌套值
+                for (_, v) in map.iter_mut() {
+                    Self::normalize_value(v, fixed);
+                }
+            }
+            serde_json::Value::Array(arr) => {
+                for v in arr.iter_mut() {
+                    Self::normalize_value(v, fixed);
+                }
+            }
+            _ => {}
+        }
     }
 
     /// 修复场景资源中的 AssetRef status
@@ -394,4 +447,20 @@ impl OutlineParser {
             GameType::Simulation => "模拟经营",
         }
     }
+}
+
+/// camelCase 转 snake_case（如 "visualNovel" → "visual_novel"）
+fn camel_to_snake(s: &str) -> String {
+    let mut result = String::with_capacity(s.len() + 4);
+    for (i, c) in s.chars().enumerate() {
+        if c.is_uppercase() {
+            if i > 0 {
+                result.push('_');
+            }
+            result.push(c.to_ascii_lowercase());
+        } else {
+            result.push(c);
+        }
+    }
+    result
 }

@@ -273,7 +273,6 @@ dependencies = [
  "log",
  "pbkdf2",
  "rand",
- "regex",
  "reqwest 0.12.28",
  "rusqlite",
  "serde",

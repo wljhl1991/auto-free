@@ -130,7 +130,7 @@ SceneNode 节点类型（type 字段）可选值：
 - "scene_transition"（场景切换）
 
 gameType（游戏类型）可选值：
-- "visualNovel"（视觉小说）
+- "visual_novel"（视觉小说）
 - "rpg"（RPG）
 - "mystery"（悬疑解谜）
 - "horror"（恐怖生存）
