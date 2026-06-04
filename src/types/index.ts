@@ -5,7 +5,7 @@ export type AIModality = 'text' | 'image' | 'video' | 'music' | 'voice';
 
 export type AuthType = 'api_key' | 'oauth' | 'account';
 
-export type ProviderStatus = 'unconfigured' | 'configured' | 'connected' | 'error';
+export type ProviderStatus = 'unconfigured' | 'configured' | 'connected' | 'auth_failed' | 'quota_exceeded' | 'network_error' | 'error';
 
 export type QualityLevel = 'fast' | 'standard' | 'high';
 

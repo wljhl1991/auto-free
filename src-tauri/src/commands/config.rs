@@ -49,9 +49,23 @@ pub async fn get_providers(
 
 #[command]
 pub async fn update_provider(
-    provider: AIProviderConfig,
+    mut provider: AIProviderConfig,
     config_manager: tauri::State<'_, Arc<RwLock<ConfigManager>>>,
 ) -> Result<(), String> {
+    // 如果有 API Key 但状态还是 unconfigured，自动设为 configured
+    let has_api_key = provider.auth_config.api_key
+        .as_ref()
+        .map(|k| !k.value.is_empty())
+        .unwrap_or(false);
+    let has_extra_creds = provider.auth_config.extra_params
+        .as_ref()
+        .map(|params| params.values().any(|p| !p.value.is_empty()))
+        .unwrap_or(false);
+
+    if (has_api_key || has_extra_creds) && provider.status == ProviderStatus::Unconfigured {
+        provider.status = ProviderStatus::Configured;
+    }
+
     let mut cm = config_manager.write().await;
     cm.update_provider(provider)
 }

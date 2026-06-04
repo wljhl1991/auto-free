@@ -76,6 +76,8 @@ export default function Settings() {
       setProviders((prev) =>
         prev.map((p) => (p.id === updatedProvider.id ? updatedProvider : p))
       );
+      // 保存后自动检测连通性
+      handleCheckProvider(updatedProvider.id);
     } catch (err) {
       console.error('Failed to save provider:', err);
     }
@@ -84,14 +86,31 @@ export default function Settings() {
   const handleCheckProvider = async (providerId: string) => {
     try {
       const result = await config.checkProvider(providerId);
+      const newStatus = result.status === 'ok' ? 'connected' :
+                        result.status === 'auth_failed' ? 'auth_failed' :
+                        result.status === 'network_error' ? 'network_error' :
+                        result.status === 'quota_exceeded' ? 'quota_exceeded' :
+                        result.status === 'unconfigured' ? 'unconfigured' : 'error';
       setProviders((prev) =>
-        prev.map((p) => (p.id === providerId ? { ...p, ...result } : p))
+        prev.map((p) => (p.id === providerId ? {
+          ...p,
+          status: newStatus,
+          lastChecked: result.timestamp,
+          errorMessage: result.errorMessage,
+        } : p))
       );
       if (modalProvider?.id === providerId) {
-        setModalProvider((prev) => (prev ? { ...prev, ...result } : prev));
+        setModalProvider((prev) => (prev ? {
+          ...prev,
+          status: newStatus,
+          lastChecked: result.timestamp,
+          errorMessage: result.errorMessage,
+        } : prev));
       }
+      return result;
     } catch (err) {
       console.error('Failed to check provider:', err);
+      throw err;
     }
   };
 
@@ -262,7 +281,7 @@ export default function Settings() {
             setModalProvider(null);
           }}
           onSave={handleSaveProvider}
-          onCheck={() => handleCheckProvider(modalProvider.id)}
+          onCheck={handleCheckProvider}
         />
       )}
     </div>

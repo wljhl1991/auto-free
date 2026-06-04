@@ -8,6 +8,9 @@ const statusConfig: Record<ProviderStatus, { color: string; label: string }> = {
   connected: { color: '#4caf50', label: '已连接' },
   configured: { color: '#ff9800', label: '已配置' },
   unconfigured: { color: '#666680', label: '未配置' },
+  auth_failed: { color: '#e06060', label: '认证失败' },
+  quota_exceeded: { color: '#ff9800', label: '额度不足' },
+  network_error: { color: '#e06060', label: '网络错误' },
   error: { color: '#e06060', label: '错误' },
 };
 
