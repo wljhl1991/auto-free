@@ -108,8 +108,13 @@ impl OutlineParser {
         ];
 
         let response = self.text_provider.chat(messages, None).await?;
-        let json_str = self.extract_json(&response)?;
+        self.save_raw_ai_response("parse", &response);
+        let json_str = self.extract_json(&response).map_err(|e| {
+            Self::save_raw_ai_response_sync("parse_error", &response);
+            e
+        })?;
         let mut script: GameScript = serde_json::from_str(&json_str).map_err(|e| {
+            Self::save_raw_ai_response_sync("parse_json_error", &response);
             ProviderError::GenerationFailed(format!("Failed to parse GameScript JSON: {}", e))
         })?;
 
@@ -146,8 +151,13 @@ impl OutlineParser {
         ];
 
         let response = self.text_provider.chat(messages, None).await?;
-        let json_str = self.extract_json(&response)?;
+        self.save_raw_ai_response("combined", &response);
+        let json_str = self.extract_json(&response).map_err(|e| {
+            Self::save_raw_ai_response_sync("combined_error", &response);
+            e
+        })?;
         let mut script: GameScript = serde_json::from_str(&json_str).map_err(|e| {
+            Self::save_raw_ai_response_sync("combined_json_error", &response);
             ProviderError::GenerationFailed(format!("Failed to parse GameScript JSON: {}", e))
         })?;
 
@@ -215,6 +225,30 @@ impl OutlineParser {
             SceneNode::Cg(c) => { if c.id.is_empty() { c.id = default_id.to_string(); } }
             SceneNode::SceneTransition(t) => { if t.id.is_empty() { t.id = default_id.to_string(); } }
         }
+    }
+
+    /// 保存 AI 原始响应到文件
+    fn save_raw_ai_response(&self, stage: &str, response: &str) {
+        let dir = std::env::temp_dir().join("autofree_ai_responses");
+        std::fs::create_dir_all(&dir).ok();
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let path = dir.join(format!("outline_{}_{}.txt", stage, ts));
+        std::fs::write(&path, response).ok();
+        log::info!("AI 原始响应已保存: {}", path.display());
+    }
+
+    fn save_raw_ai_response_sync(stage: &str, response: &str) {
+        let dir = std::env::temp_dir().join("autofree_ai_responses");
+        std::fs::create_dir_all(&dir).ok();
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let path = dir.join(format!("outline_{}_{}.txt", stage, ts));
+        std::fs::write(&path, response).ok();
     }
 
     /// 从 AI 响应中提取 JSON

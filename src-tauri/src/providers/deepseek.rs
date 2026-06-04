@@ -221,13 +221,8 @@ impl DeepSeekProvider {
             })?;
         let body = String::from_utf8_lossy(&body_bytes).to_string();
 
-        // 记录响应体（截断）
-        let truncated_response = if body.len() > 1000 {
-            format!("{}...(共{}字符)", truncate_str(&body, 1000), body.len())
-        } else {
-            body.clone()
-        };
-        log::info!("[DeepSeek] 响应体: {}", truncated_response);
+        // 记录响应体（完整）
+        log::info!("[DeepSeek] 响应体: {}", body);
 
         if status.is_success() {
             let chat_response: ChatResponse = serde_json::from_str(&body)
