@@ -113,6 +113,7 @@ impl OutlineParser {
             Self::save_raw_ai_response_sync("parse_error", &response);
             e
         })?;
+        let json_str = Self::normalize_json(&json_str);
         let mut script: GameScript = serde_json::from_str(&json_str).map_err(|e| {
             Self::save_raw_ai_response_sync("parse_json_error", &response);
             ProviderError::GenerationFailed(format!("Failed to parse GameScript JSON: {}", e))
@@ -156,6 +157,7 @@ impl OutlineParser {
             Self::save_raw_ai_response_sync("combined_error", &response);
             e
         })?;
+        let json_str = Self::normalize_json(&json_str);
         let mut script: GameScript = serde_json::from_str(&json_str).map_err(|e| {
             Self::save_raw_ai_response_sync("combined_json_error", &response);
             ProviderError::GenerationFailed(format!("Failed to parse GameScript JSON: {}", e))
@@ -305,6 +307,23 @@ impl OutlineParser {
         Err(ProviderError::GenerationFailed(
             "No valid JSON found in AI response".to_string(),
         ))
+    }
+
+    fn normalize_json(json_str: &str) -> String {
+        let re = regex::Regex::new(r#""effects"\s*:\s*"[^"]*""#).unwrap();
+        let normalized = re.replace_all(json_str, r#""effects": null"#);
+
+        let re = regex::Regex::new(r#""condition"\s*:\s*"[^"]*""#).unwrap();
+        let normalized = re.replace_all(&normalized, r#""condition": null"#);
+
+        let re = regex::Regex::new(r#""transitionType"\s*:\s*"glitch""#).unwrap();
+        let normalized = re.replace_all(&normalized, r#""transitionType": "fade""#);
+
+        if normalized != json_str {
+            log::warn!("AI 返回的 JSON 包含非标准字段，已自动修正");
+        }
+
+        normalized.to_string()
     }
 
     /// 修复场景资源中的 AssetRef status

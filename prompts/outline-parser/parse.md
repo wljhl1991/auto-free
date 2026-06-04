@@ -111,7 +111,7 @@
               "nextNodeId": "n4"
             },
             {
-              "type": "sceneTransition",
+              "type": "scene_transition",
               "id": "st1",
               "targetSceneId": "scene_1_2",
               "transitionType": "fade",
@@ -146,7 +146,7 @@ SceneNode 节点类型（type 字段）可选值：
 - "condition"（条件）
 - "action"（动作）
 - "cg"（CG动画）
-- "sceneTransition"（场景切换）
+- "scene_transition"（场景切换）
 
 gameType（游戏类型）可选值：
 - "visualNovel"（视觉小说）
@@ -154,5 +154,11 @@ gameType（游戏类型）可选值：
 - "mystery"（悬疑解谜）
 - "horror"（恐怖生存）
 - "simulation"（模拟经营）
+
+重要约束（违反将导致解析失败）：
+- choice.options[].effects 必须为 null，不要填写任何文字描述或字符串
+- choice.options[].condition 必须为 null，不要填写字符串条件
+- transitionType 只能是以下值之一："fade"、"dissolve"、"slide"、"instant"
+- node type 标签必须完全匹配上述列举的 snake_case 值
 
 只输出 JSON 代码块，不要有任何额外文字。
