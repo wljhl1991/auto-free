@@ -60,6 +60,10 @@ pub fn run() {
     if let Err(e) = config_manager.load() {
         eprintln!("Warning: Failed to load config: {}", e);
     }
+    // 开发模式下从 dev-config.json 加载配置
+    if let Err(e) = config_manager.load_dev_config() {
+        eprintln!("Warning: Failed to load dev config: {}", e);
+    }
 
     let asset_manager = AssetManager::new(base_path);
 
@@ -106,10 +110,14 @@ pub fn run() {
             cmd_config::check_all_providers,
             cmd_config::export_config,
             cmd_config::import_config,
+            cmd_config::save_dev_config,
+            cmd_config::load_dev_config,
+            cmd_config::update_provider_models,
             asset::get_asset_path,
             asset::list_builtin_assets,
             logs::get_log_path,
             logs::read_recent_logs,
+            logs::read_call_history,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

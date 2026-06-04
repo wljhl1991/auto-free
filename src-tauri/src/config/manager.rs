@@ -12,16 +12,27 @@ pub struct ConfigManager {
     config_dir: PathBuf,
     encryption: EncryptionManager,
     config: AppConfig,
+    dev_config_path: Option<PathBuf>,
 }
 
 impl ConfigManager {
     pub fn new(config_dir: PathBuf) -> Self {
         let encryption = EncryptionManager::from_machine_id();
         let config = Self::default_config();
+        // 开发模式下检测项目目录下的 dev-config.json
+        let dev_config_path = if cfg!(debug_assertions) {
+            std::env::current_dir()
+                .ok()
+                .map(|dir| dir.join("dev-config.json"))
+                .filter(|p| p.exists())
+        } else {
+            None
+        };
         Self {
             config_dir,
             encryption,
             config,
+            dev_config_path,
         }
     }
 
@@ -59,6 +70,37 @@ impl ConfigManager {
         }
 
         self.config = config;
+        Ok(())
+    }
+
+    /// 开发模式下从 dev-config.json 加载配置覆盖
+    pub fn load_dev_config(&mut self) -> Result<(), String> {
+        if let Some(ref dev_path) = self.dev_config_path {
+            log::info!("开发模式: 加载 dev-config.json: {}", dev_path.display());
+            let dev_str = std::fs::read_to_string(dev_path)
+                .map_err(|e| format!("读取开发配置文件失败: {}", e))?;
+            let dev_config: AppConfig = serde_json::from_str(&dev_str)
+                .map_err(|e| format!("解析开发配置文件失败: {}", e))?;
+            // 用开发配置覆盖系统配置（保留开发配置中的 API Key 等敏感信息）
+            self.config = dev_config;
+            self.dev_config_path = Some(dev_path.clone());
+        }
+        Ok(())
+    }
+
+    /// 将当前配置导出到 dev-config.json（开发模式专用）
+    pub fn save_dev_config(&self) -> Result<(), String> {
+        if !cfg!(debug_assertions) {
+            return Err("仅在开发模式下可用".to_string());
+        }
+        let dev_path = std::env::current_dir()
+            .map(|dir| dir.join("dev-config.json"))
+            .map_err(|e| format!("获取当前目录失败: {}", e))?;
+        let config_str = serde_json::to_string_pretty(&self.config)
+            .map_err(|e| format!("序列化开发配置失败: {}", e))?;
+        std::fs::write(&dev_path, config_str)
+            .map_err(|e| format!("写入开发配置文件失败: {}", e))?;
+        log::info!("开发配置已保存: {}", dev_path.display());
         Ok(())
     }
 
@@ -102,8 +144,30 @@ impl ConfigManager {
         &self.config
     }
 
+    pub fn config_dir(&self) -> &std::path::Path {
+        &self.config_dir
+    }
+
     pub fn update_config(&mut self, config: AppConfig) -> Result<(), String> {
         self.config = config;
+        self.save()
+    }
+
+    /// 重新加载 provider 列表（从 update_provider_models 调用）
+    /// 保留已有 provider 的敏感信息和状态
+    pub fn reload_providers(&mut self, new_providers: Vec<AIProviderConfig>) -> Result<(), String> {
+        // 从当前配置中提取已有的 secrets
+        let mut secrets = HashMap::new();
+        for provider in &self.config.providers {
+            Self::extract_secrets_from_ref(provider, &mut secrets);
+        }
+
+        // 用新 providers 替换，然后还原 secrets
+        self.config.providers = new_providers;
+        for provider in &mut self.config.providers {
+            Self::restore_secrets(provider, &secrets);
+        }
+
         self.save()
     }
 
@@ -177,9 +241,13 @@ impl ConfigManager {
 
     /// 创建默认配置
     fn default_config() -> AppConfig {
+        let config_dir = dirs::data_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("autofree")
+            .join("config");
         AppConfig {
             active_preset_id: "default".to_string(),
-            providers: providers::builtin_providers(),
+            providers: providers::builtin_providers_with_override(&config_dir),
             presets: presets::all_presets(),
             global_settings: GlobalSettings {
                 auto_retry_on_fail: true,
@@ -262,6 +330,42 @@ impl ConfigManager {
                 if !refresh_token.is_empty() {
                     secrets.insert(format!("{}.oauthRefreshToken", prefix), refresh_token.clone());
                     refresh_token.clear();
+                }
+            }
+        }
+    }
+
+    /// 从不可变引用提取敏感信息到 secrets map（不修改原数据）
+    fn extract_secrets_from_ref(provider: &AIProviderConfig, secrets: &mut HashMap<String, String>) {
+        let prefix = &provider.id;
+        if let Some(ref api_key) = provider.auth_config.api_key {
+            if !api_key.value.is_empty() && api_key.value != "FREE" {
+                secrets.insert(format!("{}.apiKey", prefix), api_key.value.clone());
+            }
+        }
+        if let Some(ref account) = provider.auth_config.account {
+            if let Some(ref password) = account.password {
+                if !password.value.is_empty() {
+                    secrets.insert(format!("{}.accountPassword", prefix), password.value.clone());
+                }
+            }
+        }
+        if let Some(ref extra) = provider.auth_config.extra_params {
+            for (key, field) in extra {
+                if field.secret && !field.value.is_empty() {
+                    secrets.insert(format!("{}.extra.{}", prefix, key), field.value.clone());
+                }
+            }
+        }
+        if let Some(ref oauth) = provider.auth_config.oauth {
+            if let Some(ref access_token) = oauth.access_token {
+                if !access_token.is_empty() {
+                    secrets.insert(format!("{}.oauthAccessToken", prefix), access_token.clone());
+                }
+            }
+            if let Some(ref refresh_token) = oauth.refresh_token {
+                if !refresh_token.is_empty() {
+                    secrets.insert(format!("{}.oauthRefreshToken", prefix), refresh_token.clone());
                 }
             }
         }

@@ -32,3 +32,28 @@ pub async fn read_recent_logs(lines: Option<usize>) -> Result<String, String> {
     let start = all_lines.len().saturating_sub(line_count);
     Ok(all_lines[start..].join("\n"))
 }
+
+/// 读取最近的 AI 调用历史
+#[command]
+pub async fn read_call_history(lines: Option<usize>) -> Result<String, String> {
+    let history_path = dirs::data_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("autofree")
+        .join("logs")
+        .join("call-history.jsonl");
+
+    if !history_path.exists() {
+        return Ok("[]".to_string());
+    }
+
+    let content = std::fs::read_to_string(&history_path)
+        .map_err(|e| format!("读取调用历史失败: {}", e))?;
+
+    let line_count = lines.unwrap_or(100);
+    let all_lines: Vec<&str> = content.lines().filter(|l| !l.is_empty()).collect();
+    let start = all_lines.len().saturating_sub(line_count);
+    let recent = &all_lines[start..];
+
+    // 返回 JSON 数组格式
+    Ok(format!("[{}]", recent.join(",")))
+}

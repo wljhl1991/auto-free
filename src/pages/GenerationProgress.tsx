@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useGeneration } from '../hooks/useGeneration';
+import TaskManager from '../components/HUD/TaskManager';
 
 interface ChapterProgress {
   chapterId: string;
@@ -109,6 +110,7 @@ export default function GenerationProgress() {
   const [chapters, setChapters] = useState<ChapterProgress[]>([]);
   const [overallProgress, setOverallProgress] = useState(0);
   const [error, setError] = useState('');
+  const [taskManagerOpen, setTaskManagerOpen] = useState(false);
   const [genStatus, setGenStatus] = useState<GenerationStatusData>({
     firstChapterReady: false,
     backgroundGenerationActive: false,
@@ -279,7 +281,13 @@ export default function GenerationProgress() {
         ← 返回
       </button>
 
-      <h2 className="page-title">正在生成游戏：{gameTitle || '加载中...'}</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+        <h2 className="page-title" style={{ marginBottom: 0 }}>正在生成游戏：{gameTitle || '加载中...'}</h2>
+        <button className="btn btn-secondary" style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}
+          onClick={() => setTaskManagerOpen(true)}>
+          任务管理
+        </button>
+      </div>
 
       <div className="overall-progress">
         <div className="overall-progress-header">
@@ -334,6 +342,8 @@ export default function GenerationProgress() {
           开始第一章 ▶
         </button>
       )}
+
+      <TaskManager gameId={gameId || ''} isOpen={taskManagerOpen} onClose={() => setTaskManagerOpen(false)} />
     </div>
   );
 }

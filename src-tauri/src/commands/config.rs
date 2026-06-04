@@ -1,5 +1,6 @@
 use tauri::command;
 use crate::config::manager::ConfigManager;
+use crate::config::providers;
 use crate::types::ai_provider::{AppConfig, AIProviderConfig, ConfigPreset, ConnectivityCheck, ProviderStatus};
 use crate::config::providers::connectivity::ConnectivityChecker;
 use std::sync::Arc;
@@ -169,4 +170,49 @@ pub async fn import_config(
 ) -> Result<(), String> {
     let mut cm = config_manager.write().await;
     cm.import_config(&config_json)
+}
+
+#[command]
+pub async fn save_dev_config(
+    config_manager: tauri::State<'_, Arc<RwLock<ConfigManager>>>,
+) -> Result<(), String> {
+    let cm = config_manager.read().await;
+    cm.save_dev_config()
+}
+
+#[command]
+pub async fn load_dev_config(
+    config_manager: tauri::State<'_, Arc<RwLock<ConfigManager>>>,
+) -> Result<(), String> {
+    let mut cm = config_manager.write().await;
+    cm.load_dev_config()
+}
+
+/// 更新 provider 模型定义：验证 JSON 并保存到 config_dir/providers-override.json
+#[command]
+pub async fn update_provider_models(
+    providers_json: String,
+    config_manager: tauri::State<'_, Arc<RwLock<ConfigManager>>>,
+) -> Result<(), String> {
+    // 1. 验证 JSON 能被正确解析
+    let parsed: Vec<AIProviderConfig> = providers::load_providers_from_json(&providers_json)?;
+
+    // 2. 获取 config 目录
+    let config_dir = {
+        let cm = config_manager.read().await;
+        cm.config_dir().to_path_buf()
+    };
+
+    // 3. 保存到 providers-override.json
+    let override_path = config_dir.join("providers-override.json");
+    std::fs::write(&override_path, &providers_json)
+        .map_err(|e| format!("写入 providers-override.json 失败: {}", e))?;
+
+    log::info!("已更新 provider 模型定义 ({} 个 provider)，保存到: {}", parsed.len(), override_path.display());
+
+    // 4. 更新当前运行时配置中的 providers
+    let mut cm = config_manager.write().await;
+    cm.reload_providers(parsed)?;
+
+    Ok(())
 }

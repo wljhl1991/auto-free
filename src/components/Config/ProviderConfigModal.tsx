@@ -21,6 +21,7 @@ export default function ProviderConfigModal({
   const [checking, setChecking] = useState(false);
   const [checkResult, setCheckResult] = useState<{ status: string; message?: string } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saveResult, setSaveResult] = useState<'success' | 'error' | null>(null);
 
   if (!isOpen) return null;
 
@@ -80,8 +81,13 @@ export default function ProviderConfigModal({
 
   const handleSave = async () => {
     setSaving(true);
+    setSaveResult(null);
     try {
       await onSave(editedProvider);
+      setSaveResult('success');
+      setTimeout(() => setSaveResult(null), 3000);
+    } catch (err) {
+      setSaveResult('error');
     } finally {
       setSaving(false);
     }
@@ -171,7 +177,7 @@ export default function ProviderConfigModal({
         backgroundColor: '#16162a', border: '1px solid #2a2a3a',
         borderRadius: '12px', padding: '2rem',
         width: '90%', maxWidth: '560px', maxHeight: '85vh', overflowY: 'auto',
-      }}>
+      }} onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
           <div>
@@ -337,6 +343,19 @@ export default function ProviderConfigModal({
             )}
           </div>
         </div>
+
+        {/* Save Result */}
+        {saveResult && (
+          <div style={{
+            marginBottom: '1rem', padding: '0.6rem 0.8rem',
+            backgroundColor: saveResult === 'success' ? 'rgba(46,125,50,0.1)' : 'rgba(224,96,96,0.1)',
+            border: `1px solid ${saveResult === 'success' ? 'rgba(46,125,50,0.3)' : 'rgba(224,96,96,0.3)'}`,
+            borderRadius: '8px', fontSize: '0.85rem',
+            color: saveResult === 'success' ? '#a5d6a7' : '#e06060',
+          }}>
+            {saveResult === 'success' ? '保存成功！' : '保存失败，请重试'}
+          </div>
+        )}
 
         {/* Actions */}
         <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>

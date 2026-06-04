@@ -13,6 +13,10 @@ export function useConfig() {
     checkAllProviders: () => invoke<any[]>('check_all_providers'),
     exportConfig: () => invoke<string>('export_config'),
     importConfig: (configJson: string) => invoke<void>('import_config', { configJson }),
+    saveDevConfig: () => invoke<void>('save_dev_config'),
+    loadDevConfig: () => invoke<void>('load_dev_config'),
+    updateProviderModels: (providersJson: string) => invoke<void>('update_provider_models', { providersJson }),
     readLogs: (lines?: number) => invoke<string>('read_recent_logs', { lines: lines || null }),
+    readCallHistory: (lines?: number) => invoke<string>('read_call_history', { lines: lines || null }),
   }), []);
 }

@@ -1,6 +1,7 @@
 use crate::config::manager::ConfigManager;
 use crate::engine::outline_parser::OutlineParser;
 use crate::engine::asset_manager::AssetManager;
+use crate::engine::call_history::{CallHistory, build_record};
 use crate::providers::{IAssetProvider, ProviderFactory, ProviderError};
 use crate::providers::builtin::BuiltinAssetProvider;
 use crate::providers::deepseek::DeepSeekProvider;
@@ -13,6 +14,7 @@ use crate::types::ai_provider::ProviderStatus;
 use rand::Rng;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::sync::RwLock;
 use tauri::AppHandle;
 use tauri::Emitter;
@@ -47,16 +49,21 @@ pub struct GenerationPipeline {
     statuses: Arc<RwLock<HashMap<String, GenerationStatus>>>,
     /// 存储 game_id -> GameScript，供 regenerate_asset 使用
     scripts: RwLock<HashMap<String, GameScript>>,
+    /// AI 调用历史记录器
+    call_history: Arc<CallHistory>,
 }
 
 impl GenerationPipeline {
     pub fn new(config_manager: Arc<RwLock<ConfigManager>>, asset_manager: Arc<AssetManager>) -> Self {
+        let base_path = asset_manager.base_path().to_path_buf();
+        let call_history = Arc::new(CallHistory::new(&base_path));
         Self {
             config_manager,
             asset_manager,
             app_handle: None,
             statuses: Arc::new(RwLock::new(HashMap::new())),
             scripts: RwLock::new(HashMap::new()),
+            call_history,
         }
     }
 
@@ -404,6 +411,7 @@ impl GenerationPipeline {
         let asset_manager = self.asset_manager.clone();
         let app_handle = self.app_handle.clone();
         let statuses = self.statuses.clone();
+        let call_history = self.call_history.clone();
 
         tokio::spawn(async move {
             // 标记后台生成已激活
@@ -452,6 +460,7 @@ impl GenerationPipeline {
                 let results = Self::fetch_assets_static(
                     &config_manager,
                     &asset_manager,
+                    &call_history,
                     &game_id,
                     &refs,
                 ).await;
@@ -575,9 +584,30 @@ impl GenerationPipeline {
 
         // 获取 AI Provider 并重新生成
         let modality = Self::asset_type_to_modality(&asset_ref.asset_type);
-        let provider = self.resolve_ai_provider(modality).await?;
+        let provider = self.resolve_ai_provider(modality.clone()).await?;
 
-        match provider.get_asset(&asset_ref).await {
+        let start = Instant::now();
+        let result = provider.get_asset(&asset_ref).await;
+        let duration = start.elapsed().as_millis() as u64;
+
+        // 记录调用历史
+        let (provider_id, model, endpoint) = self.get_provider_info(&modality).await;
+        let modality_str = format!("{:?}", modality).to_lowercase();
+        let record = match &result {
+            Ok(local_asset) => build_record(
+                &provider_id, &modality_str, &model, &endpoint,
+                &asset_ref.prompt, duration, "success", None,
+                Some(local_asset.local_path.clone()), None,
+            ),
+            Err(e) => build_record(
+                &provider_id, &modality_str, &model, &endpoint,
+                &asset_ref.prompt, duration, "error", Some(format!("{:?}", e)),
+                None, None,
+            ),
+        };
+        self.call_history.record(record);
+
+        match result {
             Ok(local_asset) => {
                 self.on_asset_ready(game_id, &asset_ref, &local_asset);
                 Ok(())
@@ -727,6 +757,7 @@ impl GenerationPipeline {
     async fn fetch_assets_static(
         config_manager: &Arc<RwLock<ConfigManager>>,
         asset_manager: &Arc<AssetManager>,
+        call_history: &Arc<CallHistory>,
         game_id: &str,
         asset_refs: &[(String, AssetRef)],
     ) -> Vec<Result<LocalAsset, ProviderError>> {
@@ -737,6 +768,7 @@ impl GenerationPipeline {
             let asset_ref = asset_ref.clone();
             let config_manager = config_manager.clone();
             let asset_base_path = asset_manager.base_path().to_path_buf();
+            let call_history = call_history.clone();
 
             let handle = tokio::spawn(async move {
                 let modality = Self::asset_type_to_modality(&asset_ref.asset_type);
@@ -757,12 +789,58 @@ impl GenerationPipeline {
                     }
                 };
 
+                let start = Instant::now();
                 let result = provider.get_asset(&asset_ref).await;
+                let duration = start.elapsed().as_millis() as u64;
+
+                // 记录调用历史
+                let (provider_id, model, endpoint) = {
+                    let cm = config_manager.read().await;
+                    let config = cm.get_config();
+                    if let Some(pc) = config.providers.iter().find(|p| p.modality.contains(&modality)) {
+                        let m = pc.models.iter().find(|m| m.is_default).map(|m| m.id.clone()).unwrap_or_default();
+                        let e = pc.models.iter().find(|m| m.is_default).map(|m| m.endpoint.clone()).unwrap_or_default();
+                        (pc.id.clone(), m, e)
+                    } else {
+                        ("builtin".to_string(), "default".to_string(), String::new())
+                    }
+                };
+                let modality_str = format!("{:?}", modality).to_lowercase();
+                let record = match &result {
+                    Ok(local_asset) => build_record(
+                        &provider_id, &modality_str, &model, &endpoint,
+                        &asset_ref.prompt, duration, "success", None,
+                        Some(local_asset.local_path.clone()), None,
+                    ),
+                    Err(e) => build_record(
+                        &provider_id, &modality_str, &model, &endpoint,
+                        &asset_ref.prompt, duration, "error", Some(format!("{:?}", e)),
+                        None, None,
+                    ),
+                };
+                call_history.record(record);
 
                 match result {
                     Ok(asset) => Ok(asset),
                     Err(original_error) => {
+                        let retry_start = Instant::now();
                         let retry_result = provider.get_asset(&asset_ref).await;
+                        let retry_duration = retry_start.elapsed().as_millis() as u64;
+
+                        let retry_record = match &retry_result {
+                            Ok(local_asset) => build_record(
+                                &provider_id, &modality_str, &model, &endpoint,
+                                &asset_ref.prompt, retry_duration, "success", None,
+                                Some(local_asset.local_path.clone()), None,
+                            ),
+                            Err(e) => build_record(
+                                &provider_id, &modality_str, &model, &endpoint,
+                                &asset_ref.prompt, retry_duration, "retry_error", Some(format!("{:?}", e)),
+                                None, None,
+                            ),
+                        };
+                        call_history.record(retry_record);
+
                         match retry_result {
                             Ok(asset) => Ok(asset),
                             Err(_) => {
@@ -822,7 +900,34 @@ impl GenerationPipeline {
             // 使用 AI Provider 解析大纲
             let deepseek = DeepSeekProvider::new(&provider_config, self.asset_manager.base_path())?;
             let parser = OutlineParser::new(deepseek);
-            parser.parse(input, game_type).await
+            let start = Instant::now();
+            let result = parser.parse(input, game_type).await;
+            let duration = start.elapsed().as_millis() as u64;
+
+            // 记录大纲解析调用历史
+            let model = provider_config.models.iter()
+                .find(|m| m.is_default)
+                .map(|m| m.id.clone())
+                .unwrap_or_default();
+            let endpoint = provider_config.models.iter()
+                .find(|m| m.is_default)
+                .map(|m| m.endpoint.clone())
+                .unwrap_or_default();
+            let record = match &result {
+                Ok(script) => build_record(
+                    &provider_config.id, "text", &model, &endpoint,
+                    input, duration, "success", None,
+                    Some(format!("chapters: {}", script.chapters.len())), None,
+                ),
+                Err(e) => build_record(
+                    &provider_config.id, "text", &model, &endpoint,
+                    input, duration, "error", Some(format!("{:?}", e)),
+                    None, None,
+                ),
+            };
+            self.call_history.record(record);
+
+            result
         } else {
             // 无文本 AI 配置，使用本地模板生成
             eprintln!("No text AI provider configured, using local template fallback");
@@ -1106,7 +1211,7 @@ impl GenerationPipeline {
             let asset_ref = asset_ref.clone();
             let config_manager = self.config_manager.clone();
             let asset_base_path = self.asset_manager.base_path().to_path_buf();
-            let game_id = game_id.to_string();
+            let call_history = self.call_history.clone();
 
             let handle = tokio::spawn(async move {
                 let modality = Self::asset_type_to_modality(&asset_ref.asset_type);
@@ -1129,14 +1234,61 @@ impl GenerationPipeline {
                 };
 
                 // 尝试获取资源
+                let start = Instant::now();
                 let result = provider.get_asset(&asset_ref).await;
+                let duration = start.elapsed().as_millis() as u64;
+
+                // 记录调用历史
+                let (provider_id, model, endpoint) = {
+                    let cm = config_manager.read().await;
+                    let config = cm.get_config();
+                    if let Some(pc) = config.providers.iter().find(|p| p.modality.contains(&modality)) {
+                        let m = pc.models.iter().find(|m| m.is_default).map(|m| m.id.clone()).unwrap_or_default();
+                        let e = pc.models.iter().find(|m| m.is_default).map(|m| m.endpoint.clone()).unwrap_or_default();
+                        (pc.id.clone(), m, e)
+                    } else {
+                        ("builtin".to_string(), "default".to_string(), String::new())
+                    }
+                };
+                let modality_str = format!("{:?}", modality).to_lowercase();
+                let record = match &result {
+                    Ok(local_asset) => build_record(
+                        &provider_id, &modality_str, &model, &endpoint,
+                        &asset_ref.prompt, duration, "success", None,
+                        Some(local_asset.local_path.clone()), None,
+                    ),
+                    Err(e) => build_record(
+                        &provider_id, &modality_str, &model, &endpoint,
+                        &asset_ref.prompt, duration, "error", Some(format!("{:?}", e)),
+                        None, None,
+                    ),
+                };
+                call_history.record(record);
 
                 // 失败时重试 1 次，仍失败则降级到 BuiltinAssetProvider
                 match result {
                     Ok(asset) => Ok(asset),
                     Err(original_error) => {
                         // 重试 1 次
+                        let retry_start = Instant::now();
                         let retry_result = provider.get_asset(&asset_ref).await;
+                        let retry_duration = retry_start.elapsed().as_millis() as u64;
+
+                        // 记录重试调用
+                        let retry_record = match &retry_result {
+                            Ok(local_asset) => build_record(
+                                &provider_id, &modality_str, &model, &endpoint,
+                                &asset_ref.prompt, retry_duration, "success", None,
+                                Some(local_asset.local_path.clone()), None,
+                            ),
+                            Err(e) => build_record(
+                                &provider_id, &modality_str, &model, &endpoint,
+                                &asset_ref.prompt, retry_duration, "retry_error", Some(format!("{:?}", e)),
+                                None, None,
+                            ),
+                        };
+                        call_history.record(retry_record);
+
                         match retry_result {
                             Ok(asset) => Ok(asset),
                             Err(_) => {
@@ -1209,6 +1361,25 @@ impl GenerationPipeline {
     }
 
     // --- Helper methods ---
+
+    /// 获取当前配置的 Provider 信息（用于调用历史记录）
+    async fn get_provider_info(&self, modality: &AIModality) -> (String, String, String) {
+        let cm = self.config_manager.read().await;
+        let config = cm.get_config();
+        if let Some(pc) = config.providers.iter().find(|p| p.modality.contains(modality)) {
+            let model = pc.models.iter()
+                .find(|m| m.is_default)
+                .map(|m| m.id.clone())
+                .unwrap_or_default();
+            let endpoint = pc.models.iter()
+                .find(|m| m.is_default)
+                .map(|m| m.endpoint.clone())
+                .unwrap_or_default();
+            (pc.id.clone(), model, endpoint)
+        } else {
+            ("builtin".to_string(), "default".to_string(), String::new())
+        }
+    }
 
     /// AssetType → AIModality 映射
     fn asset_type_to_modality(asset_type: &ScriptAssetType) -> AIModality {

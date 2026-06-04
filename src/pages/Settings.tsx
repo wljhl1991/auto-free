@@ -179,6 +179,16 @@ export default function Settings() {
     }
   };
 
+  const handleSaveDevConfig = async () => {
+    try {
+      await config.saveDevConfig();
+      alert('开发配置已保存到项目目录下的 dev-config.json');
+    } catch (err: any) {
+      const msg = typeof err === 'string' ? err : (err?.message || '保存失败');
+      alert(msg);
+    }
+  };
+
   const getProvidersByModality = (modality: AIModality): AIProviderConfig[] => {
     return providers.filter((p) => p.modality.includes(modality));
   };
@@ -279,6 +289,14 @@ export default function Settings() {
           style={{ padding: '0.75rem 2rem' }}
         >
           恢复默认
+        </button>
+        <button
+          className="btn btn-secondary"
+          onClick={handleSaveDevConfig}
+          style={{ padding: '0.75rem 2rem', fontSize: '0.85rem' }}
+          title="将当前配置保存到项目目录下的 dev-config.json，开发模式下自动加载"
+        >
+          保存开发配置
         </button>
       </div>
 

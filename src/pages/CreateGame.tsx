@@ -117,6 +117,14 @@ export default function CreateGame() {
 
       {error && <p className="form-error">{error}</p>}
 
+      {loading && (
+        <div className="create-loading">
+          <div className="create-loading-spinner"></div>
+          <div className="create-loading-text">正在生成游戏世界...</div>
+          <div className="create-loading-hint">AI 正在解析大纲并构建游戏，通常需要 10-30 秒</div>
+        </div>
+      )}
+
       <button
         className="btn btn-primary btn-submit"
         onClick={handleSubmit}
