@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use super::asset::AIModality;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum AuthType {
     ApiKey,
     Oauth,

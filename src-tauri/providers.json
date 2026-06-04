@@ -1,4 +1,4 @@
-[
+﻿[
   {
     "id": "deepseek",
     "name": "DeepSeek",
@@ -8,7 +8,7 @@
     "registerUrl": "https://platform.deepseek.com/register",
     "docsUrl": "https://platform.deepseek.com/api-docs",
     "modality": ["text"],
-    "authType": "apikey",
+    "authType": "api_key",
     "authConfig": {
       "apiKey": {
         "value": "",
@@ -87,7 +87,7 @@
     "registerUrl": "https://www.xfyun.cn/register",
     "docsUrl": "https://www.xfyun.cn/doc/spark/Web.html",
     "modality": ["text", "voice"],
-    "authType": "apikey",
+    "authType": "api_key",
     "authConfig": {
       "apiKey": {
         "value": "",
@@ -155,7 +155,7 @@
     "registerUrl": "https://cloud.siliconflow.cn/register",
     "docsUrl": "https://docs.siliconflow.cn",
     "modality": ["text", "image"],
-    "authType": "apikey",
+    "authType": "api_key",
     "authConfig": {
       "apiKey": {
         "value": "",
@@ -221,7 +221,7 @@
     "registerUrl": "https://kling.kuaishou.com/register",
     "docsUrl": "https://platform.kuaishou.com/docs/kling",
     "modality": ["video", "image"],
-    "authType": "apikey",
+    "authType": "api_key",
     "authConfig": {
       "apiKey": {
         "value": "",
@@ -282,7 +282,7 @@
     "registerUrl": "https://hailuoai.video/register",
     "docsUrl": "https://www.minimaxi.com/docs",
     "modality": ["video"],
-    "authType": "apikey",
+    "authType": "api_key",
     "authConfig": {
       "apiKey": {
         "value": "",
@@ -322,7 +322,7 @@
     "registerUrl": "https://music.tiangong.cn/register",
     "docsUrl": "https://open.tiangong.cn/docs",
     "modality": ["music", "voice"],
-    "authType": "apikey",
+    "authType": "api_key",
     "authConfig": {
       "apiKey": {
         "value": "",
@@ -375,7 +375,7 @@
     "registerUrl": "",
     "docsUrl": "https://github.com/rany2/edge-tts#usage",
     "modality": ["voice"],
-    "authType": "apikey",
+    "authType": "api_key",
     "authConfig": {
       "apiKey": {
         "value": "FREE",
@@ -415,7 +415,7 @@
     "registerUrl": "https://console.volcengine.com/register",
     "docsUrl": "https://www.volcengine.com/docs/6561/97465",
     "modality": ["voice"],
-    "authType": "apikey",
+    "authType": "api_key",
     "authConfig": {
       "apiKey": {
         "value": "",
@@ -470,7 +470,7 @@
     "registerUrl": "https://dashscope.console.aliyun.com/register",
     "docsUrl": "https://help.aliyun.com/zh/dashscope",
     "modality": ["text", "image", "video"],
-    "authType": "apikey",
+    "authType": "api_key",
     "authConfig": {
       "apiKey": {
         "value": "",
@@ -536,7 +536,7 @@
     "registerUrl": "https://open.bigmodel.cn/register",
     "docsUrl": "https://open.bigmodel.cn/dev/api",
     "modality": ["text", "image"],
-    "authType": "apikey",
+    "authType": "api_key",
     "authConfig": {
       "apiKey": {
         "value": "",
@@ -589,7 +589,7 @@
     "registerUrl": "https://jimeng.jianying.com/register",
     "docsUrl": "https://jimeng.jianying.com/docs",
     "modality": ["image", "video"],
-    "authType": "apikey",
+    "authType": "api_key",
     "authConfig": {
       "apiKey": {
         "value": "",
@@ -642,7 +642,7 @@
     "registerUrl": "https://www.vidu.studio/register",
     "docsUrl": "https://www.vidu.studio/docs",
     "modality": ["video"],
-    "authType": "apikey",
+    "authType": "api_key",
     "authConfig": {
       "apiKey": {
         "value": "",
@@ -682,7 +682,7 @@
     "registerUrl": "https://www.xfyun.cn/register",
     "docsUrl": "https://www.xfyun.cn/doc/tts/online_tts/API.html",
     "modality": ["voice"],
-    "authType": "apikey",
+    "authType": "api_key",
     "authConfig": {
       "apiKey": {
         "value": "",
@@ -737,7 +737,7 @@
     "registerUrl": "https://tianyin.163.com/register",
     "docsUrl": "https://tianyin.163.com/docs",
     "modality": ["music"],
-    "authType": "apikey",
+    "authType": "api_key",
     "authConfig": {
       "apiKey": {
         "value": "",
