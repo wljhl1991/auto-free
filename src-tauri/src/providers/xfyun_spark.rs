@@ -117,9 +117,9 @@ impl XfyunSparkProvider {
     pub fn new(config: &AIProviderConfig, asset_base_path: PathBuf) -> Result<Self, ProviderError> {
         let extra_params = config.auth_config.extra_params.as_ref();
 
-        let app_id = extra_params
-            .and_then(|p| p.get("appId"))
-            .map(|f| f.value.clone())
+        let app_id = config.auth_config.api_key
+            .as_ref()
+            .map(|k| k.value.clone())
             .filter(|v| !v.is_empty())
             .ok_or_else(|| ProviderError::InvalidConfig("讯飞星火 appId 未配置".to_string()))?;
 

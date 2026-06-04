@@ -70,6 +70,13 @@ impl ConfigManager {
         }
 
         self.config = config;
+
+        // 如果 providers 为空，用内置默认值填充
+        if self.config.providers.is_empty() {
+            log::info!("配置中 providers 为空，使用内置默认 providers");
+            self.config.providers = providers::builtin_providers_with_override(&self.config_dir);
+        }
+
         Ok(())
     }
 

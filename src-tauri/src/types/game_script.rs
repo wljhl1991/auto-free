@@ -33,25 +33,35 @@ pub struct GameScript {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Chapter {
+    #[serde(default)]
     pub id: String,
     pub title: String,
+    #[serde(default)]
     pub summary: String,
+    #[serde(default)]
     pub scenes: Vec<Scene>,
+    #[serde(default)]
     pub chapter_variables: Vec<VariableDef>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Scene {
+    #[serde(default)]
     pub id: String,
+    #[serde(default)]
     pub title: String,
+    #[serde(default)]
     pub description: String,
+    #[serde(default)]
     pub assets: SceneAssets,
+    #[serde(default)]
     pub sequence: Vec<SceneNode>,
+    #[serde(default)]
     pub transitions: Vec<Transition>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct SceneAssets {
     pub background_image: Option<AssetRef>,
@@ -91,6 +101,7 @@ pub enum AssetStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetRef {
+    #[serde(default)]
     pub id: String,
     #[serde(rename = "type")]
     pub asset_type: AssetType,
@@ -120,6 +131,7 @@ pub enum SceneNode {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NarrationNode {
+    #[serde(default)]
     pub id: String,
     pub text: String,
     pub voice_prompt: Option<String>,
@@ -129,6 +141,7 @@ pub struct NarrationNode {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DialogueNode {
+    #[serde(default)]
     pub id: String,
     pub speaker: String,
     pub speaker_avatar: Option<AssetRef>,
@@ -140,6 +153,7 @@ pub struct DialogueNode {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChoiceNode {
+    #[serde(default)]
     pub id: String,
     pub prompt: String,
     pub options: Vec<ChoiceOption>,
@@ -148,6 +162,7 @@ pub struct ChoiceNode {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConditionNode {
+    #[serde(default)]
     pub id: String,
     pub condition: Condition,
     pub true_branch: String,
@@ -167,6 +182,7 @@ pub enum ActionKind {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ActionNode {
+    #[serde(default)]
     pub id: String,
     pub action_type: ActionKind,
     pub params: HashMap<String, serde_json::Value>,
@@ -176,6 +192,7 @@ pub struct ActionNode {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CGNode {
+    #[serde(default)]
     pub id: String,
     pub description: String,
     pub video_asset: AssetRef,
@@ -196,6 +213,7 @@ pub enum TransitionKind {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SceneTransitionNode {
+    #[serde(default)]
     pub id: String,
     pub target_scene_id: String,
     pub transition_type: TransitionKind,

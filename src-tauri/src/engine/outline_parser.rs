@@ -167,7 +167,23 @@ impl OutlineParser {
 
     /// 校验并修复 GameScript
     fn validate_and_fix(&self, script: &mut GameScript) -> Result<(), ProviderError> {
-        // 先修复 AssetRef status（validator 不处理此逻辑）
+        // 修复缺失的 id
+        for (ch_idx, chapter) in script.chapters.iter_mut().enumerate() {
+            if chapter.id.is_empty() {
+                chapter.id = format!("chapter_{}", ch_idx + 1);
+            }
+            for (sc_idx, scene) in chapter.scenes.iter_mut().enumerate() {
+                if scene.id.is_empty() {
+                    scene.id = format!("scene_{}_{}", ch_idx + 1, sc_idx + 1);
+                }
+                for (node_idx, node) in scene.sequence.iter_mut().enumerate() {
+                    let node_id = format!("node_{}_{}_{}", ch_idx + 1, sc_idx + 1, node_idx + 1);
+                    Self::fix_node_id(node, &node_id);
+                }
+            }
+        }
+
+        // 修复 AssetRef status（validator 不处理此逻辑）
         for chapter in &mut script.chapters {
             for scene in &mut chapter.scenes {
                 Self::fix_scene_assets(&mut scene.assets);
@@ -186,6 +202,19 @@ impl OutlineParser {
             );
         }
         Ok(())
+    }
+
+    /// 修复节点缺失的 id
+    fn fix_node_id(node: &mut SceneNode, default_id: &str) {
+        match node {
+            SceneNode::Narration(n) => { if n.id.is_empty() { n.id = default_id.to_string(); } }
+            SceneNode::Dialogue(d) => { if d.id.is_empty() { d.id = default_id.to_string(); } }
+            SceneNode::Choice(c) => { if c.id.is_empty() { c.id = default_id.to_string(); } }
+            SceneNode::Condition(c) => { if c.id.is_empty() { c.id = default_id.to_string(); } }
+            SceneNode::Action(a) => { if a.id.is_empty() { a.id = default_id.to_string(); } }
+            SceneNode::Cg(c) => { if c.id.is_empty() { c.id = default_id.to_string(); } }
+            SceneNode::SceneTransition(t) => { if t.id.is_empty() { t.id = default_id.to_string(); } }
+        }
     }
 
     /// 从 AI 响应中提取 JSON
