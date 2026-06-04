@@ -8,7 +8,7 @@ use serde::{Serialize, Deserialize};
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-const MAX_RETRIES: u32 = 3;
+const MAX_RETRIES: u32 = 2;
 const DEFAULT_ENDPOINT: &str = "https://api.deepseek.com/v1/chat/completions";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -84,7 +84,8 @@ impl DeepSeekProvider {
 
         let client = Client::builder()
             .connect_timeout(Duration::from_secs(10))
-            .timeout(Duration::from_secs(120))
+            .read_timeout(Duration::from_secs(90))
+            .timeout(Duration::from_secs(180))
             .build()
             .map_err(|e| ProviderError::NetworkError(format!("Failed to create HTTP client: {}", e)))?;
 
@@ -217,7 +218,12 @@ impl DeepSeekProvider {
         let body_bytes = response.bytes().await
             .map_err(|e| {
                 log::error!("[DeepSeek] 读取响应体失败: {}", e);
-                ProviderError::NetworkError(format!("读取响应失败: {} (可能是网络中断或响应编码异常)", e))
+                let is_timeout = e.is_timeout() || e.to_string().contains("decoding response body");
+                if is_timeout {
+                    ProviderError::Timeout(format!("读取响应超时: {} (服务端响应中断)", e))
+                } else {
+                    ProviderError::NetworkError(format!("读取响应失败: {} (可能是网络中断或响应编码异常)", e))
+                }
             })?;
         let body = String::from_utf8_lossy(&body_bytes).to_string();
 
