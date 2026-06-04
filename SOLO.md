@@ -160,9 +160,79 @@ trait IAssetProvider: Send + Sync {
 
 ### 提交规范
 
-格式：`feat: <描述>` / `fix: <描述>` / `refactor: <描述>`
+提交信息使用**中文**，遵循 Conventional Commits 格式：
 
-每个节点完成后提交，提交信息参考 `DEVELOPMENT_PLAN.md` 中各节点的建议提交信息。
+```
+<类型>(<范围>): <简短描述>
+
+<详细描述（可选）>
+
+<关联信息（可选）>
+```
+
+#### 类型（必填）
+
+| 类型 | 说明 | 示例 |
+|------|------|------|
+| `feat` | 新功能 | `feat(引擎): 实现大纲解析器` |
+| `fix` | 修复缺陷 | `fix(管线): 修复资源生成失败时未降级到内置默认的问题` |
+| `refactor` | 重构（不改变外部行为） | `refactor(配置): 拆分配置管理器为独立模块` |
+| `docs` | 文档变更 | `docs: 更新 SOLO.md 提交规范` |
+| `style` | 代码风格调整（不影响逻辑） | `style(前端): 统一组件缩进为 2 空格` |
+| `perf` | 性能优化 | `perf(管线): 并行化资源生成任务调度` |
+| `test` | 新增或修改测试 | `test(Provider): 添加 DeepSeek Provider 单元测试` |
+| `chore` | 构建/工具/依赖变更 | `chore: 升级 Tauri 至 v2` |
+| `ci` | CI/CD 配置变更 | `ci: 添加 GitHub Actions 自动构建` |
+
+#### 范围（可选但推荐）
+
+| 范围 | 对应模块 |
+|------|---------|
+| `引擎` | 生成引擎（outline_parser / pipeline / asset_manager） |
+| `管线` | 统一生成管线 |
+| `配置` | 配置管理（加密 / 预设 / 服务商定义） |
+| `前端` | React 前端（页面 / 组件 / 状态） |
+| `渲染` | 场景渲染器（PixiJS / 对话 / 选项 / CG） |
+| `Provider` | AI 模型适配器 |
+| `类型` | 共享类型定义（shared/types） |
+| `资源` | 内置默认资源库 |
+| `IPC` | Tauri IPC 命令 |
+| `Prompt` | Prompt 模板 |
+
+#### 描述规则
+
+- 简短描述不超过 50 个字符，用祈使句（"实现…"而非"实现了…"）
+- 详细描述每行不超过 72 个字符，说明"为什么"而非"做了什么"
+- 破坏性变更以 `BREAKING CHANGE:` 开头
+
+#### 示例
+
+```
+feat(引擎): 实现大纲解析器
+
+支持从简短输入扩展为完整大纲，再解析为 GameScript JSON。
+短文本（<50字）先扩展再解析，长文本直接解析。
+
+关联: DEVELOPMENT_PLAN.md 节点 07
+```
+
+```
+fix(管线): 修复视频生成超时后未降级的问题
+
+视频 AI 调用超过 5 分钟未返回时，应自动降级为
+静态图片 + Ken Burns 效果，而非无限等待。
+
+BREAKING CHANGE: AssetRef 新增 fallback 状态
+```
+
+```
+feat(Provider): 实现 Edge TTS 免费语音生成
+
+完全免费、无需 API Key、无需注册。
+支持中文多方言音色选择，默认 connected 状态。
+```
+
+每个开发节点完成后提交，提交信息参考 `DEVELOPMENT_PLAN.md` 中各节点的建议。
 
 ### 资源管理
 
