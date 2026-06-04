@@ -328,6 +328,16 @@ impl OutlineParser {
     fn normalize_value(value: &mut serde_json::Value, fixed: &mut bool) {
         match value {
             serde_json::Value::Object(map) => {
+                // type: 修正 AI 常见的节点类型拼写错误
+                if let Some(v) = map.get_mut("type") {
+                    if let Some(s) = v.as_str() {
+                        if let Some(corrected) = normalize_node_type(s) {
+                            *v = serde_json::Value::String(corrected);
+                            *fixed = true;
+                        }
+                    }
+                }
+
                 // gameType: camelCase → snake_case（如 "visualNovel" → "visual_novel"）
                 if let Some(v) = map.get_mut("gameType") {
                     if let Some(s) = v.as_str() {
@@ -463,4 +473,41 @@ fn camel_to_snake(s: &str) -> String {
         }
     }
     result
+}
+
+/// 修正 AI 常见的节点类型拼写/命名错误，返回修正后的值；若无需修正则返回 None
+fn normalize_node_type(s: &str) -> Option<String> {
+    // 合法值列表（与 SceneNode 枚举的 snake_case 标签一致）
+    const VALID_TYPES: &[&str] = &[
+        "narration",
+        "dialogue",
+        "choice",
+        "condition",
+        "action",
+        "cg",
+        "scene_transition",
+    ];
+
+    // 已经合法，无需修正
+    if VALID_TYPES.contains(&s) {
+        return None;
+    }
+
+    // camelCase → snake_case（如 "sceneTransition" → "scene_transition"）
+    let snake = camel_to_snake(s);
+    if VALID_TYPES.contains(&snake.as_str()) {
+        return Some(snake);
+    }
+
+    // 常见拼写错误映射
+    let corrected = match s {
+        "dialog" => "dialogue",
+        "narrate" | "narrative" => "narration",
+        "conditional" => "condition",
+        "transition" => "scene_transition",
+        "sceneTransition" => "scene_transition",
+        _ => return None,
+    };
+
+    Some(corrected.to_string())
 }
