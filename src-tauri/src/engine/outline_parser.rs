@@ -4,18 +4,20 @@ use crate::providers::ProviderError;
 use crate::types::game_script::{
     AssetRef, AssetStatus, GameScript, GameType, SceneAssets, SceneNode,
 };
-use std::path::PathBuf;
+
+// 内嵌 Prompt 模板，编译时加载，不依赖运行时文件路径
+const PROMPT_COMBINED: &str = include_str!("../../../prompts/outline-parser/combined.md");
+const PROMPT_EXPAND: &str = include_str!("../../../prompts/outline-parser/expand.md");
+const PROMPT_PARSE: &str = include_str!("../../../prompts/outline-parser/parse.md");
 
 pub struct OutlineParser {
     text_provider: DeepSeekProvider,
-    prompts_dir: PathBuf,
 }
 
 impl OutlineParser {
-    pub fn new(text_provider: DeepSeekProvider, prompts_dir: PathBuf) -> Self {
+    pub fn new(text_provider: DeepSeekProvider) -> Self {
         Self {
             text_provider,
-            prompts_dir,
         }
     }
 
@@ -52,7 +54,7 @@ impl OutlineParser {
         input: &str,
         game_type: Option<GameType>,
     ) -> Result<String, ProviderError> {
-        let system_prompt = self.load_prompt("expand")?;
+        let system_prompt = Self::load_prompt("expand").to_string();
 
         let mut user_content = format!("玩家构想：{}", input);
         if let Some(gt) = game_type {
@@ -83,7 +85,7 @@ impl OutlineParser {
         outline: &str,
         game_type: Option<GameType>,
     ) -> Result<GameScript, ProviderError> {
-        let system_prompt = self.load_prompt("parse")?;
+        let system_prompt = Self::load_prompt("parse").to_string();
 
         let mut user_content = format!("请将以下大纲解析为 GameScript JSON：\n\n{}", outline);
         if let Some(gt) = game_type {
@@ -121,7 +123,7 @@ impl OutlineParser {
         input: &str,
         game_type: Option<GameType>,
     ) -> Result<GameScript, ProviderError> {
-        let system_prompt = self.load_prompt("combined")?;
+        let system_prompt = Self::load_prompt("combined").to_string();
 
         let mut user_content = format!("玩家描述：{}", input);
         if let Some(gt) = game_type {
@@ -153,15 +155,14 @@ impl OutlineParser {
         Ok(script)
     }
 
-    /// 加载 Prompt 模板
-    fn load_prompt(&self, name: &str) -> Result<String, ProviderError> {
-        let path = self.prompts_dir.join(format!("{}.md", name));
-        std::fs::read_to_string(&path).map_err(|e| {
-            ProviderError::InvalidConfig(format!(
-                "Failed to load prompt template '{}': {}",
-                name, e
-            ))
-        })
+    /// 加载 Prompt 模板（从编译时内嵌的常量中读取）
+    fn load_prompt(name: &str) -> &'static str {
+        match name {
+            "combined" => PROMPT_COMBINED,
+            "expand" => PROMPT_EXPAND,
+            "parse" => PROMPT_PARSE,
+            _ => PROMPT_COMBINED,
+        }
     }
 
     /// 校验并修复 GameScript

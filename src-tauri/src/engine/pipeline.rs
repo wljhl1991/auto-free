@@ -821,13 +821,7 @@ impl GenerationPipeline {
         if let Some(provider_config) = text_config {
             // 使用 AI Provider 解析大纲
             let deepseek = DeepSeekProvider::new(&provider_config, self.asset_manager.base_path())?;
-
-            let prompts_dir = dirs::data_dir()
-                .unwrap_or_else(|| std::path::PathBuf::from("."))
-                .join("autofree")
-                .join("prompts");
-
-            let parser = OutlineParser::new(deepseek, prompts_dir);
+            let parser = OutlineParser::new(deepseek);
             parser.parse(input, game_type).await
         } else {
             // 无文本 AI 配置，使用本地模板生成
