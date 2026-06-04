@@ -13,5 +13,6 @@ export function useConfig() {
     checkAllProviders: () => invoke<any[]>('check_all_providers'),
     exportConfig: () => invoke<string>('export_config'),
     importConfig: (configJson: string) => invoke<void>('import_config', { configJson }),
+    readLogs: (lines?: number) => invoke<string>('read_recent_logs', { lines: lines || null }),
   }), []);
 }

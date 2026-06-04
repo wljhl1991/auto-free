@@ -52,14 +52,45 @@ pub async fn update_provider(
     mut provider: AIProviderConfig,
     config_manager: tauri::State<'_, Arc<RwLock<ConfigManager>>>,
 ) -> Result<(), String> {
+    // 还原脱敏字段：如果 API Key 包含 ***，从已存储的配置中取回真实值
+    {
+        let cm = config_manager.read().await;
+        if let Some(existing) = cm.get_config().providers.iter().find(|p| p.id == provider.id) {
+            // 还原 API Key
+            if let Some(ref mut new_key) = provider.auth_config.api_key {
+                if new_key.value.contains("***") {
+                    if let Some(ref old_key) = existing.auth_config.api_key {
+                        log::info!("还原脱敏 API Key: provider_id={}", provider.id);
+                        new_key.value = old_key.value.clone();
+                    }
+                }
+            }
+            // 还原 extra params
+            if let Some(ref mut new_extra) = provider.auth_config.extra_params {
+                if let Some(ref old_extra) = existing.auth_config.extra_params {
+                    for (key, field) in new_extra.iter_mut() {
+                        if field.value.contains("***") {
+                            if let Some(old_field) = old_extra.get(key) {
+                                log::info!("还原脱敏 extra param: provider_id={}, key={}", provider.id, key);
+                                field.value = old_field.value.clone();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    log::info!("更新服务商配置: id={}, name={}", provider.id, provider.name);
+
     // 如果有 API Key 但状态还是 unconfigured，自动设为 configured
     let has_api_key = provider.auth_config.api_key
         .as_ref()
-        .map(|k| !k.value.is_empty())
+        .map(|k| !k.value.is_empty() && !k.value.contains("***"))
         .unwrap_or(false);
     let has_extra_creds = provider.auth_config.extra_params
         .as_ref()
-        .map(|params| params.values().any(|p| !p.value.is_empty()))
+        .map(|params| params.values().any(|p| !p.value.is_empty() && !p.value.contains("***")))
         .unwrap_or(false);
 
     if (has_api_key || has_extra_creds) && provider.status == ProviderStatus::Unconfigured {
@@ -75,6 +106,8 @@ pub async fn check_provider(
     provider_id: String,
     config_manager: tauri::State<'_, Arc<RwLock<ConfigManager>>>,
 ) -> Result<ConnectivityCheck, String> {
+    log::info!("检测服务商连通性: id={}", provider_id);
+
     // 1. 读取配置获取 provider
     let provider = {
         let cm = config_manager.read().await;

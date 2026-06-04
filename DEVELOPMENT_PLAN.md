@@ -7,35 +7,37 @@
 
 ## 节点总览
 
-| # | 节点名称 | 核心交付物 | 依赖 |
-|---|---------|-----------|------|
-| 01 | 项目脚手架 | Tauri + React + TS 项目可运行 | 无 |
-| 02 | 共享类型定义 | GameScript / GameState / AI Provider 类型 | 01 |
-| 03 | 内置默认资源库 | 默认图片/BGM/头像占位资源 | 01 |
-| 04 | Rust 配置管理 | 配置管理器 + 加密存储 + 预设方案 | 02 |
-| 05 | AI Provider Trait + 内置 Provider | IAssetProvider trait + BuiltinAssetProvider | 02, 03 |
-| 06 | 文本 AI Provider（DeepSeek） | DeepSeek / OpenAI 兼容文本生成 | 04, 05 |
-| 07 | 大纲解析器 | 文本 → GameScript 解析管线 | 06 |
-| 08 | 统一生成管线 + 资源管理器 | GenerationPipeline + AssetManager | 05, 07 |
-| 09 | Tauri IPC 命令（游戏+配置） | game/config/asset 命令注册 | 04, 08 |
-| 10 | 前端：主菜单 + 创建游戏页 | 页面路由 + 大纲输入 UI | 09 |
-| 11 | 前端：AI 配置管理页 | 预设选择 + API Key 填写 + 连通检测 | 09 |
-| 12 | 前端：生成进度页 | 章节生成进度展示 + 事件监听 | 09, 10 |
-| 13 | 前端：场景渲染器 | 背景图 + 对话框 + 选项组件 | 10 |
-| 14 | 前端：游戏引擎核心 | SceneExecutor + StateManager + 存档 | 13 |
-| 15 | 前端：游戏主界面整合 | GamePlay 页面完整流程 | 13, 14 |
-| 16 | Edge TTS Provider | 免费语音生成 | 05 |
-| 17 | 图片 AI Provider（硅基流动 FLUX） | AI 图片生成 | 05 |
-| 18 | 音乐 AI Provider（天工音乐） | AI BGM 生成 | 05 |
-| 19 | 视频 AI Provider（可灵） | AI CG 视频生成 | 05 |
-| 20 | 渐进式加载 + 热替换 | 边生成边游玩 + 资源实时替换 | 15, 16-19 |
-| 21 | 讯飞星火 Lite Provider | 零成本文本 AI | 06 |
-| 22 | GameScript 校验器 | 节点可达性检查 + 死链修复 | 07 |
-| 23 | 随机大纲生成 | 按类型随机生成游戏大纲 | 07 |
-| 24 | 重新生成 + 多候选 | 单资源重新生成 + 候选选择 | 20 |
-| 25 | CG 回廊 + 资源导出 | CG 浏览 + 游戏包导出 | 15 |
-| 26 | 备选 Provider 集成 | 通义千问/智谱/即梦/Vidu/火山引擎等 | 05 |
-| 27 | Web 端适配 | IndexedDB + 前端 AI 调用适配层 | 全部 |
+| # | 状态 | 节点名称 | 核心交付物 | 依赖 |
+|---|------|---------|-----------|------|
+| 01 | ☐ | 项目脚手架 | Tauri + React + TS 项目可运行 | 无 |
+| 02 | ☐ | 共享类型定义 | GameScript / GameState / AI Provider 类型 | 01 |
+| 03 | ☐ | 内置默认资源库 | 默认图片/BGM/头像占位资源 | 01 |
+| 04 | ☐ | Rust 配置管理 | 配置管理器 + 加密存储 + 预设方案 | 02 |
+| 05 | ☐ | AI Provider Trait + 内置 Provider | IAssetProvider trait + BuiltinAssetProvider | 02, 03 |
+| 06 | ☐ | 文本 AI Provider（DeepSeek） | DeepSeek / OpenAI 兼容文本生成 | 04, 05 |
+| 07 | ☐ | 大纲解析器 | 文本 → GameScript 解析管线 | 06 |
+| 08 | ☐ | 统一生成管线 + 资源管理器 | GenerationPipeline + AssetManager | 05, 07 |
+| 09 | ☐ | Tauri IPC 命令（游戏+配置） | game/config/asset 命令注册 | 04, 08 |
+| 10 | ☐ | 前端：主菜单 + 创建游戏页 | 页面路由 + 大纲输入 UI | 09 |
+| 11 | ☐ | 前端：AI 配置管理页 | 预设选择 + API Key 填写 + 连通检测 | 09 |
+| 12 | ☐ | 前端：生成进度页 | 章节生成进度展示 + 事件监听 | 09, 10 |
+| 13 | ☐ | 前端：场景渲染器 | 背景图 + 对话框 + 选项组件 | 10 |
+| 14 | ☐ | 前端：游戏引擎核心 | SceneExecutor + StateManager + 存档 | 13 |
+| 15 | ☐ | 前端：游戏主界面整合 | GamePlay 页面完整流程 | 13, 14 |
+| 16 | ☐ | Edge TTS Provider | 免费语音生成 | 05 |
+| 17 | ☐ | 图片 AI Provider（硅基流动 FLUX） | AI 图片生成 | 05 |
+| 18 | ☐ | 音乐 AI Provider（天工音乐） | AI BGM 生成 | 05 |
+| 19 | ☐ | 视频 AI Provider（可灵） | AI CG 视频生成 | 05 |
+| 20 | ☐ | 渐进式加载 + 热替换 | 边生成边游玩 + 资源实时替换 | 15, 16-19 |
+| 21 | ☐ | 讯飞星火 Lite Provider | 零成本文本 AI | 06 |
+| 22 | ☐ | GameScript 校验器 | 节点可达性检查 + 死链修复 | 07 |
+| 23 | ☐ | 随机大纲生成 | 按类型随机生成游戏大纲 | 07 |
+| 24 | ☐ | 重新生成 + 多候选 | 单资源重新生成 + 候选选择 | 20 |
+| 25 | ☐ | CG 回廊 + 资源导出 | CG 浏览 + 游戏包导出 | 15 |
+| 26 | ☐ | 备选 Provider 集成 | 通义千问/智谱/即梦/Vidu/火山引擎等 | 05 |
+| 27 | ☐ | Web 端适配 | IndexedDB + 前端 AI 调用适配层 | 全部 |
+
+> 状态说明：☐ 未开始 | 🔲 进行中 | ☑ 已完成
 
 ---
 

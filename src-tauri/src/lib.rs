@@ -9,14 +9,47 @@ use std::path::PathBuf;
 use tokio::sync::RwLock;
 use tauri::Manager;
 
-use commands::{game, generation, asset};
+use commands::{game, generation, asset, logs};
 use commands::config as cmd_config;
 use config::manager::ConfigManager;
 use engine::asset_manager::AssetManager;
 use engine::pipeline::GenerationPipeline;
 
+fn init_logging() {
+    let log_dir = dirs::data_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("autofree")
+        .join("logs");
+    let _ = std::fs::create_dir_all(&log_dir);
+    let log_file = log_dir.join("autofree.log");
+
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_file)
+        .expect("无法打开日志文件");
+
+    fern::Dispatch::new()
+        .format(|out, message, record| {
+            out.finish(format_args!(
+                "{}[{}][{}] {}",
+                chrono::Local::now().format("[%Y-%m-%d %H:%M:%S%.3f]"),
+                record.target(),
+                record.level(),
+                message
+            ))
+        })
+        .level(log::LevelFilter::Info)
+        .chain(std::io::stderr())
+        .chain(file)
+        .apply()
+        .expect("初始化日志失败");
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    init_logging();
+
     let base_path = dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join("autofree");
@@ -75,6 +108,8 @@ pub fn run() {
             cmd_config::import_config,
             asset::get_asset_path,
             asset::list_builtin_assets,
+            logs::get_log_path,
+            logs::read_recent_logs,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

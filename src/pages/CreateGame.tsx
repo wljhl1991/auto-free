@@ -38,7 +38,8 @@ export default function CreateGame() {
       const gameInfo = await createGame(outline, gameType || undefined);
       navigate(`/generate/${gameInfo.id}`);
     } catch (e: any) {
-      setError(e?.message || '创建失败，请重试');
+      const msg = typeof e === 'string' ? e : (e?.message || '创建失败，请重试');
+      setError(msg);
     } finally {
       setLoading(false);
     }

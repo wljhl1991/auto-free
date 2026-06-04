@@ -113,9 +113,10 @@ export default function ProviderConfigModal({
         }));
       }
     } catch (err: any) {
+      const msg = typeof err === 'string' ? err : (err?.message || err?.toString() || '检测失败');
       setCheckResult({
         status: 'error',
-        message: err?.toString() || '检测失败',
+        message: msg,
       });
     } finally {
       setChecking(false);

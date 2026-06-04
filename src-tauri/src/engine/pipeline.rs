@@ -242,6 +242,8 @@ impl GenerationPipeline {
         input: &str,
         game_type: Option<GameType>,
     ) -> Result<(String, GameScript), ProviderError> {
+        log::info!("开始创建游戏: input_len={}, game_type={:?}", input.len(), game_type);
+
         // 1. 生成 game_id
         let game_id = Uuid::new_v4().to_string();
 
@@ -251,6 +253,7 @@ impl GenerationPipeline {
             .map_err(ProviderError::GenerationFailed)?;
 
         // 3. 调用 OutlineParser 解析大纲为 GameScript
+        log::info!("解析大纲: game_id={}", game_id);
         let mut game_script = self.parse_outline(input, game_type.clone()).await?;
 
         // 4. 提取所有 AssetRef
@@ -263,6 +266,7 @@ impl GenerationPipeline {
         Self::apply_sources_to_script(&mut game_script, &asset_refs);
 
         // 7. 保存 GameScript 到 script.json
+        log::info!("保存 GameScript: game_id={}", game_id);
         self.asset_manager
             .save_game_script(&game_id, &game_script)
             .map_err(ProviderError::GenerationFailed)?;
@@ -797,6 +801,7 @@ impl GenerationPipeline {
         input: &str,
         game_type: Option<GameType>,
     ) -> Result<GameScript, ProviderError> {
+        log::info!("解析大纲: input_len={}, game_type={:?}", input.len(), game_type);
         let config_manager = self.config_manager.read().await;
         let config = config_manager.get_config();
 

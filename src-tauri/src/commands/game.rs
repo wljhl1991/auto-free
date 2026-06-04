@@ -47,15 +47,22 @@ pub async fn create_game(
     pipeline: tauri::State<'_, Arc<RwLock<GenerationPipeline>>>,
 ) -> Result<GameInfo, String> {
     let gt = game_type.as_deref().and_then(|s| parse_game_type(s).ok());
+    log::info!("创建游戏: input_len={}, game_type={:?}", input.len(), gt);
     let p = pipeline.read().await;
     let (game_id, script) = p.create_game(&input, gt).await
-        .map_err(|e| match e {
-            ProviderError::InvalidConfig(msg) => format!("配置错误：{}。请在设置中配置 AI 服务后重试。", msg),
-            ProviderError::AuthFailed(_) => "认证失败：API Key 无效，请检查设置。".to_string(),
-            ProviderError::NetworkError(msg) => format!("网络错误：{}。请检查网络连接。", msg),
-            ProviderError::GenerationFailed(msg) => format!("生成失败：{}", msg),
-            _ => format!("创建失败：{:?}", e),
+        .map_err(|e| {
+            let msg = match e {
+                ProviderError::InvalidConfig(msg) => format!("配置错误：{}。请在设置中配置 AI 服务后重试。", msg),
+                ProviderError::AuthFailed(_) => "认证失败：API Key 无效，请检查设置。".to_string(),
+                ProviderError::NetworkError(msg) => format!("网络错误：{}。请检查网络连接。", msg),
+                ProviderError::GenerationFailed(msg) => format!("生成失败：{}", msg),
+                _ => format!("创建失败：{:?}", e),
+            };
+            log::error!("创建游戏失败: {}", msg);
+            msg
         })?;
+
+    log::info!("创建游戏成功: game_id={}, title={}", game_id, script.meta.title);
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

@@ -27,6 +27,7 @@ impl ConfigManager {
 
     /// 从 config.json + secrets.enc 加载
     pub fn load(&mut self) -> Result<(), String> {
+        log::info!("加载配置: dir={}", self.config_dir.display());
         let config_path = self.config_dir.join("config.json");
         let secrets_path = self.config_dir.join("secrets.enc");
 
@@ -63,6 +64,7 @@ impl ConfigManager {
 
     /// 保存到 config.json + secrets.enc
     pub fn save(&self) -> Result<(), String> {
+        log::info!("保存配置: dir={}", self.config_dir.display());
         // 确保目录存在
         std::fs::create_dir_all(&self.config_dir)
             .map_err(|e| format!("创建配置目录失败: {}", e))?;
@@ -112,6 +114,7 @@ impl ConfigManager {
 
     /// 更新单个服务商配置
     pub fn update_provider(&mut self, provider: AIProviderConfig) -> Result<(), String> {
+        log::info!("更新服务商: id={}", provider.id);
         if let Some(existing) = self.config.providers.iter_mut().find(|p| p.id == provider.id) {
             *existing = provider;
         } else {

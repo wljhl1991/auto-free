@@ -5,6 +5,7 @@ import type { AIProviderConfig, ConfigPreset, AIModality } from '@/types';
 import PresetSelector from '@/components/Config/PresetSelector';
 import ModalitySection from '@/components/Config/ModalitySection';
 import ProviderConfigModal from '@/components/Config/ProviderConfigModal';
+import LogViewer from '@/components/HUD/LogViewer';
 
 const MODALITY_SECTIONS: { modality: AIModality; title: string }[] = [
   { modality: 'text', title: '文本生成' },
@@ -27,6 +28,9 @@ export default function Settings() {
   // Modal state
   const [modalProvider, setModalProvider] = useState<AIProviderConfig | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+
+  // Log viewer state
+  const [logViewerOpen, setLogViewerOpen] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -212,6 +216,13 @@ export default function Settings() {
           <button
             className="btn btn-secondary"
             style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}
+            onClick={() => setLogViewerOpen(true)}
+          >
+            查看日志
+          </button>
+          <button
+            className="btn btn-secondary"
+            style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}
             onClick={handleExport}
           >
             导出配置
@@ -284,6 +295,12 @@ export default function Settings() {
           onCheck={handleCheckProvider}
         />
       )}
+
+      {/* Log Viewer */}
+      <LogViewer
+        isOpen={logViewerOpen}
+        onClose={() => setLogViewerOpen(false)}
+      />
     </div>
   );
 }
