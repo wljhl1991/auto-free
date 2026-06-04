@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use super::{IAssetProvider, ProviderError};
+use super::{truncate_str, IAssetProvider, ProviderError};
 use crate::types::game_script::AssetRef;
 use crate::types::asset::{LocalAsset, AIModality, AssetType, AssetSource};
 use crate::types::ai_provider::{AIProviderConfig, ConnectivityCheck, ConnectivityStatus};
@@ -63,7 +63,7 @@ impl SiliconFlowProvider {
             .as_ref()
             .map(|k| k.value.clone())
             .filter(|v| !v.is_empty())
-            .ok_or_else(|| ProviderError::InvalidConfig("SiliconFlow API Key not configured".to_string()))?;
+            .ok_or_else(|| ProviderError::InvalidConfig("SiliconFlow API Key 未配置".to_string()))?;
 
         let default_image_model = config.models
             .iter()
@@ -92,7 +92,7 @@ impl SiliconFlowProvider {
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(180))
             .build()
-            .map_err(|e| ProviderError::NetworkError(format!("Failed to create HTTP client: {}", e)))?;
+            .map_err(|e| ProviderError::NetworkError(format!("创建HTTP客户端失败: {}", e)))?;
 
         Ok(Self {
             config: config.clone(),
@@ -147,10 +147,13 @@ impl SiliconFlowProvider {
                 }
             }
         }
-        Err(last_error.unwrap_or_else(|| ProviderError::NetworkError("Unknown error after retries".to_string())))
+        Err(last_error.unwrap_or_else(|| ProviderError::NetworkError("重试后仍然失败".to_string())))
     }
 
     async fn send_image_request(&self, request: &ImageGenerationRequest) -> Result<String, ProviderError> {
+        log::info!("[SiliconFlow] 请求: endpoint={}, model={}, prompt_len={}", 
+            self.endpoint, request.model, request.prompt.len());
+
         let response = self.client
             .post(&self.endpoint)
             .header("Authorization", format!("Bearer {}", self.api_key))
@@ -159,23 +162,45 @@ impl SiliconFlowProvider {
             .send()
             .await
             .map_err(|e| {
+                log::error!("[SiliconFlow] 请求发送失败: {} (is_timeout={}, is_connect={}, is_request={})", 
+                    e, e.is_timeout(), e.is_connect(), e.is_request());
                 if e.is_timeout() {
-                    ProviderError::Timeout(format!("Request timeout: {}", e))
+                    ProviderError::Timeout(format!("请求超时: {}", e))
+                } else if e.is_connect() {
+                    ProviderError::NetworkError(format!("连接失败: {} (请检查网络或API地址是否正确)", e))
                 } else {
-                    ProviderError::NetworkError(format!("Network error: {}", e))
+                    ProviderError::NetworkError(format!("网络错误: {}", e))
                 }
             })?;
 
         let status = response.status();
+        log::info!("[SiliconFlow] 响应状态: {} {}", status.as_u16(), status.canonical_reason().unwrap_or(""));
+
         let body = response.text().await
-            .map_err(|e| ProviderError::NetworkError(format!("Failed to read response: {}", e)))?;
+            .map_err(|e| {
+                log::error!("[SiliconFlow] 读取响应体失败: {}", e);
+                ProviderError::NetworkError(format!("读取响应失败: {} (可能是网络中断或响应编码异常)", e))
+            })?;
+
+        let truncated_response = if body.len() > 1000 {
+            format!("{}...(共{}字符)", truncate_str(&body, 1000), body.len())
+        } else {
+            body.clone()
+        };
+        log::info!("[SiliconFlow] 响应体: {}", truncated_response);
 
         if status.is_success() {
             let gen_response: ImageGenerationResponse = serde_json::from_str(&body)
-                .map_err(|e| ProviderError::GenerationFailed(format!("Failed to parse response: {}", e)))?;
+                .map_err(|e| {
+                    log::error!("[SiliconFlow] 解析响应JSON失败: {} (原始响应前200字: {})", e, truncate_str(&body, 200));
+                    ProviderError::GenerationFailed(format!("解析响应失败: {} (响应可能不是有效JSON)", e))
+                })?;
             gen_response.images.first()
                 .map(|img| img.url.clone())
-                .ok_or_else(|| ProviderError::GenerationFailed("No images in response".to_string()))
+                .ok_or_else(|| {
+                    log::error!("[SiliconFlow] 响应中没有图片数据");
+                    ProviderError::GenerationFailed("响应中没有图片数据".to_string())
+                })
         } else {
             self.handle_error_status(status.as_u16(), &body)
         }
@@ -183,20 +208,32 @@ impl SiliconFlowProvider {
 
     /// 下载图片
     async fn download_image(&self, url: &str) -> Result<Vec<u8>, ProviderError> {
+        log::info!("[SiliconFlow] 下载图片: url={}", &url[..url.len().min(200)]);
+
         let response = self.client
             .get(url)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(format!("Failed to download image: {}", e)))?;
+            .map_err(|e| {
+                log::error!("[SiliconFlow] 下载图片失败: {}", e);
+                ProviderError::NetworkError(format!("下载图片失败: {}", e))
+            })?;
 
         let status = response.status();
         if !status.is_success() {
-            return Err(ProviderError::NetworkError(format!("Download failed with status: {}", status)));
+            log::error!("[SiliconFlow] 下载图片响应错误: status={}", status);
+            return Err(ProviderError::NetworkError(format!("下载失败，状态码: {}", status)));
         }
 
-        response.bytes().await
+        let data = response.bytes().await
             .map(|b| b.to_vec())
-            .map_err(|e| ProviderError::NetworkError(format!("Failed to read image data: {}", e)))
+            .map_err(|e| {
+                log::error!("[SiliconFlow] 读取图片数据失败: {}", e);
+                ProviderError::NetworkError(format!("读取图片数据失败: {}", e))
+            })?;
+
+        log::info!("[SiliconFlow] 图片下载完成: size={}KB", data.len() / 1024);
+        Ok(data)
     }
 
     /// 根据 AssetRef 构造 Prompt
@@ -287,11 +324,13 @@ impl SiliconFlowProvider {
             .and_then(|e| e.message)
             .unwrap_or_else(|| body.to_string());
 
+        log::error!("[SiliconFlow] API错误: status={}, message={}", status_code, error_msg);
+
         match status_code {
-            401 | 403 => Err(ProviderError::AuthFailed(format!("Authentication failed: {}", error_msg))),
-            429 => Err(ProviderError::QuotaExceeded(format!("Rate limited: {}", error_msg))),
-            s if s >= 500 => Err(ProviderError::GenerationFailed(format!("Server error ({}): {}", status_code, error_msg))),
-            _ => Err(ProviderError::GenerationFailed(format!("API error ({}): {}", status_code, error_msg))),
+            401 | 403 => Err(ProviderError::AuthFailed(format!("认证失败: {}", error_msg))),
+            429 => Err(ProviderError::QuotaExceeded(format!("请求频率超限: {}", error_msg))),
+            s if s >= 500 => Err(ProviderError::GenerationFailed(format!("服务器错误 ({}): {}", status_code, error_msg))),
+            _ => Err(ProviderError::GenerationFailed(format!("API错误 ({}): {}", status_code, error_msg))),
         }
     }
 
@@ -322,11 +361,11 @@ impl IAssetProvider for SiliconFlowProvider {
 
         let dest_dir = self.asset_base_path.join(&cache_key);
         std::fs::create_dir_all(&dest_dir)
-            .map_err(|e| ProviderError::GenerationFailed(format!("Failed to create asset dir: {}", e)))?;
+            .map_err(|e| ProviderError::GenerationFailed(format!("创建资源目录失败: {}", e)))?;
 
         let dest_path = dest_dir.join(format!("{}.png", asset_ref.id));
         std::fs::write(&dest_path, &image_data)
-            .map_err(|e| ProviderError::GenerationFailed(format!("Failed to write image file: {}", e)))?;
+            .map_err(|e| ProviderError::GenerationFailed(format!("写入图片文件失败: {}", e)))?;
 
         Ok(LocalAsset {
             id: asset_ref.id.clone(),

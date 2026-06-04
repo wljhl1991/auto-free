@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use super::{IAssetProvider, ProviderError};
+use super::{truncate_str, IAssetProvider, ProviderError};
 use crate::types::game_script::AssetRef;
 use crate::types::asset::{LocalAsset, AIModality, AssetType, AssetSource};
 use crate::types::ai_provider::{AIProviderConfig, ConnectivityCheck, ConnectivityStatus};
@@ -165,9 +165,16 @@ impl XfyunSparkProvider {
     pub async fn chat(&self, messages: Vec<SparkMessage>) -> Result<String, ProviderError> {
         let auth_url = self.generate_auth_url();
 
+        log::info!("[XfyunSpark] 连接WebSocket: url={}, domain={}, messages_count={}", 
+            self.ws_url, self.default_domain, messages.len());
+
         let (ws_stream, _) = connect_async(&auth_url)
             .await
-            .map_err(|e| ProviderError::NetworkError(format!("WebSocket 连接失败: {}", e)))?;
+            .map_err(|e| {
+                log::error!("[XfyunSpark] WebSocket连接失败: {}", e);
+                ProviderError::NetworkError(format!("WebSocket连接失败: {}", e))
+            })?;
+        log::info!("[XfyunSpark] WebSocket连接成功");
 
         let (mut write, mut read) = ws_stream.split();
 
@@ -197,26 +204,50 @@ impl XfyunSparkProvider {
         };
 
         let request_json = serde_json::to_string(&request)
-            .map_err(|e| ProviderError::GenerationFailed(format!("序列化请求失败: {}", e)))?;
+            .map_err(|e| {
+                log::error!("[XfyunSpark] 序列化请求失败: {}", e);
+                ProviderError::GenerationFailed(format!("序列化请求失败: {}", e))
+            })?;
+
+        let truncated_req = if request_json.len() > 500 {
+            format!("{}...(共{}字符)", truncate_str(&request_json, 500), request_json.len())
+        } else {
+            request_json.clone()
+        };
+        log::info!("[XfyunSpark] 发送请求: {}", truncated_req);
 
         write.send(tungstenite::Message::Text(request_json.into()))
             .await
-            .map_err(|e| ProviderError::NetworkError(format!("发送 WebSocket 消息失败: {}", e)))?;
+            .map_err(|e| {
+                log::error!("[XfyunSpark] 发送WebSocket消息失败: {}", e);
+                ProviderError::NetworkError(format!("发送WebSocket消息失败: {}", e))
+            })?;
 
         let mut full_content = String::new();
 
         while let Some(msg) = read.next().await {
             let msg = msg
-                .map_err(|e| ProviderError::NetworkError(format!("接收 WebSocket 消息失败: {}", e)))?;
+                .map_err(|e| {
+                    log::error!("[XfyunSpark] 接收WebSocket消息失败: {}", e);
+                    ProviderError::NetworkError(format!("接收WebSocket消息失败: {}", e))
+                })?;
 
             match msg {
                 tungstenite::Message::Text(data) => {
+                    let truncated = if data.len() > 500 {
+                        format!("{}...(共{}字符)", truncate_str(&data, 500), data.len())
+                    } else {
+                        data.to_string()
+                    };
+                    log::debug!("[XfyunSpark] 收到消息: {}", truncated);
+
                     let response = self.parse_response(&data)?;
 
                     if response.header.code != 0 {
+                        log::error!("[XfyunSpark] 星火API错误: code={}, message={}, sid={}", 
+                            response.header.code, response.header.message, response.header.sid);
                         return Err(ProviderError::GenerationFailed(format!(
-                            "星火 API 错误 (code={}): {}",
-                            response.header.code, response.header.message
+                            "星火API错误 (code={}): {}", response.header.code, response.header.message
                         )));
                     }
 
@@ -226,10 +257,12 @@ impl XfyunSparkProvider {
 
                     // status=2 表示尾帧，响应结束
                     if response.header.status == 2 {
+                        log::info!("[XfyunSpark] 响应完成: content_len={}", full_content.len());
                         break;
                     }
                 }
                 tungstenite::Message::Close(_) => {
+                    log::info!("[XfyunSpark] WebSocket连接关闭");
                     break;
                 }
                 _ => {}
@@ -283,7 +316,10 @@ impl XfyunSparkProvider {
     /// 解析流式响应
     fn parse_response(&self, data: &str) -> Result<SparkResponse, ProviderError> {
         serde_json::from_str(data)
-            .map_err(|e| ProviderError::GenerationFailed(format!("解析星火响应失败: {}", e)))
+            .map_err(|e| {
+                log::error!("[XfyunSpark] 解析星火响应失败: {} (原始数据前200字: {})", e, truncate_str(&data, 200));
+                ProviderError::GenerationFailed(format!("解析星火响应失败: {}", e))
+            })
     }
 
     fn generate_cache_key(asset_ref: &AssetRef) -> String {

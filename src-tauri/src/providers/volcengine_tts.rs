@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use super::{IAssetProvider, ProviderError};
+use super::{truncate_str, IAssetProvider, ProviderError};
 use crate::types::game_script::AssetRef;
 use crate::types::asset::{LocalAsset, AIModality, AssetType, AssetSource};
 use crate::types::ai_provider::{AIProviderConfig, ConnectivityCheck, ConnectivityStatus};
@@ -80,14 +80,14 @@ impl VolcengineTTSProvider {
             .and_then(|p| p.get("appid"))
             .map(|f| f.value.clone())
             .filter(|v| !v.is_empty())
-            .ok_or_else(|| ProviderError::InvalidConfig("Volcengine TTS appid not configured".to_string()))?;
+            .ok_or_else(|| ProviderError::InvalidConfig("火山引擎 TTS appid 未配置".to_string()))?;
 
         let access_token = config.auth_config.extra_params
             .as_ref()
             .and_then(|p| p.get("access_token"))
             .map(|f| f.value.clone())
             .filter(|v| !v.is_empty())
-            .ok_or_else(|| ProviderError::InvalidConfig("Volcengine TTS access_token not configured".to_string()))?;
+            .ok_or_else(|| ProviderError::InvalidConfig("火山引擎 TTS access_token 未配置".to_string()))?;
 
         let default_voice = config.models
             .iter()
@@ -109,7 +109,7 @@ impl VolcengineTTSProvider {
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(60))
             .build()
-            .map_err(|e| ProviderError::NetworkError(format!("Failed to create HTTP client: {}", e)))?;
+            .map_err(|e| ProviderError::NetworkError(format!("创建HTTP客户端失败: {}", e)))?;
 
         Ok(Self {
             config: config.clone(),
@@ -130,6 +130,9 @@ impl VolcengineTTSProvider {
     ) -> Result<Vec<u8>, ProviderError> {
         let voice_type = voice_type.unwrap_or(&self.default_voice);
         let speed = speed.unwrap_or(1.0);
+
+        log::info!("[VolcengineTTS] 请求: endpoint={}, voice_type={}, text_len={}, speed={}", 
+            self.endpoint, voice_type, text.len(), speed);
 
         let request = TTSRequest {
             app: TTSApp {
@@ -159,32 +162,61 @@ impl VolcengineTTSProvider {
             .send()
             .await
             .map_err(|e| {
+                log::error!("[VolcengineTTS] 请求发送失败: {} (is_timeout={}, is_connect={}, is_request={})", 
+                    e, e.is_timeout(), e.is_connect(), e.is_request());
                 if e.is_timeout() {
-                    ProviderError::Timeout(format!("Request timeout: {}", e))
+                    ProviderError::Timeout(format!("请求超时: {}", e))
+                } else if e.is_connect() {
+                    ProviderError::NetworkError(format!("连接失败: {} (请检查网络或API地址是否正确)", e))
                 } else {
-                    ProviderError::NetworkError(format!("Network error: {}", e))
+                    ProviderError::NetworkError(format!("网络错误: {}", e))
                 }
             })?;
 
         let status = response.status();
+        log::info!("[VolcengineTTS] 响应状态: {} {}", status.as_u16(), status.canonical_reason().unwrap_or(""));
+
         let body = response.text().await
-            .map_err(|e| ProviderError::NetworkError(format!("Failed to read response: {}", e)))?;
+            .map_err(|e| {
+                log::error!("[VolcengineTTS] 读取响应体失败: {}", e);
+                ProviderError::NetworkError(format!("读取响应失败: {}", e))
+            })?;
+
+        let truncated_response = if body.len() > 1000 {
+            format!("{}...(共{}字符)", truncate_str(&body, 1000), body.len())
+        } else {
+            body.clone()
+        };
+        log::info!("[VolcengineTTS] 响应体: {}", truncated_response);
 
         if status.is_success() {
             let tts_response: TTSResponse = serde_json::from_str(&body)
-                .map_err(|e| ProviderError::GenerationFailed(format!("Failed to parse response: {}", e)))?;
+                .map_err(|e| {
+                    log::error!("[VolcengineTTS] 解析响应JSON失败: {} (原始响应前200字: {})", e, truncate_str(&body, 200));
+                    ProviderError::GenerationFailed(format!("解析响应失败: {}", e))
+                })?;
 
             if tts_response.code != 0 {
+                log::error!("[VolcengineTTS] TTS API错误: code={}, message={}", tts_response.code, tts_response.message);
                 return Err(ProviderError::GenerationFailed(format!(
-                    "TTS API error (code {}): {}", tts_response.code, tts_response.message
+                    "TTS API错误 (code={}): {}", tts_response.code, tts_response.message
                 )));
             }
 
             let audio_base64 = tts_response.data
-                .ok_or_else(|| ProviderError::GenerationFailed("No audio data in response".to_string()))?;
+                .ok_or_else(|| {
+                    log::error!("[VolcengineTTS] 响应中没有音频数据");
+                    ProviderError::GenerationFailed("响应中没有音频数据".to_string())
+                })?;
 
-            base64::decode(&audio_base64)
-                .map_err(|e| ProviderError::GenerationFailed(format!("Failed to decode audio data: {}", e)))
+            let audio_data = base64::decode(&audio_base64)
+                .map_err(|e| {
+                    log::error!("[VolcengineTTS] 解码音频数据失败: {}", e);
+                    ProviderError::GenerationFailed(format!("解码音频数据失败: {}", e))
+                })?;
+
+            log::info!("[VolcengineTTS] 语音合成完成: size={}KB", audio_data.len() / 1024);
+            Ok(audio_data)
         } else {
             self.handle_error_status(status.as_u16(), &body)
         }
@@ -213,11 +245,13 @@ impl VolcengineTTSProvider {
             .and_then(|e| e.message)
             .unwrap_or_else(|| body.to_string());
 
+        log::error!("[VolcengineTTS] API错误: status={}, message={}", status_code, error_msg);
+
         match status_code {
-            401 | 403 => Err(ProviderError::AuthFailed(format!("Authentication failed: {}", error_msg))),
-            429 => Err(ProviderError::QuotaExceeded(format!("Rate limited: {}", error_msg))),
-            s if s >= 500 => Err(ProviderError::GenerationFailed(format!("Server error ({}): {}", status_code, error_msg))),
-            _ => Err(ProviderError::GenerationFailed(format!("API error ({}): {}", status_code, error_msg))),
+            401 | 403 => Err(ProviderError::AuthFailed(format!("认证失败: {}", error_msg))),
+            429 => Err(ProviderError::QuotaExceeded(format!("请求频率超限: {}", error_msg))),
+            s if s >= 500 => Err(ProviderError::GenerationFailed(format!("服务器错误 ({}): {}", status_code, error_msg))),
+            _ => Err(ProviderError::GenerationFailed(format!("API错误 ({}): {}", status_code, error_msg))),
         }
     }
 
@@ -243,11 +277,11 @@ impl IAssetProvider for VolcengineTTSProvider {
 
         let dest_dir = self.asset_base_path.join(&cache_key);
         std::fs::create_dir_all(&dest_dir)
-            .map_err(|e| ProviderError::GenerationFailed(format!("Failed to create asset dir: {}", e)))?;
+            .map_err(|e| ProviderError::GenerationFailed(format!("创建资源目录失败: {}", e)))?;
 
         let dest_path = dest_dir.join(format!("{}.mp3", asset_ref.id));
         std::fs::write(&dest_path, &audio_data)
-            .map_err(|e| ProviderError::GenerationFailed(format!("Failed to write audio file: {}", e)))?;
+            .map_err(|e| ProviderError::GenerationFailed(format!("写入音频文件失败: {}", e)))?;
 
         Ok(LocalAsset {
             id: asset_ref.id.clone(),

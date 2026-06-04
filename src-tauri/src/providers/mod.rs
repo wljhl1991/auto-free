@@ -43,6 +43,20 @@ pub enum ProviderError {
     Timeout(String),
 }
 
+/// 安全的 UTF-8 字符串截断（不会在多字节字符中间切断）
+/// max_bytes 是字节长度上限，函数会找到不超过此上限的最后一个字符边界
+pub fn truncate_str(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    // 找到不超过 max_bytes 的最后一个字符边界
+    let mut boundary = max_bytes;
+    while boundary > 0 && !s.is_char_boundary(boundary) {
+        boundary -= 1;
+    }
+    &s[..boundary]
+}
+
 /// Provider 工厂 — 根据配置创建 Provider 实例
 pub struct ProviderFactory;
 

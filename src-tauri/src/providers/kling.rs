@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use super::{IAssetProvider, ProviderError};
+use super::{truncate_str, IAssetProvider, ProviderError};
 use crate::types::game_script::AssetRef;
 use crate::types::asset::{LocalAsset, AIModality, AssetType, AssetSource};
 use crate::types::ai_provider::{AIProviderConfig, ConnectivityCheck, ConnectivityStatus};
@@ -90,14 +90,14 @@ impl KlingProvider {
             .and_then(|p| p.get("access_key"))
             .map(|f| f.value.clone())
             .filter(|v| !v.is_empty())
-            .ok_or_else(|| ProviderError::InvalidConfig("Kling Access Key not configured".to_string()))?;
+            .ok_or_else(|| ProviderError::InvalidConfig("Kling Access Key 未配置".to_string()))?;
 
         let secret_key = config.auth_config.extra_params
             .as_ref()
             .and_then(|p| p.get("secret_key"))
             .map(|f| f.value.clone())
             .filter(|v| !v.is_empty())
-            .ok_or_else(|| ProviderError::InvalidConfig("Kling Secret Key not configured".to_string()))?;
+            .ok_or_else(|| ProviderError::InvalidConfig("Kling Secret Key 未配置".to_string()))?;
 
         let default_model = config.models
             .iter()
@@ -119,7 +119,7 @@ impl KlingProvider {
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(30))
             .build()
-            .map_err(|e| ProviderError::NetworkError(format!("Failed to create HTTP client: {}", e)))?;
+            .map_err(|e| ProviderError::NetworkError(format!("创建HTTP客户端失败: {}", e)))?;
 
         Ok(Self {
             config: config.clone(),
@@ -164,6 +164,9 @@ impl KlingProvider {
         let path = self.extract_path(&self.endpoint);
         let signature = self.generate_signature("POST", &path, timestamp);
 
+        log::info!("[Kling] 提交视频任务: endpoint={}, model={}, prompt_len={}, timestamp={}", 
+            self.endpoint, request.model, request.prompt.len(), timestamp);
+
         let response = self.client
             .post(&self.endpoint)
             .header("Content-Type", "application/json")
@@ -174,30 +177,55 @@ impl KlingProvider {
             .send()
             .await
             .map_err(|e| {
+                log::error!("[Kling] 请求发送失败: {} (is_timeout={}, is_connect={}, is_request={})", 
+                    e, e.is_timeout(), e.is_connect(), e.is_request());
                 if e.is_timeout() {
-                    ProviderError::Timeout(format!("Request timeout: {}", e))
+                    ProviderError::Timeout(format!("请求超时: {}", e))
+                } else if e.is_connect() {
+                    ProviderError::NetworkError(format!("连接失败: {} (请检查网络或API地址是否正确)", e))
                 } else {
-                    ProviderError::NetworkError(format!("Network error: {}", e))
+                    ProviderError::NetworkError(format!("网络错误: {}", e))
                 }
             })?;
 
         let status = response.status();
+        log::info!("[Kling] 响应状态: {} {}", status.as_u16(), status.canonical_reason().unwrap_or(""));
+
         let body = response.text().await
-            .map_err(|e| ProviderError::NetworkError(format!("Failed to read response: {}", e)))?;
+            .map_err(|e| {
+                log::error!("[Kling] 读取响应体失败: {}", e);
+                ProviderError::NetworkError(format!("读取响应失败: {}", e))
+            })?;
+
+        let truncated_response = if body.len() > 1000 {
+            format!("{}...(共{}字符)", truncate_str(&body, 1000), body.len())
+        } else {
+            body.clone()
+        };
+        log::info!("[Kling] 响应体: {}", truncated_response);
 
         if status.is_success() {
             let gen_response: VideoGenerationResponse = serde_json::from_str(&body)
-                .map_err(|e| ProviderError::GenerationFailed(format!("Failed to parse response: {}", e)))?;
+                .map_err(|e| {
+                    log::error!("[Kling] 解析响应JSON失败: {} (原始响应前200字: {})", e, truncate_str(&body, 200));
+                    ProviderError::GenerationFailed(format!("解析响应失败: {}", e))
+                })?;
 
             if gen_response.code != 0 {
+                log::error!("[Kling] API返回错误码: code={}, message={}", gen_response.code, gen_response.message);
                 return Err(ProviderError::GenerationFailed(format!(
-                    "API error (code {}): {}", gen_response.code, gen_response.message
+                    "API错误 (code={}): {}", gen_response.code, gen_response.message
                 )));
             }
 
-            gen_response.data
+            let task_id = gen_response.data
                 .map(|d| d.task_id)
-                .ok_or_else(|| ProviderError::GenerationFailed("No task_id in response".to_string()))
+                .ok_or_else(|| {
+                    log::error!("[Kling] 响应中没有task_id");
+                    ProviderError::GenerationFailed("响应中没有task_id".to_string())
+                })?;
+            log::info!("[Kling] 任务已提交: task_id={}", task_id);
+            Ok(task_id)
         } else {
             self.handle_error_status(status.as_u16(), &body)
         }
@@ -216,8 +244,9 @@ impl KlingProvider {
                 .as_secs();
 
             if elapsed >= MAX_POLL_DURATION_SECS {
+                log::error!("[Kling] 轮询超时: task_id={}, elapsed={}s", task_id, elapsed);
                 return Err(ProviderError::Timeout(format!(
-                    "Video generation timed out after {} seconds for task {}", elapsed, task_id
+                    "视频生成超时 ({}秒)，任务ID: {}", elapsed, task_id
                 )));
             }
 
@@ -227,6 +256,8 @@ impl KlingProvider {
                 .as_millis() as i64;
             let signature = self.generate_signature("GET", &path, timestamp);
 
+            log::info!("[Kling] 轮询状态: task_id={}, elapsed={}s", task_id, elapsed);
+
             let response = self.client
                 .get(&poll_url)
                 .header("X-Access-Key", &self.access_key)
@@ -234,36 +265,62 @@ impl KlingProvider {
                 .header("X-Timestamp", timestamp.to_string())
                 .send()
                 .await
-                .map_err(|e| ProviderError::NetworkError(format!("Poll request failed: {}", e)))?;
+                .map_err(|e| {
+                    log::error!("[Kling] 轮询请求失败: {}", e);
+                    ProviderError::NetworkError(format!("轮询请求失败: {}", e))
+                })?;
 
             let status = response.status();
             let body = response.text().await
-                .map_err(|e| ProviderError::NetworkError(format!("Failed to read poll response: {}", e)))?;
+                .map_err(|e| {
+                    log::error!("[Kling] 读取轮询响应失败: {}", e);
+                    ProviderError::NetworkError(format!("读取轮询响应失败: {}", e))
+                })?;
+
+            let truncated = if body.len() > 500 {
+                format!("{}...(共{}字符)", truncate_str(&body, 500), body.len())
+            } else {
+                body.clone()
+            };
+            log::info!("[Kling] 轮询响应: status={}, body={}", status.as_u16(), truncated);
 
             if !status.is_success() {
                 return self.handle_error_status(status.as_u16(), &body);
             }
 
             let poll_response: TaskStatusResponse = serde_json::from_str(&body)
-                .map_err(|e| ProviderError::GenerationFailed(format!("Failed to parse poll response: {}", e)))?;
+                .map_err(|e| {
+                    log::error!("[Kling] 解析轮询响应失败: {}", e);
+                    ProviderError::GenerationFailed(format!("解析轮询响应失败: {}", e))
+                })?;
 
             if poll_response.code != 0 {
+                log::error!("[Kling] 轮询API错误: code={}, message={}", poll_response.code, poll_response.message);
                 return Err(ProviderError::GenerationFailed(format!(
-                    "Poll API error (code {}): {}", poll_response.code, poll_response.message
+                    "轮询API错误 (code={}): {}", poll_response.code, poll_response.message
                 )));
             }
 
             match poll_response.data.task_status.as_str() {
                 "succeed" => {
+                    log::info!("[Kling] 视频生成完成: task_id={}", task_id);
                     let result = poll_response.data.task_result
-                        .ok_or_else(|| ProviderError::GenerationFailed("Task succeeded but no result".to_string()))?;
+                        .ok_or_else(|| {
+                            log::error!("[Kling] 任务成功但无结果数据");
+                            ProviderError::GenerationFailed("任务成功但无结果数据".to_string())
+                        })?;
                     let video = result.videos.first()
-                        .ok_or_else(|| ProviderError::GenerationFailed("No videos in result".to_string()))?;
+                        .ok_or_else(|| {
+                            log::error!("[Kling] 结果中没有视频数据");
+                            ProviderError::GenerationFailed("结果中没有视频数据".to_string())
+                        })?;
+                    log::info!("[Kling] 视频URL: {}, duration={}", &video.url[..video.url.len().min(200)], video.duration);
                     return Ok(video.clone());
                 }
                 "failed" => {
+                    log::error!("[Kling] 视频生成失败: task_id={}", task_id);
                     return Err(ProviderError::GenerationFailed(format!(
-                        "Video generation failed for task {}", task_id
+                        "视频生成失败，任务ID: {}", task_id
                     )));
                 }
                 // "submitted" | "processing" => continue polling
@@ -276,21 +333,33 @@ impl KlingProvider {
 
     /// 下载视频文件
     async fn download_video(&self, url: &str) -> Result<Vec<u8>, ProviderError> {
+        log::info!("[Kling] 下载视频: url={}", &url[..url.len().min(200)]);
+
         let response = self.client
             .get(url)
             .timeout(Duration::from_secs(120))
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(format!("Failed to download video: {}", e)))?;
+            .map_err(|e| {
+                log::error!("[Kling] 下载视频失败: {}", e);
+                ProviderError::NetworkError(format!("下载视频失败: {}", e))
+            })?;
 
         let status = response.status();
         if !status.is_success() {
-            return Err(ProviderError::NetworkError(format!("Download failed with status: {}", status)));
+            log::error!("[Kling] 下载视频响应错误: status={}", status);
+            return Err(ProviderError::NetworkError(format!("下载失败，状态码: {}", status)));
         }
 
-        response.bytes().await
+        let data = response.bytes().await
             .map(|b| b.to_vec())
-            .map_err(|e| ProviderError::NetworkError(format!("Failed to read video data: {}", e)))
+            .map_err(|e| {
+                log::error!("[Kling] 读取视频数据失败: {}", e);
+                ProviderError::NetworkError(format!("读取视频数据失败: {}", e))
+            })?;
+
+        log::info!("[Kling] 视频下载完成: size={}MB", data.len() / (1024 * 1024));
+        Ok(data)
     }
 
     /// 构造视频 Prompt
@@ -394,11 +463,13 @@ impl KlingProvider {
             .and_then(|e| e.message)
             .unwrap_or_else(|| body.to_string());
 
+        log::error!("[Kling] API错误: status={}, message={}", status_code, error_msg);
+
         match status_code {
-            401 | 403 => Err(ProviderError::AuthFailed(format!("Authentication failed: {}", error_msg))),
-            429 => Err(ProviderError::QuotaExceeded(format!("Rate limited: {}", error_msg))),
-            s if s >= 500 => Err(ProviderError::GenerationFailed(format!("Server error ({}): {}", status_code, error_msg))),
-            _ => Err(ProviderError::GenerationFailed(format!("API error ({}): {}", status_code, error_msg))),
+            401 | 403 => Err(ProviderError::AuthFailed(format!("认证失败: {}", error_msg))),
+            429 => Err(ProviderError::QuotaExceeded(format!("请求频率超限: {}", error_msg))),
+            s if s >= 500 => Err(ProviderError::GenerationFailed(format!("服务器错误 ({}): {}", status_code, error_msg))),
+            _ => Err(ProviderError::GenerationFailed(format!("API错误 ({}): {}", status_code, error_msg))),
         }
     }
 
@@ -430,11 +501,11 @@ impl IAssetProvider for KlingProvider {
 
         let dest_dir = self.asset_base_path.join(&cache_key);
         std::fs::create_dir_all(&dest_dir)
-            .map_err(|e| ProviderError::GenerationFailed(format!("Failed to create asset dir: {}", e)))?;
+            .map_err(|e| ProviderError::GenerationFailed(format!("创建资源目录失败: {}", e)))?;
 
         let dest_path = dest_dir.join(format!("{}.mp4", asset_ref.id));
         std::fs::write(&dest_path, &video_data)
-            .map_err(|e| ProviderError::GenerationFailed(format!("Failed to write video file: {}", e)))?;
+            .map_err(|e| ProviderError::GenerationFailed(format!("写入视频文件失败: {}", e)))?;
 
         Ok(LocalAsset {
             id: asset_ref.id.clone(),

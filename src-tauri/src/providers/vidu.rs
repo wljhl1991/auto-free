@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use super::{IAssetProvider, ProviderError};
+use super::{truncate_str, IAssetProvider, ProviderError};
 use crate::types::game_script::AssetRef;
 use crate::types::asset::{LocalAsset, AIModality, AssetType, AssetSource};
 use crate::types::ai_provider::{AIProviderConfig, ConnectivityCheck, ConnectivityStatus};
@@ -68,7 +68,7 @@ impl ViduProvider {
             .as_ref()
             .map(|k| k.value.clone())
             .filter(|v| !v.is_empty())
-            .ok_or_else(|| ProviderError::InvalidConfig("Vidu API Key not configured".to_string()))?;
+            .ok_or_else(|| ProviderError::InvalidConfig("Vidu API Key 未配置".to_string()))?;
 
         let default_model = config.models
             .iter()
@@ -90,7 +90,7 @@ impl ViduProvider {
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(30))
             .build()
-            .map_err(|e| ProviderError::NetworkError(format!("Failed to create HTTP client: {}", e)))?;
+            .map_err(|e| ProviderError::NetworkError(format!("创建HTTP客户端失败: {}", e)))?;
 
         Ok(Self {
             config: config.clone(),
@@ -123,6 +123,9 @@ impl ViduProvider {
     }
 
     async fn submit_video_task(&self, request: &VideoGenerationRequest) -> Result<String, ProviderError> {
+        log::info!("[Vidu] 提交视频任务: endpoint={}, model={}, prompt_len={}", 
+            self.endpoint, request.model, request.prompt.len());
+
         let response = self.client
             .post(&self.endpoint)
             .header("Authorization", format!("Bearer {}", self.api_key))
@@ -131,20 +134,40 @@ impl ViduProvider {
             .send()
             .await
             .map_err(|e| {
+                log::error!("[Vidu] 请求发送失败: {} (is_timeout={}, is_connect={}, is_request={})", 
+                    e, e.is_timeout(), e.is_connect(), e.is_request());
                 if e.is_timeout() {
-                    ProviderError::Timeout(format!("Request timeout: {}", e))
+                    ProviderError::Timeout(format!("请求超时: {}", e))
+                } else if e.is_connect() {
+                    ProviderError::NetworkError(format!("连接失败: {} (请检查网络或API地址是否正确)", e))
                 } else {
-                    ProviderError::NetworkError(format!("Network error: {}", e))
+                    ProviderError::NetworkError(format!("网络错误: {}", e))
                 }
             })?;
 
         let status = response.status();
+        log::info!("[Vidu] 响应状态: {} {}", status.as_u16(), status.canonical_reason().unwrap_or(""));
+
         let body = response.text().await
-            .map_err(|e| ProviderError::NetworkError(format!("Failed to read response: {}", e)))?;
+            .map_err(|e| {
+                log::error!("[Vidu] 读取响应体失败: {}", e);
+                ProviderError::NetworkError(format!("读取响应失败: {}", e))
+            })?;
+
+        let truncated_response = if body.len() > 1000 {
+            format!("{}...(共{}字符)", truncate_str(&body, 1000), body.len())
+        } else {
+            body.clone()
+        };
+        log::info!("[Vidu] 响应体: {}", truncated_response);
 
         if status.is_success() {
             let gen_response: VideoGenerationResponse = serde_json::from_str(&body)
-                .map_err(|e| ProviderError::GenerationFailed(format!("Failed to parse response: {}", e)))?;
+                .map_err(|e| {
+                    log::error!("[Vidu] 解析响应JSON失败: {} (原始响应前200字: {})", e, truncate_str(&body, 200));
+                    ProviderError::GenerationFailed(format!("解析响应失败: {}", e))
+                })?;
+            log::info!("[Vidu] 任务已提交: task_id={}", gen_response.task_id);
             Ok(gen_response.task_id)
         } else {
             self.handle_error_status(status.as_u16(), &body)
@@ -162,42 +185,64 @@ impl ViduProvider {
                 .as_secs();
 
             if elapsed >= MAX_POLL_DURATION_SECS {
+                log::error!("[Vidu] 轮询超时: task_id={}, elapsed={}s", task_id, elapsed);
                 return Err(ProviderError::Timeout(format!(
-                    "Video generation timed out after {} seconds for task {}", elapsed, task_id
+                    "视频生成超时 ({}秒)，任务ID: {}", elapsed, task_id
                 )));
             }
 
             tokio::time::sleep(Duration::from_secs(POLL_INTERVAL_SECS)).await;
+
+            log::info!("[Vidu] 轮询状态: task_id={}, elapsed={}s", task_id, elapsed);
 
             let response = self.client
                 .get(&poll_url)
                 .header("Authorization", format!("Bearer {}", self.api_key))
                 .send()
                 .await
-                .map_err(|e| ProviderError::NetworkError(format!("Poll request failed: {}", e)))?;
+                .map_err(|e| {
+                    log::error!("[Vidu] 轮询请求失败: {}", e);
+                    ProviderError::NetworkError(format!("轮询请求失败: {}", e))
+                })?;
 
             let status = response.status();
             let body = response.text().await
-                .map_err(|e| ProviderError::NetworkError(format!("Failed to read poll response: {}", e)))?;
+                .map_err(|e| {
+                    log::error!("[Vidu] 读取轮询响应失败: {}", e);
+                    ProviderError::NetworkError(format!("读取轮询响应失败: {}", e))
+                })?;
+
+            let truncated = if body.len() > 500 {
+                format!("{}...(共{}字符)", truncate_str(&body, 500), body.len())
+            } else {
+                body.clone()
+            };
+            log::info!("[Vidu] 轮询响应: status={}, body={}", status.as_u16(), truncated);
 
             if !status.is_success() {
                 return self.handle_error_status(status.as_u16(), &body);
             }
 
             let task_status: VideoTaskStatusResponse = serde_json::from_str(&body)
-                .map_err(|e| ProviderError::GenerationFailed(format!("Failed to parse poll response: {}", e)))?;
+                .map_err(|e| {
+                    log::error!("[Vidu] 解析轮询响应失败: {}", e);
+                    ProviderError::GenerationFailed(format!("解析轮询响应失败: {}", e))
+                })?;
 
             match task_status.status.as_str() {
                 "completed" | "succeed" => {
+                    log::info!("[Vidu] 视频生成完成: task_id={}", task_id);
                     return task_status.url
-                        .ok_or_else(|| ProviderError::GenerationFailed(
-                            "Video generation completed but no video URL returned".to_string()
-                        ));
+                        .ok_or_else(|| {
+                            log::error!("[Vidu] 视频生成完成但未返回视频URL");
+                            ProviderError::GenerationFailed("视频生成完成但未返回视频URL".to_string())
+                        });
                 }
                 "failed" => {
+                    log::error!("[Vidu] 视频生成失败: task_id={}, error={:?}", task_id, task_status.error);
                     return Err(ProviderError::GenerationFailed(
                         task_status.error
-                            .unwrap_or_else(|| "Video generation failed with unknown error".to_string())
+                            .unwrap_or_else(|| "视频生成失败，未知错误".to_string())
                     ));
                 }
                 "pending" | "processing" | "submitted" => {
@@ -211,21 +256,33 @@ impl ViduProvider {
     }
 
     async fn download_video(&self, url: &str) -> Result<Vec<u8>, ProviderError> {
+        log::info!("[Vidu] 下载视频: url={}", &url[..url.len().min(200)]);
+
         let response = self.client
             .get(url)
             .timeout(Duration::from_secs(120))
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(format!("Failed to download video: {}", e)))?;
+            .map_err(|e| {
+                log::error!("[Vidu] 下载视频失败: {}", e);
+                ProviderError::NetworkError(format!("下载视频失败: {}", e))
+            })?;
 
         let status = response.status();
         if !status.is_success() {
-            return Err(ProviderError::NetworkError(format!("Download failed with status: {}", status)));
+            log::error!("[Vidu] 下载视频响应错误: status={}", status);
+            return Err(ProviderError::NetworkError(format!("下载失败，状态码: {}", status)));
         }
 
-        response.bytes().await
+        let data = response.bytes().await
             .map(|b| b.to_vec())
-            .map_err(|e| ProviderError::NetworkError(format!("Failed to read video data: {}", e)))
+            .map_err(|e| {
+                log::error!("[Vidu] 读取视频数据失败: {}", e);
+                ProviderError::NetworkError(format!("读取视频数据失败: {}", e))
+            })?;
+
+        log::info!("[Vidu] 视频下载完成: size={}MB", data.len() / (1024 * 1024));
+        Ok(data)
     }
 
     pub fn build_video_prompt(&self, asset_ref: &AssetRef) -> (String, Option<String>) {
@@ -288,11 +345,13 @@ impl ViduProvider {
             .and_then(|e| e.message)
             .unwrap_or_else(|| body.to_string());
 
+        log::error!("[Vidu] API错误: status={}, message={}", status_code, error_msg);
+
         match status_code {
-            401 | 403 => Err(ProviderError::AuthFailed(format!("Authentication failed: {}", error_msg))),
-            429 => Err(ProviderError::QuotaExceeded(format!("Rate limited: {}", error_msg))),
-            s if s >= 500 => Err(ProviderError::GenerationFailed(format!("Server error ({}): {}", status_code, error_msg))),
-            _ => Err(ProviderError::GenerationFailed(format!("API error ({}): {}", status_code, error_msg))),
+            401 | 403 => Err(ProviderError::AuthFailed(format!("认证失败: {}", error_msg))),
+            429 => Err(ProviderError::QuotaExceeded(format!("请求频率超限: {}", error_msg))),
+            s if s >= 500 => Err(ProviderError::GenerationFailed(format!("服务器错误 ({}): {}", status_code, error_msg))),
+            _ => Err(ProviderError::GenerationFailed(format!("API错误 ({}): {}", status_code, error_msg))),
         }
     }
 
@@ -324,11 +383,11 @@ impl IAssetProvider for ViduProvider {
 
         let dest_dir = self.asset_base_path.join(&cache_key);
         std::fs::create_dir_all(&dest_dir)
-            .map_err(|e| ProviderError::GenerationFailed(format!("Failed to create asset dir: {}", e)))?;
+            .map_err(|e| ProviderError::GenerationFailed(format!("创建资源目录失败: {}", e)))?;
 
         let dest_path = dest_dir.join(format!("{}.mp4", asset_ref.id));
         std::fs::write(&dest_path, &video_data)
-            .map_err(|e| ProviderError::GenerationFailed(format!("Failed to write video file: {}", e)))?;
+            .map_err(|e| ProviderError::GenerationFailed(format!("写入视频文件失败: {}", e)))?;
 
         Ok(LocalAsset {
             id: asset_ref.id.clone(),

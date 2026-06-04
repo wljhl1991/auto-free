@@ -152,11 +152,16 @@ impl EdgeTTSProvider {
         let connection_id = Uuid::new_v4().to_string();
 
         let ws_url = format!("{}{}", EDGE_TTS_WS_URL, connection_id);
+        log::info!("[EdgeTTS] 连接WebSocket: voice={}, text_len={}", voice.as_str(), ssml.len());
 
         // 连接 WebSocket
         let (mut ws_stream, _) = connect_async(&ws_url)
             .await
-            .map_err(|e| ProviderError::NetworkError(format!("WebSocket connection failed: {}", e)))?;
+            .map_err(|e| {
+                log::error!("[EdgeTTS] WebSocket连接失败: {}", e);
+                ProviderError::NetworkError(format!("WebSocket连接失败: {}", e))
+            })?;
+        log::info!("[EdgeTTS] WebSocket连接成功");
 
         // 发送配置消息
         let config_message = format!(
@@ -167,7 +172,11 @@ impl EdgeTTSProvider {
         ws_stream
             .send(tungstenite::Message::Text(config_message.into()))
             .await
-            .map_err(|e| ProviderError::NetworkError(format!("Failed to send config: {}", e)))?;
+            .map_err(|e| {
+                log::error!("[EdgeTTS] 发送配置消息失败: {}", e);
+                ProviderError::NetworkError(format!("发送配置消息失败: {}", e))
+            })?;
+        log::info!("[EdgeTTS] 配置消息已发送");
 
         // 发送 SSML 消息
         let ssml_request_id = Uuid::new_v4().to_string();
@@ -178,7 +187,11 @@ impl EdgeTTSProvider {
         ws_stream
             .send(tungstenite::Message::Text(ssml_message.into()))
             .await
-            .map_err(|e| ProviderError::NetworkError(format!("Failed to send SSML: {}", e)))?;
+            .map_err(|e| {
+                log::error!("[EdgeTTS] 发送SSML消息失败: {}", e);
+                ProviderError::NetworkError(format!("发送SSML消息失败: {}", e))
+            })?;
+        log::info!("[EdgeTTS] SSML消息已发送，等待音频数据...");
 
         // 接收音频数据
         let mut audio_data = Vec::new();
@@ -198,30 +211,33 @@ impl EdgeTTSProvider {
                     let text_str: &str = text.as_ref();
                     // 检查是否是结束标记
                     if text_str.contains("Path:turn.end") {
+                        log::info!("[EdgeTTS] 收到结束标记");
                         break;
                     }
                     // 检查是否是错误响应
                     if text_str.contains("Path:turn.start") {
-                        // 正常开始，继续接收
+                        log::debug!("[EdgeTTS] 收到开始标记，继续接收音频");
                         continue;
                     }
                 }
                 Ok(_) => continue,
                 Err(e) => {
+                    log::error!("[EdgeTTS] WebSocket错误: {}", e);
                     return Err(ProviderError::NetworkError(format!(
-                        "WebSocket error: {}",
-                        e
+                        "WebSocket错误: {}", e
                     )));
                 }
             }
         }
 
         if audio_data.is_empty() {
+            log::error!("[EdgeTTS] 未收到任何音频数据");
             return Err(ProviderError::GenerationFailed(
-                "No audio data received from Edge TTS".to_string(),
+                "未收到任何音频数据".to_string(),
             ));
         }
 
+        log::info!("[EdgeTTS] 语音合成完成: size={}KB", audio_data.len() / 1024);
         Ok(audio_data)
     }
 
@@ -295,11 +311,11 @@ impl IAssetProvider for EdgeTTSProvider {
 
         let dest_dir = self.asset_base_path.join(&cache_key);
         std::fs::create_dir_all(&dest_dir)
-            .map_err(|e| ProviderError::GenerationFailed(format!("Failed to create asset dir: {}", e)))?;
+            .map_err(|e| ProviderError::GenerationFailed(format!("创建资源目录失败: {}", e)))?;
 
         let dest_path = dest_dir.join(format!("{}.mp3", asset_ref.id));
         std::fs::write(&dest_path, &audio_data)
-            .map_err(|e| ProviderError::GenerationFailed(format!("Failed to write audio file: {}", e)))?;
+            .map_err(|e| ProviderError::GenerationFailed(format!("写入音频文件失败: {}", e)))?;
 
         Ok(LocalAsset {
             id: asset_ref.id.clone(),
