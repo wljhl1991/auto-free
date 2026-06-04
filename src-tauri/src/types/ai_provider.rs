@@ -17,6 +17,9 @@ pub enum ProviderStatus {
     Unconfigured,
     Configured,
     Connected,
+    AuthFailed,
+    QuotaExceeded,
+    NetworkError,
     Error,
 }
 
@@ -42,6 +45,7 @@ pub enum TaskStatus {
 #[serde(rename_all = "snake_case")]
 pub enum ConnectivityStatus {
     Ok,
+    Unconfigured,
     AuthFailed,
     NetworkError,
     QuotaExceeded,

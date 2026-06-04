@@ -1,6 +1,6 @@
 use tauri::command;
 use crate::config::manager::ConfigManager;
-use crate::types::ai_provider::{AppConfig, AIProviderConfig, ConfigPreset, ConnectivityCheck};
+use crate::types::ai_provider::{AppConfig, AIProviderConfig, ConfigPreset, ConnectivityCheck, ProviderStatus};
 use crate::config::providers::connectivity::ConnectivityChecker;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -61,21 +61,50 @@ pub async fn check_provider(
     provider_id: String,
     config_manager: tauri::State<'_, Arc<RwLock<ConfigManager>>>,
 ) -> Result<ConnectivityCheck, String> {
-    let cm = config_manager.read().await;
-    let config = cm.get_config();
-    let provider = config.providers.iter()
-        .find(|p| p.id == provider_id)
-        .ok_or_else(|| format!("Provider '{}' not found", provider_id))?;
-    Ok(ConnectivityChecker::check_provider(provider).await)
+    // 1. 读取配置获取 provider
+    let provider = {
+        let cm = config_manager.read().await;
+        let config = cm.get_config();
+        config.providers.iter()
+            .find(|p| p.id == provider_id)
+            .cloned()
+            .ok_or_else(|| format!("Provider '{}' not found", provider_id))?
+    };
+
+    // 2. 执行连通性检测
+    let check = ConnectivityChecker::check_provider(&provider).await;
+
+    // 3. 更新 Provider 状态并保存
+    let new_status = ConnectivityChecker::check_to_status(&check);
+    {
+        let mut cm = config_manager.write().await;
+        cm.update_provider_status(&provider_id, new_status, check.error_message.clone());
+    }
+
+    Ok(check)
 }
 
 #[command]
 pub async fn check_all_providers(
     config_manager: tauri::State<'_, Arc<RwLock<ConfigManager>>>,
 ) -> Result<Vec<ConnectivityCheck>, String> {
-    let cm = config_manager.read().await;
-    let config = cm.get_config();
-    Ok(ConnectivityChecker::check_all(&config.providers).await)
+    let providers = {
+        let cm = config_manager.read().await;
+        cm.get_config().providers.clone()
+    };
+
+    let checks = ConnectivityChecker::check_all(&providers).await;
+
+    // 更新所有 Provider 状态
+    {
+        let mut cm = config_manager.write().await;
+        for check in &checks {
+            let new_status = ConnectivityChecker::check_to_status(check);
+            cm.update_provider_status(&check.provider_id, new_status, check.error_message.clone());
+        }
+    }
+
+    Ok(checks)
 }
 
 #[command]

@@ -120,6 +120,26 @@ impl ConfigManager {
         self.save()
     }
 
+    /// 更新服务商状态（连通性检测后调用）
+    pub fn update_provider_status(
+        &mut self,
+        provider_id: &str,
+        status: crate::types::ai_provider::ProviderStatus,
+        error_message: Option<String>,
+    ) {
+        if let Some(provider) = self.config.providers.iter_mut().find(|p| p.id == provider_id) {
+            provider.status = status;
+            provider.last_checked = Some(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+            );
+            provider.error_message = error_message;
+        }
+        // 不 save()，避免频繁写入磁盘。下次 update_provider 时会统一保存。
+    }
+
     pub fn get_presets(&self) -> &[ConfigPreset] {
         &self.config.presets
     }
