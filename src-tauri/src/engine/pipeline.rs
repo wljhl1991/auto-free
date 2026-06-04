@@ -88,8 +88,8 @@ impl GenerationPipeline {
         let ds_config = config
             .providers
             .iter()
-            .find(|p| p.vendor == "deepseek" && p.status == ProviderStatus::Connected)
-            .or_else(|| config.providers.iter().find(|p| p.vendor == "deepseek"))
+            .find(|p| p.id == "deepseek" && p.status == ProviderStatus::Connected)
+            .or_else(|| config.providers.iter().find(|p| p.id == "deepseek"))
             .cloned();
 
         // 其次查找任意支持 Text 模态的 provider
@@ -804,8 +804,8 @@ impl GenerationPipeline {
         let text_config = config
             .providers
             .iter()
-            .find(|p| p.vendor == "deepseek" && p.status == ProviderStatus::Connected)
-            .or_else(|| config.providers.iter().find(|p| p.vendor == "deepseek"))
+            .find(|p| p.id == "deepseek" && p.status == ProviderStatus::Connected)
+            .or_else(|| config.providers.iter().find(|p| p.id == "deepseek"))
             .or_else(|| config.providers.iter().find(|p| {
                 p.modality.contains(&AIModality::Text) && p.status == ProviderStatus::Connected
             }))

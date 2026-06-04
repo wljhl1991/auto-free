@@ -49,7 +49,9 @@ pub struct ProviderFactory;
 impl ProviderFactory {
     /// 根据服务商配置创建对应的 Provider
     pub fn create(config: &AIProviderConfig, asset_base_path: &std::path::Path) -> Result<Box<dyn IAssetProvider>, ProviderError> {
-        match config.vendor.as_str() {
+        // 优先用 id 匹配（英文标识符），fallback 到 vendor（中文名）
+        let key = config.id.as_str();
+        match key {
             "builtin" => {
                 let builtin_assets_path = asset_base_path.join("builtin-assets");
                 let game_assets_path = asset_base_path.join("games");
@@ -95,8 +97,8 @@ impl ProviderFactory {
                 Ok(Box::new(netease_music::NeteaseMusicProvider::new(config, asset_base_path.to_path_buf())?))
             }
             _ => Err(ProviderError::InvalidConfig(format!(
-                "Unknown provider vendor: {}",
-                config.vendor
+                "Unknown provider: id={}, vendor={}",
+                config.id, config.vendor
             ))),
         }
     }
