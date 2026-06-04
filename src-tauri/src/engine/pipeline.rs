@@ -800,25 +800,197 @@ impl GenerationPipeline {
         let config_manager = self.config_manager.read().await;
         let config = config_manager.get_config();
 
-        // 找到 DeepSeek Provider 配置
-        let ds_config = config
+        // 查找任意可用的文本 Provider（优先 DeepSeek）
+        let text_config = config
             .providers
             .iter()
             .find(|p| p.vendor == "deepseek" && p.status == ProviderStatus::Connected)
             .or_else(|| config.providers.iter().find(|p| p.vendor == "deepseek"))
-            .ok_or_else(|| {
-                ProviderError::InvalidConfig("No DeepSeek provider configured".to_string())
-            })?;
+            .or_else(|| config.providers.iter().find(|p| {
+                p.modality.contains(&AIModality::Text) && p.status == ProviderStatus::Connected
+            }))
+            .cloned();
 
-        let deepseek = DeepSeekProvider::new(ds_config, self.asset_manager.base_path())?;
+        drop(config_manager);
 
-        let prompts_dir = dirs::data_dir()
-            .unwrap_or_else(|| std::path::PathBuf::from("."))
-            .join("autofree")
-            .join("prompts");
+        if let Some(provider_config) = text_config {
+            // 使用 AI Provider 解析大纲
+            let deepseek = DeepSeekProvider::new(&provider_config, self.asset_manager.base_path())?;
 
-        let parser = OutlineParser::new(deepseek, prompts_dir);
-        parser.parse(input, game_type).await
+            let prompts_dir = dirs::data_dir()
+                .unwrap_or_else(|| std::path::PathBuf::from("."))
+                .join("autofree")
+                .join("prompts");
+
+            let parser = OutlineParser::new(deepseek, prompts_dir);
+            parser.parse(input, game_type).await
+        } else {
+            // 无文本 AI 配置，使用本地模板生成
+            eprintln!("No text AI provider configured, using local template fallback");
+            Ok(Self::fallback_game_script(input, game_type))
+        }
+    }
+
+    /// 无 AI 配置时的本地模板生成
+    fn fallback_game_script(input: &str, game_type: Option<GameType>) -> GameScript {
+        let gt = game_type.unwrap_or(GameType::VisualNovel);
+        let title = if input.chars().count() > 20 {
+            format!("{}...", &input.chars().take(20).collect::<String>())
+        } else {
+            input.to_string()
+        };
+
+        use crate::types::game_script::{
+            GameMeta, Chapter, Scene, SceneAssets, DialogueNode, NarrationNode, ChoiceNode, ChoiceOption,
+            Transition, TransitionKind,
+        };
+
+        GameScript {
+            meta: GameMeta {
+                title: title.clone(),
+                game_type: gt.clone(),
+                total_chapters: 3,
+                description: input.to_string(),
+                themes: vec!["auto-generated".to_string()],
+                tone: "neutral".to_string(),
+            },
+            global_variables: vec![],
+            chapters: vec![
+                Chapter {
+                    id: "ch1".to_string(),
+                    title: "第一章：启程".to_string(),
+                    summary: "故事开始".to_string(),
+                    chapter_variables: vec![],
+                    scenes: vec![Scene {
+                        id: "ch1_s1".to_string(),
+                        title: "故事开始".to_string(),
+                        description: "冒险的起点".to_string(),
+                        assets: SceneAssets {
+                            background_image: None,
+                            background_video: None,
+                            bgm: None,
+                            ambient_sound: None,
+                            cg_animation: None,
+                        },
+                        transitions: vec![Transition {
+                            from_scene_id: "ch1_s1".to_string(),
+                            to_scene_id: "ch2_s1".to_string(),
+                            transition_type: TransitionKind::Fade,
+                            duration: 1.0,
+                        }],
+                        sequence: vec![
+                            SceneNode::Narration(NarrationNode {
+                                id: "ch1_n1".to_string(),
+                                text: format!("{}——一段新的冒险就此展开。", input),
+                                voice_prompt: None,
+                                voice_asset: None,
+                            }),
+                            SceneNode::Dialogue(DialogueNode {
+                                id: "ch1_d1".to_string(),
+                                speaker: "旁白".to_string(),
+                                speaker_avatar: None,
+                                text: "你站在命运的十字路口，前方是未知的旅途。".to_string(),
+                                emotion: None,
+                                voice_asset: None,
+                            }),
+                            SceneNode::Choice(ChoiceNode {
+                                id: "ch1_c1".to_string(),
+                                prompt: "你将如何选择？".to_string(),
+                                options: vec![
+                                    ChoiceOption {
+                                        text: "勇敢前行".to_string(),
+                                        next_node_id: Some("ch1_d2".to_string()),
+                                        condition: None,
+                                        effects: None,
+                                    },
+                                    ChoiceOption {
+                                        text: "谨慎观察".to_string(),
+                                        next_node_id: Some("ch1_d3".to_string()),
+                                        condition: None,
+                                        effects: None,
+                                    },
+                                ],
+                            }),
+                            SceneNode::Dialogue(DialogueNode {
+                                id: "ch1_d2".to_string(),
+                                speaker: "旁白".to_string(),
+                                speaker_avatar: None,
+                                text: "你鼓起勇气，踏上了旅途。".to_string(),
+                                emotion: None,
+                                voice_asset: None,
+                            }),
+                            SceneNode::Dialogue(DialogueNode {
+                                id: "ch1_d3".to_string(),
+                                speaker: "旁白".to_string(),
+                                speaker_avatar: None,
+                                text: "你仔细观察着周围的一切，寻找线索。".to_string(),
+                                emotion: None,
+                                voice_asset: None,
+                            }),
+                        ],
+                    }],
+                },
+                Chapter {
+                    id: "ch2".to_string(),
+                    title: "第二章：探索".to_string(),
+                    summary: "深入探索".to_string(),
+                    chapter_variables: vec![],
+                    scenes: vec![Scene {
+                        id: "ch2_s1".to_string(),
+                        title: "深入探索".to_string(),
+                        description: "发现更多秘密".to_string(),
+                        assets: SceneAssets {
+                            background_image: None,
+                            background_video: None,
+                            bgm: None,
+                            ambient_sound: None,
+                            cg_animation: None,
+                        },
+                        transitions: vec![Transition {
+                            from_scene_id: "ch2_s1".to_string(),
+                            to_scene_id: "ch3_s1".to_string(),
+                            transition_type: TransitionKind::Fade,
+                            duration: 1.0,
+                        }],
+                        sequence: vec![
+                            SceneNode::Narration(NarrationNode {
+                                id: "ch2_n1".to_string(),
+                                text: "随着旅途的深入，你发现了更多秘密。".to_string(),
+                                voice_prompt: None,
+                                voice_asset: None,
+                            }),
+                        ],
+                    }],
+                },
+                Chapter {
+                    id: "ch3".to_string(),
+                    title: "第三章：终局".to_string(),
+                    summary: "命运抉择".to_string(),
+                    chapter_variables: vec![],
+                    scenes: vec![Scene {
+                        id: "ch3_s1".to_string(),
+                        title: "命运抉择".to_string(),
+                        description: "一切终将迎来结局".to_string(),
+                        assets: SceneAssets {
+                            background_image: None,
+                            background_video: None,
+                            bgm: None,
+                            ambient_sound: None,
+                            cg_animation: None,
+                        },
+                        transitions: vec![],
+                        sequence: vec![
+                            SceneNode::Narration(NarrationNode {
+                                id: "ch3_n1".to_string(),
+                                text: "一切终将迎来结局。".to_string(),
+                                voice_prompt: None,
+                                voice_asset: None,
+                            }),
+                        ],
+                    }],
+                },
+            ],
+        }
     }
 
     /// 从 GameScript 提取所有 AssetRef

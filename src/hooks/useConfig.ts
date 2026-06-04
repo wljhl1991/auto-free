@@ -1,7 +1,8 @@
+import { useMemo } from 'react';
 import { invoke } from '../adapters/tauri';
 
 export function useConfig() {
-  return {
+  return useMemo(() => ({
     getConfig: () => invoke<any>('get_config'),
     updateConfig: (config: any) => invoke<void>('update_config', { config }),
     getPresets: () => invoke<any[]>('get_presets'),
@@ -12,5 +13,5 @@ export function useConfig() {
     checkAllProviders: () => invoke<any[]>('check_all_providers'),
     exportConfig: () => invoke<string>('export_config'),
     importConfig: (configJson: string) => invoke<void>('import_config', { configJson }),
-  };
+  }), []);
 }

@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { invoke } from '../adapters/tauri';
 
 export interface GameInfo {
@@ -10,7 +11,7 @@ export interface GameInfo {
 }
 
 export function useGame() {
-  return {
+  return useMemo(() => ({
     createGame: (input: string, gameType?: string) => invoke<GameInfo>('create_game', { input, gameType: gameType || null }),
     getRandomOutline: (gameType?: string, themes?: string[]) => invoke<string>('random_outline', { gameType: gameType || null, themes: themes || [] }),
     getGame: (gameId: string) => invoke<GameInfo>('get_game', { gameId }),
@@ -20,5 +21,5 @@ export function useGame() {
     saveGame: (gameId: string, state: any) => invoke<string>('save_game', { gameId, state }),
     loadSave: (gameId: string, saveId: string) => invoke<any>('load_save', { gameId, saveId }),
     listSaves: (gameId: string) => invoke<any[]>('list_saves', { gameId }),
-  };
+  }), []);
 }

@@ -3,6 +3,7 @@ use crate::types::game_script::{GameScript, GameType};
 use crate::types::game_state::GameState;
 use crate::engine::pipeline::GenerationPipeline;
 use crate::engine::asset_manager::AssetManager;
+use crate::providers::ProviderError;
 use serde::{Serialize, Deserialize};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -48,7 +49,13 @@ pub async fn create_game(
     let gt = game_type.as_deref().and_then(|s| parse_game_type(s).ok());
     let p = pipeline.read().await;
     let (game_id, script) = p.create_game(&input, gt).await
-        .map_err(|e| format!("{:?}", e))?;
+        .map_err(|e| match e {
+            ProviderError::InvalidConfig(msg) => format!("配置错误：{}。请在设置中配置 AI 服务后重试。", msg),
+            ProviderError::AuthFailed(_) => "认证失败：API Key 无效，请检查设置。".to_string(),
+            ProviderError::NetworkError(msg) => format!("网络错误：{}。请检查网络连接。", msg),
+            ProviderError::GenerationFailed(msg) => format!("生成失败：{}", msg),
+            _ => format!("创建失败：{:?}", e),
+        })?;
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
