@@ -139,4 +139,9 @@ export interface ConnectivityCheck {
   testPrompt?: string;
   mediaUrl?: string;
   mediaType?: string;
+  requestEndpoint?: string;
+  requestModel?: string;
+  requestHeaders?: string;
+  requestBody?: string;
+  responseStatus?: number;
 }

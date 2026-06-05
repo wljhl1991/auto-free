@@ -21,6 +21,21 @@ const MODALITY_OPTIONS: { value: AIModality; label: string }[] = [
   { value: 'voice', label: '语音' },
 ];
 
+interface CheckResultData {
+  status: string;
+  message?: string;
+  latency?: number;
+  responsePreview?: string;
+  testPrompt?: string;
+  mediaUrl?: string;
+  mediaType?: string;
+  requestEndpoint?: string;
+  requestModel?: string;
+  requestHeaders?: string;
+  requestBody?: string;
+  responseStatus?: number;
+}
+
 export default function ProviderConfigModal({
   provider,
   isOpen,
@@ -32,7 +47,7 @@ export default function ProviderConfigModal({
   const [editedProvider, setEditedProvider] = useState<AIProviderConfig | null>(null);
   const [showApiKey, setShowApiKey] = useState(false);
   const [checking, setChecking] = useState(false);
-  const [checkResult, setCheckResult] = useState<{ status: string; message?: string; latency?: number; responsePreview?: string; testPrompt?: string; mediaUrl?: string; mediaType?: string } | null>(null);
+  const [checkResult, setCheckResult] = useState<CheckResultData | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveResult, setSaveResult] = useState<'success' | 'error' | null>(null);
   const [selectedModelId, setSelectedModelId] = useState<string>('');
@@ -48,7 +63,7 @@ export default function ProviderConfigModal({
       setSelectedModelId(defaultModel?.id || '');
       setIsCustomModel(false);
       setCustomModelInput('');
-      setCheckResult(null);
+      // 不清除 checkResult，防止一闪而逝
       setSaveResult(null);
     }
   }, [provider]);
@@ -73,8 +88,6 @@ export default function ProviderConfigModal({
   const handleMultimodalChange = (checked: boolean) => {
     setEditedProvider(prev => {
       if (!prev) return prev;
-      // If toggling multimodal on and currently only one modality, keep it
-      // If toggling off, keep only the first modality
       if (!checked && prev.modality.length > 1) {
         return { ...prev, modality: [prev.modality[0]] };
       }
@@ -108,13 +121,11 @@ export default function ProviderConfigModal({
         status: value.trim() ? 'configured' : 'unconfigured',
       };
     });
-    setCheckResult(null);
   };
 
   const handleEndpointChange = (value: string) => {
     setEditedProvider(prev => {
       if (!prev) return prev;
-      // 如果是多模态且选中了特定模型，只修改该模型的 endpoint
       if (isMultimodal && selectedModelId && selectedModelId !== CUSTOM_MODEL_ID) {
         return {
           ...prev,
@@ -123,13 +134,11 @@ export default function ProviderConfigModal({
           ),
         };
       }
-      // 单模态或未选中特定模型，修改所有模型的 endpoint
       return {
         ...prev,
         models: prev.models.map(m => ({ ...m, endpoint: value })),
       };
     });
-    setCheckResult(null);
   };
 
   const handleModelSelectChange = (value: string) => {
@@ -137,7 +146,6 @@ export default function ProviderConfigModal({
       setIsCustomModel(true);
       setSelectedModelId(CUSTOM_MODEL_ID);
       setCustomModelInput('');
-      // 智能设置默认模态：优先选择非 text 的模态（用户更可能添加图片/视频等模型）
       const nonTextModality = editedProvider.modality.find(m => m !== 'text');
       setCustomModelModality(nonTextModality || editedProvider.modality[0] || 'text');
     } else {
@@ -154,7 +162,6 @@ export default function ProviderConfigModal({
         };
       });
     }
-    setCheckResult(null);
   };
 
   const handleCustomModelConfirm = () => {
@@ -180,15 +187,13 @@ export default function ProviderConfigModal({
     setSelectedModelId(newModel.id);
     setIsCustomModel(false);
     setCustomModelInput('');
-    setCheckResult(null);
   };
 
   const handleDeleteModel = (modelId: string) => {
     setEditedProvider(prev => {
       if (!prev) return prev;
       const remaining = prev.models.filter(m => m.id !== modelId);
-      if (remaining.length === 0) return prev; // 至少保留一个模型
-      // 如果删除的是当前选中的模型，切换到第一个
+      if (remaining.length === 0) return prev;
       const wasSelected = selectedModelId === modelId;
       const wasDefault = remaining.every(m => !m.isDefault);
       const updated = {
@@ -203,7 +208,6 @@ export default function ProviderConfigModal({
       }
       return updated;
     });
-    setCheckResult(null);
   };
 
   const handleExtraParamChange = (key: string, value: string) => {
@@ -224,7 +228,6 @@ export default function ProviderConfigModal({
         status: 'configured',
       };
     });
-    setCheckResult(null);
   };
 
   const handleSave = async () => {
@@ -250,7 +253,7 @@ export default function ProviderConfigModal({
     }
 
     setChecking(true);
-    setCheckResult(null);
+    // 不清除旧结果，避免一闪而逝
     try {
       const result = await onCheck(editedProvider.id, testPrompt || undefined, selectedModelId !== CUSTOM_MODEL_ID ? selectedModelId : undefined);
       setCheckResult({
@@ -261,6 +264,11 @@ export default function ProviderConfigModal({
         testPrompt: result?.testPrompt,
         mediaUrl: result?.mediaUrl,
         mediaType: result?.mediaType,
+        requestEndpoint: result?.requestEndpoint,
+        requestModel: result?.requestModel,
+        requestHeaders: result?.requestHeaders,
+        requestBody: result?.requestBody,
+        responseStatus: result?.responseStatus,
       });
       if (result) {
         setEditedProvider(prev => prev ? {
@@ -347,6 +355,187 @@ export default function ProviderConfigModal({
     ...inputStyle, color: '#666680', backgroundColor: '#0e0e1e', cursor: 'default',
   };
 
+  // --- 右侧测试结果面板 ---
+  const renderTestPanel = () => {
+    if (!checkResult) {
+      return (
+        <div style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          height: '100%', color: '#555570', fontSize: '0.9rem', textAlign: 'center', padding: '2rem',
+        }}>
+          <div style={{ fontSize: '2rem', marginBottom: '1rem', opacity: 0.3 }}>&#9881;</div>
+          <div>点击左侧"测试连接"按钮</div>
+          <div style={{ fontSize: '0.8rem', marginTop: '0.3rem' }}>测试结果将在此处显示</div>
+        </div>
+      );
+    }
+
+    const isSuccess = checkResult.status === 'ok';
+
+    return (
+      <div style={{ padding: '1rem', overflowY: 'auto', height: '100%' }}>
+        {/* 状态横幅 */}
+        <div style={{
+          padding: '0.8rem 1rem', borderRadius: '8px', marginBottom: '1rem',
+          backgroundColor: isSuccess ? 'rgba(46,125,50,0.15)' : 'rgba(224,96,96,0.15)',
+          border: `2px solid ${isSuccess ? 'rgba(46,125,50,0.5)' : 'rgba(224,96,96,0.5)'}`,
+        }}>
+          <div style={{ fontWeight: 600, fontSize: '1rem', color: isSuccess ? '#a5d6a7' : '#e06060' }}>
+            {isSuccess ? '✓ 连接成功' : '✗ 连接失败'}
+          </div>
+          {checkResult.latency != null && (
+            <div style={{ color: '#9999bb', fontSize: '0.85rem', marginTop: '0.2rem' }}>
+              延迟: {checkResult.latency}ms
+              {checkResult.latency < 500 ? ' (很快)' : checkResult.latency < 2000 ? ' (正常)' : ' (较慢)'}
+            </div>
+          )}
+          {!isSuccess && checkResult.message && (
+            <div style={{ color: '#e08080', fontSize: '0.85rem', marginTop: '0.25rem', wordBreak: 'break-word' }}>
+              {checkResult.message}
+            </div>
+          )}
+        </div>
+
+        {/* 请求详情 */}
+        <div style={{ marginBottom: '0.75rem' }}>
+          <div style={sectionHeaderStyle}>请求详情</div>
+
+          {checkResult.requestEndpoint && (
+            <div style={{ marginBottom: '0.5rem' }}>
+              <div style={{ fontSize: '0.75rem', color: '#6a6a8a', marginBottom: '0.15rem' }}>接口地址</div>
+              <div style={{
+                padding: '0.4rem 0.6rem', backgroundColor: '#0a0a1a', borderRadius: '4px',
+                fontSize: '0.8rem', color: '#c0c0d0', fontFamily: 'monospace',
+                wordBreak: 'break-all', border: '1px solid #1e1e30',
+              }}>
+                {checkResult.requestEndpoint}
+              </div>
+            </div>
+          )}
+
+          {checkResult.requestModel && (
+            <div style={{ marginBottom: '0.5rem' }}>
+              <div style={{ fontSize: '0.75rem', color: '#6a6a8a', marginBottom: '0.15rem' }}>模型</div>
+              <div style={{
+                padding: '0.4rem 0.6rem', backgroundColor: '#0a0a1a', borderRadius: '4px',
+                fontSize: '0.8rem', color: '#c0c0d0', fontFamily: 'monospace',
+                border: '1px solid #1e1e30',
+              }}>
+                {checkResult.requestModel}
+              </div>
+            </div>
+          )}
+
+          {checkResult.testPrompt && (
+            <div style={{ marginBottom: '0.5rem' }}>
+              <div style={{ fontSize: '0.75rem', color: '#6a6a8a', marginBottom: '0.15rem' }}>提示词</div>
+              <div style={{
+                padding: '0.4rem 0.6rem', backgroundColor: '#0a0a1a', borderRadius: '4px',
+                fontSize: '0.8rem', color: '#c0c0d0', fontFamily: 'monospace',
+                border: '1px solid #1e1e30', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+              }}>
+                {checkResult.testPrompt}
+              </div>
+            </div>
+          )}
+
+          {checkResult.requestHeaders && (
+            <div style={{ marginBottom: '0.5rem' }}>
+              <div style={{ fontSize: '0.75rem', color: '#6a6a8a', marginBottom: '0.15rem' }}>请求头</div>
+              <pre style={{
+                padding: '0.5rem 0.6rem', backgroundColor: '#0a0a1a', borderRadius: '4px',
+                fontSize: '0.75rem', color: '#8888aa', fontFamily: 'monospace',
+                border: '1px solid #1e1e30', margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+                maxHeight: '120px', overflowY: 'auto',
+              }}>
+                {formatJson(checkResult.requestHeaders)}
+              </pre>
+            </div>
+          )}
+
+          {checkResult.requestBody && (
+            <div style={{ marginBottom: '0.5rem' }}>
+              <div style={{ fontSize: '0.75rem', color: '#6a6a8a', marginBottom: '0.15rem' }}>请求体</div>
+              <pre style={{
+                padding: '0.5rem 0.6rem', backgroundColor: '#0a0a1a', borderRadius: '4px',
+                fontSize: '0.75rem', color: '#8888aa', fontFamily: 'monospace',
+                border: '1px solid #1e1e30', margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+                maxHeight: '200px', overflowY: 'auto',
+              }}>
+                {formatJson(checkResult.requestBody)}
+              </pre>
+            </div>
+          )}
+        </div>
+
+        {/* 响应详情 */}
+        <div style={{ marginBottom: '0.75rem' }}>
+          <div style={sectionHeaderStyle}>响应详情</div>
+
+          {checkResult.responseStatus != null && (
+            <div style={{ marginBottom: '0.5rem' }}>
+              <div style={{ fontSize: '0.75rem', color: '#6a6a8a', marginBottom: '0.15rem' }}>状态码</div>
+              <span style={{
+                display: 'inline-block', padding: '0.2rem 0.6rem', borderRadius: '4px',
+                fontSize: '0.85rem', fontWeight: 600, fontFamily: 'monospace',
+                backgroundColor: checkResult.responseStatus >= 200 && checkResult.responseStatus < 300
+                  ? 'rgba(46,125,50,0.2)' : 'rgba(224,96,96,0.2)',
+                color: checkResult.responseStatus >= 200 && checkResult.responseStatus < 300
+                  ? '#a5d6a7' : '#e06060',
+              }}>
+                {checkResult.responseStatus}
+              </span>
+            </div>
+          )}
+
+          {/* 文本响应 */}
+          {checkResult.responsePreview && (
+            <div style={{ marginBottom: '0.5rem' }}>
+              <div style={{ fontSize: '0.75rem', color: '#6a6a8a', marginBottom: '0.15rem' }}>AI 响应</div>
+              <div style={{
+                padding: '0.6rem', backgroundColor: '#0a0a1a', borderRadius: '6px',
+                fontSize: '0.85rem', color: '#c0c0d0', lineHeight: 1.6,
+                border: '1px solid #1e1e30',
+                maxHeight: '200px', overflowY: 'auto',
+                whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+              }}>
+                {checkResult.responsePreview}
+              </div>
+            </div>
+          )}
+
+          {/* 图片 */}
+          {checkResult.mediaUrl && checkResult.mediaType === 'image' && (
+            <div style={{ marginBottom: '0.5rem' }}>
+              <div style={{ fontSize: '0.75rem', color: '#6a6a8a', marginBottom: '0.25rem' }}>测试图片</div>
+              <img
+                src={convertFileSrc(checkResult.mediaUrl)}
+                alt="Test result"
+                style={{ maxWidth: '100%', maxHeight: '250px', borderRadius: '8px', border: '1px solid #2a2a3a' }}
+              />
+            </div>
+          )}
+
+          {/* 音频 */}
+          {checkResult.mediaUrl && checkResult.mediaType === 'audio' && (
+            <div style={{ marginBottom: '0.5rem' }}>
+              <div style={{ fontSize: '0.75rem', color: '#6a6a8a', marginBottom: '0.25rem' }}>测试音频</div>
+              <audio controls src={convertFileSrc(checkResult.mediaUrl)} style={{ width: '100%' }} />
+            </div>
+          )}
+
+          {/* 视频 */}
+          {checkResult.mediaUrl && checkResult.mediaType === 'video' && (
+            <div style={{ marginBottom: '0.5rem' }}>
+              <div style={{ fontSize: '0.75rem', color: '#6a6a8a', marginBottom: '0.25rem' }}>测试视频</div>
+              <video controls src={convertFileSrc(checkResult.mediaUrl)} style={{ maxWidth: '100%', maxHeight: '250px', borderRadius: '8px' }} />
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div style={{
       position: 'fixed', inset: 0,
@@ -356,447 +545,340 @@ export default function ProviderConfigModal({
     }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div style={{
         backgroundColor: '#16162a', border: '1px solid #2a2a3a',
-        borderRadius: '12px', padding: '2rem',
-        width: '90%', maxWidth: '600px', maxHeight: '85vh', overflowY: 'auto',
+        borderRadius: '12px',
+        width: '95%', maxWidth: checkResult ? '1100px' : '600px',
+        maxHeight: '88vh',
+        display: 'flex',
+        transition: 'max-width 0.3s ease',
       }} onClick={e => e.stopPropagation()}>
-        {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
-          <div>
-            <h3 style={{ fontSize: '1.2rem', fontWeight: 600, color: '#e0e0f0', marginBottom: '0.25rem' }}>
-              {isNew ? '添加自定义模型' : editedProvider.name}
-            </h3>
-            {!isNew && (
-              <span style={{
-                display: 'inline-flex', alignItems: 'center', gap: '6px',
-                fontSize: '0.8rem', color: '#aaaacc',
-              }}>
+        {/* ===== 左侧：配置表单 ===== */}
+        <div style={{
+          flex: '0 0 420px', maxWidth: '420px',
+          padding: '1.5rem',
+          overflowY: 'auto',
+          borderRight: checkResult ? '1px solid #2a2a3a' : 'none',
+        }}>
+          {/* Header */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
+            <div>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#e0e0f0', marginBottom: '0.2rem' }}>
+                {isNew ? '添加自定义模型' : editedProvider.name}
+              </h3>
+              {!isNew && (
                 <span style={{
-                  width: '8px', height: '8px', borderRadius: '50%',
-                  backgroundColor: getStatusColor(editedProvider.status),
-                }} />
-                {getStatusLabel(editedProvider.status)}
-              </span>
-            )}
-          </div>
-          <button
-            onClick={onClose}
-            style={{
-              background: 'none', border: 'none', color: '#666680', fontSize: '1.2rem',
-              cursor: 'pointer', padding: '0.25rem',
-            }}
-          >
-            ✕
-          </button>
-        </div>
-
-        {/* ===== Section: 基本信息 ===== */}
-        <div style={{ marginBottom: '1.5rem' }}>
-          <div style={sectionHeaderStyle}>基本信息</div>
-
-          {/* 提供商/名称 */}
-          <div style={{ marginBottom: '1rem' }}>
-            <label style={labelStyle}>提供商 / 名称</label>
-            <input
-              type="text"
-              value={editedProvider.name}
-              onChange={e => handleNameChange(e.target.value)}
-              placeholder="输入提供商名称"
-              style={inputStyle}
-            />
-          </div>
-
-          {/* 描述 */}
-          <div style={{ marginBottom: '1rem' }}>
-            <label style={labelStyle}>描述</label>
-            <input
-              type="text"
-              value={editedProvider.description}
-              onChange={e => handleDescriptionChange(e.target.value)}
-              placeholder="输入描述信息"
-              style={inputStyle}
-            />
-          </div>
-
-          {/* 是否多模态 */}
-          <div style={{ marginBottom: '0.5rem' }}>
-            <label style={{
-              display: 'flex', alignItems: 'center', gap: '0.5rem',
-              fontSize: '0.9rem', color: '#c0c0d0', cursor: 'pointer',
-            }}>
-              <input
-                type="checkbox"
-                checked={isMultimodal}
-                onChange={e => handleMultimodalChange(e.target.checked)}
-                style={{ width: '16px', height: '16px', cursor: 'pointer' }}
-              />
-              是否多模态
-            </label>
-          </div>
-          {/* 多模态选择 */}
-          {isMultimodal && (
-            <div style={{ marginBottom: '1rem', paddingLeft: '1.5rem', display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
-              {MODALITY_OPTIONS.map(opt => (
-                <label key={opt.value} style={{
-                  display: 'flex', alignItems: 'center', gap: '0.35rem',
-                  fontSize: '0.85rem', color: '#9999bb', cursor: 'pointer',
+                  display: 'inline-flex', alignItems: 'center', gap: '6px',
+                  fontSize: '0.75rem', color: '#aaaacc',
                 }}>
-                  <input
-                    type="checkbox"
-                    checked={editedProvider.modality.includes(opt.value)}
-                    onChange={e => handleModalityToggle(opt.value, e.target.checked)}
-                    style={{ cursor: 'pointer' }}
-                  />
-                  {opt.label}
-                </label>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* ===== Section: 接口配置 ===== */}
-        <div style={{ marginBottom: '1.5rem' }}>
-          <div style={sectionHeaderStyle}>接口配置</div>
-
-          {/* 接口格式 */}
-          <div style={{ marginBottom: '1rem' }}>
-            <label style={labelStyle}>接口格式</label>
-            <input
-              type="text"
-              value="OPENAI"
-              readOnly
-              style={readOnlyStyle}
-            />
-          </div>
-
-          {/* 请求地址 */}
-          <div style={{ marginBottom: '1rem' }}>
-            <label style={labelStyle}>请求地址</label>
-            <input
-              type="text"
-              value={currentEndpoint}
-              onChange={e => handleEndpointChange(e.target.value)}
-              placeholder="https://api.example.com/v1"
-              style={inputStyle}
-            />
-            <span style={{ fontSize: '0.75rem', color: '#666680', marginTop: '0.25rem', display: 'block' }}>
-              {currentEndpoint.includes('/chat/completions') || currentEndpoint.includes('/completions')
-                ? '当前为完整 URL，调用时将直接使用此地址'
-                : '当前为基础 URL，调用时将自动追加 /chat/completions'}
-            </span>
-            {isMultimodal && selectedModelId && selectedModelId !== CUSTOM_MODEL_ID && (
-              <span style={{ fontSize: '0.75rem', color: '#e0a040', marginTop: '0.25rem', display: 'block' }}>
-                多模态模式下，切换模型 ID 会显示该模型的独立接口地址
-              </span>
-            )}
-          </div>
-
-          {/* 模型ID */}
-          <div style={{ marginBottom: '1rem' }}>
-            <label style={labelStyle}>模型 ID</label>
-            {editedProvider.models.length > 0 && !isCustomModel ? (
-              <div>
-                <select
-                  value={selectedModelId}
-                  onChange={e => handleModelSelectChange(e.target.value)}
-                  style={selectStyle}
-                >
-                  {editedProvider.models.map(model => (
-                    <option key={model.id} value={model.id}>
-                      {model.id}
-                    </option>
-                  ))}
-                  <option value={CUSTOM_MODEL_ID}>自定义...</option>
-                </select>
-              </div>
-            ) : (
-              <div>
-                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                  <input
-                    type="text"
-                    value={customModelInput}
-                    onChange={e => setCustomModelInput(e.target.value)}
-                    placeholder="输入自定义模型 ID"
-                    style={{ ...inputStyle, flex: 1 }}
-                    onKeyDown={e => { if (e.key === 'Enter') handleCustomModelConfirm(); }}
-                  />
-                  <button
-                    className="btn btn-secondary"
-                    style={{ padding: '0.6rem 0.8rem', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
-                    onClick={handleCustomModelConfirm}
-                    disabled={!customModelInput.trim()}
-                  >
-                    确认
-                  </button>
-                  {editedProvider.models.length > 0 && (
-                    <button
-                      className="btn btn-secondary"
-                      style={{ padding: '0.6rem 0.8rem', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
-                      onClick={() => { setIsCustomModel(false); setSelectedModelId(defaultModel?.id || ''); }}
-                    >
-                      取消
-                    </button>
-                  )}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <label style={{ fontSize: '0.85rem', color: '#9999bb', whiteSpace: 'nowrap' }}>模态类型:</label>
-                  <select
-                    value={customModelModality}
-                    onChange={e => setCustomModelModality(e.target.value as AIModality)}
-                    style={{ ...selectStyle, flex: 1 }}
-                  >
-                    {editedProvider.modality.map(mod => {
-                      const opt = MODALITY_OPTIONS.find(o => o.value === mod);
-                      return (
-                        <option key={mod} value={mod}>
-                          {opt?.label || mod}
-                        </option>
-                      );
-                    })}
-                  </select>
-                </div>
-              </div>
-            )}
-            {/* 模型说明信息 */}
-            {selectedModelId && !isCustomModel && selectedModelId !== CUSTOM_MODEL_ID && (() => {
-              const selectedModel = editedProvider.models.find(m => m.id === selectedModelId);
-              if (!selectedModel) return null;
-              const isBuiltinModel = provider?.models.some(m => m.id === selectedModelId);
-              return (
-                <div style={{
-                  marginTop: '0.5rem', padding: '0.6rem 0.8rem',
-                  backgroundColor: '#0a0a1a', borderRadius: '6px',
-                  fontSize: '0.8rem', color: '#8888aa',
-                  border: '1px solid #1e1e30',
-                }}>
-                  {selectedModel.name !== selectedModel.id && (
-                    <div>名称: {selectedModel.name}</div>
-                  )}
-                  <div>模态: {selectedModel.modality === 'text' ? '文本' : selectedModel.modality === 'image' ? '图片' : selectedModel.modality === 'video' ? '视频' : selectedModel.modality === 'music' ? '音乐' : '语音'}</div>
-                  {selectedModel.quality && <div>质量: {selectedModel.quality === 'fast' ? '快速' : selectedModel.quality === 'standard' ? '标准' : '高质量'}</div>}
-                  {selectedModel.freeQuota && <div style={{ color: '#a5d6a7' }}>免费额度: {selectedModel.freeQuota}</div>}
-                  {selectedModel.maxTokens && <div>最大 Token: {selectedModel.maxTokens}</div>}
-                  {selectedModel.endpoint && selectedModel.endpoint !== currentEndpoint && (
-                    <div style={{ color: '#e0a040' }}>独立接口: {selectedModel.endpoint}</div>
-                  )}
-                  <div style={{ marginTop: '0.3rem', fontSize: '0.75rem', color: '#555570', fontStyle: 'italic' }}>
-                    * 优化信息仅供参考，以服务商官方文档为准
-                  </div>
-                  {!isBuiltinModel && editedProvider.models.length > 1 && (
-                    <button
-                      onClick={() => handleDeleteModel(selectedModelId)}
-                      style={{
-                        marginTop: '0.5rem', padding: '0.3rem 0.6rem',
-                        fontSize: '0.75rem', color: '#e06060',
-                        backgroundColor: 'rgba(224,96,96,0.1)',
-                        border: '1px solid rgba(224,96,96,0.3)',
-                        borderRadius: '4px', cursor: 'pointer',
-                      }}
-                    >
-                      删除此模型
-                    </button>
-                  )}
-                </div>
-              );
-            })()}
-          </div>
-        </div>
-
-        {/* ===== Section: 认证配置 ===== */}
-        <div style={{ marginBottom: '1.5rem' }}>
-          <div style={sectionHeaderStyle}>认证配置</div>
-
-          {/* API Key */}
-          {editedProvider.authType === 'api_key' && editedProvider.authConfig.apiKey && (
-            <div style={{ marginBottom: '1rem' }}>
-              <label style={labelStyle}>
-                {editedProvider.authConfig.apiKey.label || 'API 秘钥'}
-              </label>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <input
-                  type={showApiKey ? 'text' : 'password'}
-                  value={editedProvider.authConfig.apiKey.value || ''}
-                  onChange={e => handleApiKeyChange(e.target.value)}
-                  placeholder={editedProvider.authConfig.apiKey.placeholder || '输入 API Key'}
-                  style={{ ...inputStyle, flex: 1 }}
-                />
-                <button className="btn btn-secondary" style={{ padding: '0.6rem 0.8rem', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
-                  onClick={() => setShowApiKey(!showApiKey)}>
-                  {showApiKey ? '隐藏' : '显示'}
-                </button>
-              </div>
-              {editedProvider.authConfig.apiKey.helpUrl && (
-                <a href={editedProvider.authConfig.apiKey.helpUrl} target="_blank" rel="noopener noreferrer"
-                  style={{ display: 'inline-block', marginTop: '0.4rem', fontSize: '0.8rem', color: '#4a90d9', textDecoration: 'none' }}>
-                  获取 API Key →
-                </a>
+                  <span style={{
+                    width: '7px', height: '7px', borderRadius: '50%',
+                    backgroundColor: getStatusColor(editedProvider.status),
+                  }} />
+                  {getStatusLabel(editedProvider.status)}
+                </span>
               )}
             </div>
-          )}
-
-          {/* Extra Params */}
-          {editedProvider.authConfig.extraParams && Object.entries(editedProvider.authConfig.extraParams).map(([key, field]) => (
-            <div key={key} style={{ marginBottom: '1rem' }}>
-              <label style={labelStyle}>{field.label}</label>
-              <input
-                type={field.secret ? 'password' : 'text'}
-                value={field.value || ''}
-                onChange={e => handleExtraParamChange(key, e.target.value)}
-                placeholder={field.placeholder}
-                style={inputStyle}
-              />
-            </div>
-          ))}
-
-          {/* Test Prompt */}
-          <div style={{ marginBottom: '1rem' }}>
-            <label style={labelStyle}>测试提示词</label>
-            <input
-              type="text"
-              value={testPrompt}
-              onChange={e => setTestPrompt(e.target.value)}
-              placeholder="输入测试提示词（默认: hi）"
-              style={inputStyle}
-            />
-            <span style={{ fontSize: '0.75rem', color: '#666680', marginTop: '0.25rem', display: 'block' }}>
-              连接测试时发送给 AI 的提示词，仅对文本类服务商有效
-            </span>
-          </div>
-        </div>
-
-        {/* ===== Free Quota Info ===== */}
-        {defaultModel?.freeQuota && (
-          <div style={{
-            marginBottom: '1.25rem', padding: '0.75rem',
-            backgroundColor: 'rgba(46,125,50,0.1)', border: '1px solid rgba(46,125,50,0.3)',
-            borderRadius: '8px', fontSize: '0.85rem', color: '#a5d6a7',
-          }}>
-            免费额度：{defaultModel.freeQuota}
-          </div>
-        )}
-
-        {/* ===== Registration Guide (only for built-in) ===== */}
-        {!isNew && (editedProvider.officialUrl || editedProvider.registerUrl || editedProvider.docsUrl) && (
-          <div style={{
-            marginBottom: '1.5rem', padding: '0.75rem',
-            backgroundColor: '#0a0a1a', borderRadius: '8px', fontSize: '0.85rem',
-          }}>
-            <div style={{ color: '#9999bb', marginBottom: '0.5rem' }}>注册指引</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-              {editedProvider.officialUrl && (
-                <a href={editedProvider.officialUrl} target="_blank" rel="noopener noreferrer"
-                  style={{ color: '#4a90d9', textDecoration: 'none', fontSize: '0.8rem' }}>官方网站 →</a>
-              )}
-              {editedProvider.registerUrl && (
-                <a href={editedProvider.registerUrl} target="_blank" rel="noopener noreferrer"
-                  style={{ color: '#4a90d9', textDecoration: 'none', fontSize: '0.8rem' }}>注册账号 →</a>
-              )}
-              {editedProvider.docsUrl && (
-                <a href={editedProvider.docsUrl} target="_blank" rel="noopener noreferrer"
-                  style={{ color: '#4a90d9', textDecoration: 'none', fontSize: '0.8rem' }}>API 文档 →</a>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* ===== Check Result (紧贴按钮上方) ===== */}
-        {checkResult && (
-          <div style={{
-            marginBottom: '0.75rem', padding: '1rem',
-            backgroundColor: checkResult.status === 'ok' ? 'rgba(46,125,50,0.15)' : 'rgba(224,96,96,0.15)',
-            border: `2px solid ${checkResult.status === 'ok' ? 'rgba(46,125,50,0.5)' : 'rgba(224,96,96,0.5)'}`,
-            borderRadius: '10px', fontSize: '0.9rem',
-            color: checkResult.status === 'ok' ? '#a5d6a7' : '#e06060',
-          }}>
-            <div style={{ fontWeight: 600, fontSize: '1rem', marginBottom: '0.3rem' }}>
-              {checkResult.status === 'ok' ? '✓ 连接成功' : `✗ 连接失败`}
-            </div>
-            {checkResult.status === 'ok' && checkResult.latency != null && (
-              <div style={{ color: '#9999bb', fontSize: '0.85rem' }}>
-                延迟: {checkResult.latency}ms
-                {checkResult.latency < 500 ? ' (很快)' : checkResult.latency < 2000 ? ' (正常)' : ' (较慢)'}
-              </div>
-            )}
-            {checkResult.status !== 'ok' && checkResult.message && (
-              <div style={{ color: '#e08080', fontSize: '0.85rem', marginTop: '0.25rem' }}>
-                {checkResult.message}
-              </div>
-            )}
-            {checkResult.responsePreview && (
-              <div style={{
-                marginTop: '0.5rem', padding: '0.6rem',
-                backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: '6px',
-                fontSize: '0.8rem', color: '#c0c0d0',
-                maxHeight: '150px', overflowY: 'auto',
-                whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-              }}>
-                <div style={{ color: '#6a6a8a', marginBottom: '0.25rem' }}>AI 响应:</div>
-                {checkResult.responsePreview}
-              </div>
-            )}
-            {checkResult.mediaUrl && checkResult.mediaType === 'image' && (
-              <div style={{ marginTop: '0.5rem' }}>
-                <div style={{ color: '#6a6a8a', marginBottom: '0.25rem', fontSize: '0.8rem' }}>测试图片:</div>
-                <img
-                  src={convertFileSrc(checkResult.mediaUrl)}
-                  alt="Test result"
-                  style={{ maxWidth: '100%', maxHeight: '200px', borderRadius: '8px', border: '1px solid #2a2a3a' }}
-                />
-              </div>
-            )}
-            {checkResult.mediaUrl && checkResult.mediaType === 'audio' && (
-              <div style={{ marginTop: '0.5rem' }}>
-                <div style={{ color: '#6a6a8a', marginBottom: '0.25rem', fontSize: '0.8rem' }}>测试音频:</div>
-                <audio controls src={convertFileSrc(checkResult.mediaUrl)} style={{ width: '100%' }} />
-              </div>
-            )}
-            {checkResult.mediaUrl && checkResult.mediaType === 'video' && (
-              <div style={{ marginTop: '0.5rem' }}>
-                <div style={{ color: '#6a6a8a', marginBottom: '0.25rem', fontSize: '0.8rem' }}>测试视频:</div>
-                <video controls src={convertFileSrc(checkResult.mediaUrl)} style={{ maxWidth: '100%', maxHeight: '200px', borderRadius: '8px' }} />
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ===== Save Result (紧贴按钮上方) ===== */}
-        {saveResult && (
-          <div style={{
-            marginBottom: '0.75rem', padding: '0.7rem 1rem',
-            backgroundColor: saveResult === 'success' ? 'rgba(46,125,50,0.15)' : 'rgba(224,96,96,0.15)',
-            border: `2px solid ${saveResult === 'success' ? 'rgba(46,125,50,0.5)' : 'rgba(224,96,96,0.5)'}`,
-            borderRadius: '10px', fontSize: '0.9rem',
-            color: saveResult === 'success' ? '#a5d6a7' : '#e06060',
-            fontWeight: 600,
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          }}>
-            <span>{saveResult === 'success' ? '✓ 保存成功' : '✗ 保存失败，请重试'}</span>
             <button
-              onClick={() => setSaveResult(null)}
-              style={{ background: 'none', border: 'none', color: '#8888aa', cursor: 'pointer', fontSize: '0.8rem', padding: '0.2rem' }}
+              onClick={onClose}
+              style={{
+                background: 'none', border: 'none', color: '#666680', fontSize: '1.1rem',
+                cursor: 'pointer', padding: '0.2rem',
+              }}
             >
               ✕
             </button>
           </div>
-        )}
 
-        {/* ===== Actions ===== */}
-        <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-          <button className="btn btn-secondary" onClick={onClose}
-            style={{ padding: '0.6rem 1.2rem', fontSize: '0.9rem' }}>
-            取消
-          </button>
-          <button className="btn btn-secondary" onClick={handleCheck}
-            disabled={checking || saving}
-            style={{ padding: '0.6rem 1.2rem', fontSize: '0.9rem' }}>
-            {checking ? '检测中...' : saving ? '保存中...' : '测试连接'}
-          </button>
-          <button className="btn btn-primary" onClick={handleSave}
-            disabled={saving}
-            style={{ padding: '0.6rem 1.2rem', fontSize: '0.9rem' }}>
-            {saving ? '保存中...' : '保存'}
-          </button>
+          {/* ===== Section: 基本信息 ===== */}
+          <div style={{ marginBottom: '1.25rem' }}>
+            <div style={sectionHeaderStyle}>基本信息</div>
+
+            <div style={{ marginBottom: '0.75rem' }}>
+              <label style={labelStyle}>提供商 / 名称</label>
+              <input type="text" value={editedProvider.name}
+                onChange={e => handleNameChange(e.target.value)}
+                placeholder="输入提供商名称" style={inputStyle} />
+            </div>
+
+            <div style={{ marginBottom: '0.75rem' }}>
+              <label style={labelStyle}>描述</label>
+              <input type="text" value={editedProvider.description}
+                onChange={e => handleDescriptionChange(e.target.value)}
+                placeholder="输入描述信息" style={inputStyle} />
+            </div>
+
+            <div style={{ marginBottom: '0.4rem' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: '#c0c0d0', cursor: 'pointer' }}>
+                <input type="checkbox" checked={isMultimodal}
+                  onChange={e => handleMultimodalChange(e.target.checked)}
+                  style={{ width: '15px', height: '15px', cursor: 'pointer' }} />
+                是否多模态
+              </label>
+            </div>
+            {isMultimodal && (
+              <div style={{ marginBottom: '0.75rem', paddingLeft: '1.25rem', display: 'flex', flexWrap: 'wrap', gap: '0.6rem' }}>
+                {MODALITY_OPTIONS.map(opt => (
+                  <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem', color: '#9999bb', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={editedProvider.modality.includes(opt.value)}
+                      onChange={e => handleModalityToggle(opt.value, e.target.checked)} style={{ cursor: 'pointer' }} />
+                    {opt.label}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* ===== Section: 接口配置 ===== */}
+          <div style={{ marginBottom: '1.25rem' }}>
+            <div style={sectionHeaderStyle}>接口配置</div>
+
+            <div style={{ marginBottom: '0.75rem' }}>
+              <label style={labelStyle}>接口格式</label>
+              <input type="text" value="OPENAI" readOnly style={readOnlyStyle} />
+            </div>
+
+            <div style={{ marginBottom: '0.75rem' }}>
+              <label style={labelStyle}>请求地址</label>
+              <input type="text" value={currentEndpoint}
+                onChange={e => handleEndpointChange(e.target.value)}
+                placeholder="https://api.example.com/v1" style={inputStyle} />
+              <span style={{ fontSize: '0.7rem', color: '#666680', marginTop: '0.2rem', display: 'block' }}>
+                {currentEndpoint.includes('/chat/completions') || currentEndpoint.includes('/completions')
+                  ? '当前为完整 URL，调用时将直接使用此地址'
+                  : '当前为基础 URL，调用时将自动追加 /chat/completions'}
+              </span>
+            </div>
+
+            {/* 模型ID */}
+            <div style={{ marginBottom: '0.75rem' }}>
+              <label style={labelStyle}>模型 ID</label>
+              {editedProvider.models.length > 0 && !isCustomModel ? (
+                <select value={selectedModelId} onChange={e => handleModelSelectChange(e.target.value)} style={selectStyle}>
+                  {editedProvider.models.map(model => (
+                    <option key={model.id} value={model.id}>{model.id}</option>
+                  ))}
+                  <option value={CUSTOM_MODEL_ID}>自定义...</option>
+                </select>
+              ) : (
+                <div>
+                  <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.4rem' }}>
+                    <input type="text" value={customModelInput}
+                      onChange={e => setCustomModelInput(e.target.value)}
+                      placeholder="输入自定义模型 ID"
+                      style={{ ...inputStyle, flex: 1 }}
+                      onKeyDown={e => { if (e.key === 'Enter') handleCustomModelConfirm(); }} />
+                    <button className="btn btn-secondary"
+                      style={{ padding: '0.5rem 0.6rem', fontSize: '0.75rem', whiteSpace: 'nowrap' }}
+                      onClick={handleCustomModelConfirm} disabled={!customModelInput.trim()}>
+                      确认
+                    </button>
+                    {editedProvider.models.length > 0 && (
+                      <button className="btn btn-secondary"
+                        style={{ padding: '0.5rem 0.6rem', fontSize: '0.75rem', whiteSpace: 'nowrap' }}
+                        onClick={() => { setIsCustomModel(false); setSelectedModelId(defaultModel?.id || ''); }}>
+                        取消
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <label style={{ fontSize: '0.8rem', color: '#9999bb', whiteSpace: 'nowrap' }}>模态:</label>
+                    <select value={customModelModality}
+                      onChange={e => setCustomModelModality(e.target.value as AIModality)}
+                      style={{ ...selectStyle, flex: 1 }}>
+                      {editedProvider.modality.map(mod => {
+                        const opt = MODALITY_OPTIONS.find(o => o.value === mod);
+                        return <option key={mod} value={mod}>{opt?.label || mod}</option>;
+                      })}
+                    </select>
+                  </div>
+                </div>
+              )}
+              {/* 模型说明 */}
+              {selectedModelId && !isCustomModel && selectedModelId !== CUSTOM_MODEL_ID && (() => {
+                const sm = editedProvider.models.find(m => m.id === selectedModelId);
+                if (!sm) return null;
+                const isBuiltin = provider?.models.some(m => m.id === selectedModelId);
+                return (
+                  <div style={{
+                    marginTop: '0.4rem', padding: '0.5rem 0.6rem',
+                    backgroundColor: '#0a0a1a', borderRadius: '6px',
+                    fontSize: '0.75rem', color: '#8888aa', border: '1px solid #1e1e30',
+                  }}>
+                    {sm.name !== sm.id && <div>名称: {sm.name}</div>}
+                    <div>模态: {MODALITY_OPTIONS.find(o => o.value === sm.modality)?.label || sm.modality}</div>
+                    {sm.quality && <div>质量: {sm.quality === 'fast' ? '快速' : sm.quality === 'standard' ? '标准' : '高质量'}</div>}
+                    {sm.freeQuota && <div style={{ color: '#a5d6a7' }}>免费额度: {sm.freeQuota}</div>}
+                    {sm.maxTokens && <div>最大 Token: {sm.maxTokens}</div>}
+                    {!isBuiltin && editedProvider.models.length > 1 && (
+                      <button onClick={() => handleDeleteModel(selectedModelId)}
+                        style={{
+                          marginTop: '0.3rem', padding: '0.2rem 0.5rem',
+                          fontSize: '0.7rem', color: '#e06060',
+                          backgroundColor: 'rgba(224,96,96,0.1)',
+                          border: '1px solid rgba(224,96,96,0.3)',
+                          borderRadius: '4px', cursor: 'pointer',
+                        }}>
+                        删除此模型
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+
+          {/* ===== Section: 认证配置 ===== */}
+          <div style={{ marginBottom: '1.25rem' }}>
+            <div style={sectionHeaderStyle}>认证配置</div>
+
+            {editedProvider.authType === 'api_key' && editedProvider.authConfig.apiKey && (
+              <div style={{ marginBottom: '0.75rem' }}>
+                <label style={labelStyle}>{editedProvider.authConfig.apiKey.label || 'API 秘钥'}</label>
+                <div style={{ display: 'flex', gap: '0.4rem' }}>
+                  <input type={showApiKey ? 'text' : 'password'}
+                    value={editedProvider.authConfig.apiKey.value || ''}
+                    onChange={e => handleApiKeyChange(e.target.value)}
+                    placeholder={editedProvider.authConfig.apiKey.placeholder || '输入 API Key'}
+                    style={{ ...inputStyle, flex: 1 }} />
+                  <button className="btn btn-secondary" style={{ padding: '0.5rem 0.6rem', fontSize: '0.75rem', whiteSpace: 'nowrap' }}
+                    onClick={() => setShowApiKey(!showApiKey)}>
+                    {showApiKey ? '隐藏' : '显示'}
+                  </button>
+                </div>
+                {editedProvider.authConfig.apiKey.helpUrl && (
+                  <a href={editedProvider.authConfig.apiKey.helpUrl} target="_blank" rel="noopener noreferrer"
+                    style={{ display: 'inline-block', marginTop: '0.3rem', fontSize: '0.75rem', color: '#4a90d9', textDecoration: 'none' }}>
+                    获取 API Key →
+                  </a>
+                )}
+              </div>
+            )}
+
+            {editedProvider.authConfig.extraParams && Object.entries(editedProvider.authConfig.extraParams).map(([key, field]) => (
+              <div key={key} style={{ marginBottom: '0.75rem' }}>
+                <label style={labelStyle}>{field.label}</label>
+                <input type={field.secret ? 'password' : 'text'}
+                  value={field.value || ''} onChange={e => handleExtraParamChange(key, e.target.value)}
+                  placeholder={field.placeholder} style={inputStyle} />
+              </div>
+            ))}
+
+            <div style={{ marginBottom: '0.75rem' }}>
+              <label style={labelStyle}>测试提示词</label>
+              <input type="text" value={testPrompt}
+                onChange={e => setTestPrompt(e.target.value)}
+                placeholder="输入测试提示词（默认: hi）" style={inputStyle} />
+              <span style={{ fontSize: '0.7rem', color: '#666680', marginTop: '0.2rem', display: 'block' }}>
+                连接测试时发送给 AI 的提示词，仅对文本类服务商有效
+              </span>
+            </div>
+          </div>
+
+          {/* Free Quota */}
+          {defaultModel?.freeQuota && (
+            <div style={{
+              marginBottom: '1rem', padding: '0.6rem',
+              backgroundColor: 'rgba(46,125,50,0.1)', border: '1px solid rgba(46,125,50,0.3)',
+              borderRadius: '8px', fontSize: '0.8rem', color: '#a5d6a7',
+            }}>
+              免费额度：{defaultModel.freeQuota}
+            </div>
+          )}
+
+          {/* Registration Guide */}
+          {!isNew && (editedProvider.officialUrl || editedProvider.registerUrl || editedProvider.docsUrl) && (
+            <div style={{
+              marginBottom: '1rem', padding: '0.6rem',
+              backgroundColor: '#0a0a1a', borderRadius: '8px', fontSize: '0.8rem',
+            }}>
+              <div style={{ color: '#9999bb', marginBottom: '0.3rem' }}>注册指引</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                {editedProvider.officialUrl && (
+                  <a href={editedProvider.officialUrl} target="_blank" rel="noopener noreferrer"
+                    style={{ color: '#4a90d9', textDecoration: 'none', fontSize: '0.75rem' }}>官方网站 →</a>
+                )}
+                {editedProvider.registerUrl && (
+                  <a href={editedProvider.registerUrl} target="_blank" rel="noopener noreferrer"
+                    style={{ color: '#4a90d9', textDecoration: 'none', fontSize: '0.75rem' }}>注册账号 →</a>
+                )}
+                {editedProvider.docsUrl && (
+                  <a href={editedProvider.docsUrl} target="_blank" rel="noopener noreferrer"
+                    style={{ color: '#4a90d9', textDecoration: 'none', fontSize: '0.75rem' }}>API 文档 →</a>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Save Result */}
+          {saveResult && (
+            <div style={{
+              marginBottom: '0.5rem', padding: '0.5rem 0.8rem',
+              backgroundColor: saveResult === 'success' ? 'rgba(46,125,50,0.15)' : 'rgba(224,96,96,0.15)',
+              border: `2px solid ${saveResult === 'success' ? 'rgba(46,125,50,0.5)' : 'rgba(224,96,96,0.5)'}`,
+              borderRadius: '8px', fontSize: '0.85rem',
+              color: saveResult === 'success' ? '#a5d6a7' : '#e06060',
+              fontWeight: 600, display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            }}>
+              <span>{saveResult === 'success' ? '✓ 保存成功' : '✗ 保存失败'}</span>
+              <button onClick={() => setSaveResult(null)}
+                style={{ background: 'none', border: 'none', color: '#8888aa', cursor: 'pointer', fontSize: '0.75rem', padding: '0.1rem' }}>
+                ✕
+              </button>
+            </div>
+          )}
+
+          {/* Actions */}
+          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+            <button className="btn btn-secondary" onClick={onClose}
+              style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}>
+              取消
+            </button>
+            <button className="btn btn-secondary" onClick={handleCheck}
+              disabled={checking || saving}
+              style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}>
+              {checking ? '检测中...' : saving ? '保存中...' : '测试连接'}
+            </button>
+            <button className="btn btn-primary" onClick={handleSave}
+              disabled={saving}
+              style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}>
+              {saving ? '保存中...' : '保存'}
+            </button>
+          </div>
         </div>
+
+        {/* ===== 右侧：测试结果面板 ===== */}
+        {checkResult && (
+          <div style={{
+            flex: '1 1 0',
+            minWidth: 0,
+            maxHeight: '88vh',
+            overflowY: 'auto',
+            backgroundColor: '#12122a',
+            borderRadius: '0 12px 12px 0',
+          }}>
+            <div style={{
+              padding: '0.8rem 1rem', borderBottom: '1px solid #2a2a3a',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            }}>
+              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#9999bb' }}>测试结果</span>
+              <button onClick={() => setCheckResult(null)}
+                style={{ background: 'none', border: 'none', color: '#666680', cursor: 'pointer', fontSize: '0.9rem', padding: '0.1rem' }}>
+                ✕
+              </button>
+            </div>
+            {renderTestPanel()}
+          </div>
+        )}
       </div>
     </div>
   );
+}
+
+/** 尝试格式化 JSON 字符串，失败则原样返回 */
+function formatJson(str: string): string {
+  try {
+    const obj = JSON.parse(str);
+    return JSON.stringify(obj, null, 2);
+  } catch {
+    return str;
+  }
 }
