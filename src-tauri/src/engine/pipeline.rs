@@ -23,7 +23,20 @@ use uuid::Uuid;
 // 内嵌 Prompt 模板，供高质量模式使用
 const PROMPT_COMBINED: &str = include_str!("../../../prompts/outline-parser/combined.md");
 const PROMPT_CORE_ELEMENTS: &str = include_str!("../../../prompts/outline-parser/core_elements.md");
-const PROMPT_CHAPTER_DETAIL: &str = include_str!("../../../prompts/outline-parser/chapter_detail.md");
+
+/// 生成上下文：保存高质量模式中阶段1和阶段2的信息，供后续章节后台生成使用
+#[derive(Clone)]
+#[allow(dead_code)]
+struct GenerationContext {
+    core_elements: String,
+    chapter_details: Vec<String>,
+    total_chapters: usize,
+    game_type: Option<GameType>,
+    input: String,
+    messages: Vec<crate::providers::deepseek::ChatMessage>,
+    /// 后台生成是否被取消
+    cancelled: Arc<std::sync::atomic::AtomicBool>,
+}
 
 /// 生成状态
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -56,6 +69,8 @@ pub struct GenerationPipeline {
     scripts: Arc<RwLock<HashMap<String, GameScript>>>,
     /// AI 调用历史记录器
     call_history: Arc<CallHistory>,
+    /// 高质量模式的生成上下文，供后续章节后台生成使用
+    generation_contexts: Arc<RwLock<HashMap<String, GenerationContext>>>,
 }
 
 impl GenerationPipeline {
@@ -69,6 +84,7 @@ impl GenerationPipeline {
             statuses: Arc::new(RwLock::new(HashMap::new())),
             scripts: Arc::new(RwLock::new(HashMap::new())),
             call_history,
+            generation_contexts: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -313,8 +329,9 @@ impl GenerationPipeline {
         game_type: Option<GameType>,
         use_local_fallback: bool,
         high_quality: bool,
+        chapter_count: Option<u32>,
     ) -> Result<(String, GameScript), ProviderError> {
-        log::info!("开始创建游戏: input_len={}, game_type={:?}, high_quality={}", input.len(), game_type, high_quality);
+        log::info!("开始创建游戏: input_len={}, game_type={:?}, high_quality={}, chapter_count={:?}", input.len(), game_type, high_quality, chapter_count);
 
         // 1. 生成 game_id
         let game_id = Uuid::new_v4().to_string();
@@ -335,7 +352,7 @@ impl GenerationPipeline {
         } else {
             self.emit_progress(&game_id, "generating_script", "正在生成游戏脚本", &model_name);
         }
-        let mut game_script = self.parse_outline(input, game_type.clone(), high_quality, &game_id).await?;
+        let mut game_script = self.parse_outline(input, game_type.clone(), high_quality, &game_id, chapter_count).await?;
 
         // 4. 提取所有 AssetRef
         self.emit_progress(&game_id, "parsing_script", "正在解析游戏脚本", "");
@@ -472,6 +489,21 @@ impl GenerationPipeline {
         // 16. 启动后台生成后续章节
         if !remaining_refs.is_empty() {
             self.start_background_generation(game_id.clone(), remaining_refs, first_chapter_id.clone());
+        }
+
+        // 17. 高质量模式下，如果有后续章节需要生成脚本，启动后台章节生成
+        if high_quality {
+            let has_context = self.generation_contexts.read().await.contains_key(&game_id);
+            if has_context {
+                // 标记后台生成已激活
+                {
+                    let mut s = self.statuses.write().await;
+                    if let Some(status) = s.get_mut(&game_id) {
+                        status.background_generation_active = true;
+                    }
+                }
+                let _ = self.start_remaining_chapters(&game_id).await;
+            }
         }
 
         Ok((game_id, game_script))
@@ -1138,6 +1170,7 @@ impl GenerationPipeline {
         game_type: Option<GameType>,
         high_quality: bool,
         game_id: &str,
+        chapter_count: Option<u32>,
     ) -> Result<GameScript, ProviderError> {
         log::info!("解析大纲: input_len={}, game_type={:?}, high_quality={}", input.len(), game_type, high_quality);
         let config_manager = self.config_manager.read().await;
@@ -1162,7 +1195,7 @@ impl GenerationPipeline {
             if high_quality {
                 // 高质量模式：多轮生成
                 let start = Instant::now();
-                let result = self.parse_outline_high_quality(&deepseek, input, game_type.clone(), game_id).await;
+                let result = self.parse_outline_high_quality(&deepseek, input, game_type.clone(), game_id, chapter_count).await;
                 let duration = start.elapsed().as_millis() as u64;
 
                 let model = provider_config.models.iter()
@@ -1226,26 +1259,29 @@ impl GenerationPipeline {
         }
     }
 
-    /// 高质量模式：三阶段生成游戏脚本
+    /// 高质量模式：三阶段生成游戏脚本（边玩边生成版）
     /// 阶段1：生成核心要素（世界观、角色、章节梗概、关键情节等）
-    /// 阶段2：逐章生成详细内容（多轮对话保持连续性）
-    /// 阶段3：基于所有章节详情生成完整 GameScript JSON
+    /// 阶段2：只生成第一章详细内容
+    /// 阶段3：只生成第一章的 GameScript JSON
+    /// 保存 GenerationContext 供后续章节后台生成
     async fn parse_outline_high_quality(
         &self,
         deepseek: &DeepSeekProvider,
         input: &str,
         game_type: Option<GameType>,
         game_id: &str,
+        chapter_count: Option<u32>,
     ) -> Result<GameScript, ProviderError> {
         let game_type_str = game_type.as_ref().map(|gt| Self::game_type_display_str(gt)).unwrap_or("互动叙事");
         let game_type_prompt = Self::get_game_type_prompt(game_type_str);
 
         // ========== 阶段1：生成核心要素 ==========
         let core_system = PROMPT_CORE_ELEMENTS.to_string();
+        let effective_chapter_count = chapter_count.unwrap_or(3);
 
         let core_user = format!(
-            "游戏类型：{}\n\n玩家构想：{}\n\n{}\n\n请生成游戏的核心要素。",
-            game_type_str, input, game_type_prompt
+            "游戏类型：{}\n\n玩家构想：{}\n\n{}\n\n请生成游戏的核心要素，章节数限定为{}章。",
+            game_type_str, input, game_type_prompt, effective_chapter_count
         );
 
         let mut messages = vec![
@@ -1275,73 +1311,69 @@ impl GenerationPipeline {
             content: core_elements.clone(),
         });
 
-        // ========== 阶段2：逐章生成详细内容 ==========
-        // 从核心要素中解析章节数
-        let chapter_count = Self::count_chapters_from_core(&core_elements);
-        log::info!("检测到章节数: {}", chapter_count);
+        // ========== 阶段2：只生成第一章详细内容 ==========
+        let chapter_count_usize = effective_chapter_count as usize;
+        log::info!("使用指定章节数: {}, 仅生成第一章", chapter_count_usize);
 
         let mut chapter_details = Vec::new();
 
-        for ch_idx in 1..=chapter_count {
-            let chapter_label = Self::get_chapter_label(ch_idx);
-            log::info!("高质量模式 阶段2: 生成{}详细内容", chapter_label);
-            self.emit_progress(
-                game_id,
-                "generating_chapter",
-                &format!("正在生成{}详细内容（{}/{}）", chapter_label, ch_idx, chapter_count),
-                &model_name,
-            );
+        // 只生成第一章
+        let chapter_label = Self::get_chapter_label(1);
+        log::info!("高质量模式 阶段2: 生成{}详细内容", chapter_label);
+        self.emit_progress(
+            game_id,
+            "generating_chapter",
+            &format!("正在生成{}详细内容（1/{}）", chapter_label, chapter_count_usize),
+            &model_name,
+        );
 
-            let detail_user = format!(
-                "现在请根据核心要素，生成{}的详细内容。\n\n\
-                 核心要素中关于{}的梗概是关键参考，请严格遵循。\
-                 同时保持与前面章节的连续性和一致性。\
-                 每个场景至少3-5个对话/旁白节点，选择节点至少2-3个选项。\
-                 场景描写要细腻，为后续生成资源提供充分的提示词依据。\n\n\
-                 {}",
-                chapter_label, chapter_label, game_type_prompt
-            );
+        let detail_user = format!(
+            "现在请根据核心要素，生成{}的详细内容。\n\n\
+             核心要素中关于{}的梗概是关键参考，请严格遵循。\
+             同时保持与前面章节的连续性和一致性。\
+             每个场景至少3-5个对话/旁白节点，选择节点至少2-3个选项。\
+             场景描写要细腻，为后续生成资源提供充分的提示词依据。\n\n\
+             {}",
+            chapter_label, chapter_label, game_type_prompt
+        );
 
-            messages.push(crate::providers::deepseek::ChatMessage {
-                role: "user".to_string(),
-                content: detail_user,
-            });
+        messages.push(crate::providers::deepseek::ChatMessage {
+            role: "user".to_string(),
+            content: detail_user,
+        });
 
-            let chapter_detail = deepseek.chat(messages.clone(), None).await?;
-            let chapter_detail = OutlineParser::strip_think_tags(&chapter_detail);
-            log::info!("高质量模式 阶段2 {} 完成: 长度={}", chapter_label, chapter_detail.len());
+        let chapter_detail = deepseek.chat(messages.clone(), None).await?;
+        let chapter_detail = OutlineParser::strip_think_tags(&chapter_detail);
+        log::info!("高质量模式 阶段2 {} 完成: 长度={}", chapter_label, chapter_detail.len());
 
-            // 保存章节详情
-            OutlineParser::save_raw_ai_response_sync(
-                &format!("chapter_{}_detail", ch_idx),
-                &chapter_detail,
-            );
+        // 保存章节详情
+        OutlineParser::save_raw_ai_response_sync(
+            &format!("chapter_{}_detail", 1),
+            &chapter_detail,
+        );
 
-            // 将章节详情加入对话历史
-            messages.push(crate::providers::deepseek::ChatMessage {
-                role: "assistant".to_string(),
-                content: chapter_detail.clone(),
-            });
+        // 将章节详情加入对话历史
+        messages.push(crate::providers::deepseek::ChatMessage {
+            role: "assistant".to_string(),
+            content: chapter_detail.clone(),
+        });
 
-            chapter_details.push(chapter_detail);
-        }
+        chapter_details.push(chapter_detail);
 
-        // ========== 阶段3：基于所有章节详情生成完整 GameScript JSON ==========
-        log::info!("高质量模式 阶段3: 生成完整 GameScript JSON");
-        self.emit_progress(game_id, "generating_script", "正在根据章节详情生成完整游戏脚本", &model_name);
+        // ========== 阶段3：只生成第一章的 GameScript JSON ==========
+        log::info!("高质量模式 阶段3: 生成第一章 GameScript JSON");
+        self.emit_progress(game_id, "generating_script", "正在根据第一章详情生成游戏脚本", &model_name);
 
         let script_system = PROMPT_COMBINED.to_string();
 
-        let all_details = chapter_details.iter().enumerate().map(|(i, d)| {
-            let label = Self::get_chapter_label(i + 1);
-            format!("=== {} ===\n{}", label, d)
-        }).collect::<Vec<_>>().join("\n\n");
+        let first_chapter_detail = &chapter_details[0];
+        let first_chapter_label = Self::get_chapter_label(1);
 
         let script_user = format!(
-            "根据以下核心要素和各章节详细内容，生成完整的游戏脚本 JSON。\n\n\
+            "根据以下核心要素和{}的详细内容，生成该章节的游戏脚本 JSON。\n\n\
              == 核心要素 ==\n{}\n\n\
-             == 各章节详细内容 ==\n{}\n\n\
-             要求：\n\
+             == {} 详细内容 ==\n{}\n\n\
+             要求：只生成{}的脚本，包含完整的 scenes 和 sequence。\n\
              - 严格遵循核心要素中的世界观、角色设定和剧情走向\n\
              - 每个场景至少3-5个对话/旁白节点\n\
              - 选择节点至少2-3个选项\n\
@@ -1350,7 +1382,8 @@ impl GenerationPipeline {
              - 为所有资源编写详细的生成 prompt\n\
              {}\n\n\
              玩家描述：{}",
-            core_elements, all_details, game_type_prompt, input
+            first_chapter_label, core_elements, first_chapter_label, first_chapter_detail,
+            first_chapter_label, game_type_prompt, input
         );
 
         let script_messages = vec![
@@ -1368,41 +1401,109 @@ impl GenerationPipeline {
         let response = OutlineParser::strip_think_tags(&response);
 
         // 保存 AI 原始响应
-        OutlineParser::save_raw_ai_response_sync("high_quality", &response);
+        OutlineParser::save_raw_ai_response_sync("high_quality_chapter1", &response);
 
         // 提取 JSON
         let json_str = Self::extract_json_from_response(&response).map_err(|e| {
-            OutlineParser::save_raw_ai_response_sync("high_quality_error", &response);
+            OutlineParser::save_raw_ai_response_sync("high_quality_chapter1_error", &response);
             e
         })?;
         let json_str = OutlineParser::normalize_json(&json_str);
-        let mut script: GameScript = serde_json::from_str(&json_str).map_err(|e| {
-            OutlineParser::save_raw_ai_response_sync("high_quality_json_error", &response);
-            ProviderError::GenerationFailed(format!("Failed to parse GameScript JSON: {}", e))
-        })?;
+        let mut script: GameScript = match serde_json::from_str(&json_str) {
+            Ok(s) => s,
+            Err(e) => {
+                log::error!("GameScript JSON 解析失败: {}, 尝试宽松解析", e);
+                OutlineParser::save_raw_ai_response_sync("high_quality_chapter1_json_error", &response);
+                Self::parse_script_lenient(&json_str)?
+            }
+        };
 
         // 校验并修复
         Self::validate_and_fix_script(&mut script)?;
-        log::info!("高质量模式 阶段3 完成: chapters={}", script.chapters.len());
+
+        // 更新 meta.total_chapters 为实际总章节数（而非当前已生成的章节数）
+        script.meta.total_chapters = effective_chapter_count;
+
+        log::info!("高质量模式 阶段3 完成: chapters={} (total_chapters={})", script.chapters.len(), script.meta.total_chapters);
+
+        // 保存 GenerationContext 供后续章节后台生成
+        let ctx = GenerationContext {
+            core_elements,
+            chapter_details,
+            total_chapters: chapter_count_usize,
+            game_type,
+            input: input.to_string(),
+            messages,
+            cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        };
+        self.generation_contexts.write().await.insert(game_id.to_string(), ctx);
+
         Ok(script)
     }
 
-    /// 从核心要素文本中解析章节数
-    fn count_chapters_from_core(core: &str) -> usize {
-        // 匹配 "第X章" 格式
-        let re = regex::Regex::new(r"第[一二三四五六七八九十\d]+章").unwrap();
-        let matches: Vec<_> = re.find_iter(core).collect();
-        if !matches.is_empty() {
-            return matches.len();
-        }
-        // 匹配 "Chapter X" 格式
-        let re_en = regex::Regex::new(r"(?i)chapter\s*\d+").unwrap();
-        let matches_en: Vec<_> = re_en.find_iter(core).collect();
-        if !matches_en.is_empty() {
-            return matches_en.len();
-        }
-        // 默认3章
-        3
+    /// 宽松解析 GameScript JSON：逐章解析，跳过有问题的节点
+    fn parse_script_lenient(json_str: &str) -> Result<GameScript, ProviderError> {
+        let value: serde_json::Value = serde_json::from_str(json_str)
+            .map_err(|e| ProviderError::GenerationFailed(format!("JSON 格式无效: {}", e)))?;
+
+        // 提取 meta
+        let meta = value.get("meta")
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_default();
+
+        // 逐章解析
+        let chapters = value.get("chapters")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|ch| {
+                        if let Some(scenes) = ch.get("scenes").and_then(|v| v.as_array()) {
+                            let fixed_scenes: Vec<serde_json::Value> = scenes.iter()
+                                .filter_map(|scene| {
+                                    if let Some(seq) = scene.get("sequence").and_then(|v| v.as_array()) {
+                                        let fixed_seq: Vec<serde_json::Value> = seq.iter()
+                                            .filter_map(|node| {
+                                                match serde_json::from_value::<SceneNode>(node.clone()) {
+                                                    Ok(_) => Some(node.clone()),
+                                                    Err(e) => {
+                                                        log::warn!("跳过无法解析的节点: {}", e);
+                                                        // 尝试降级为 action
+                                                        let mut fixed = node.clone();
+                                                        if let Some(obj) = fixed.as_object_mut() {
+                                                            obj.insert("type".to_string(), serde_json::Value::String("action".to_string()));
+                                                        }
+                                                        match serde_json::from_value::<SceneNode>(fixed.clone()) {
+                                                            Ok(_) => Some(fixed),
+                                                            Err(_) => None,
+                                                        }
+                                                    }
+                                                }
+                                            })
+                                            .collect();
+                                        let mut fixed_scene = scene.clone();
+                                        if let Some(obj) = fixed_scene.as_object_mut() {
+                                            obj.insert("sequence".to_string(), serde_json::Value::Array(fixed_seq));
+                                        }
+                                        Some(fixed_scene)
+                                    } else {
+                                        Some(scene.clone())
+                                    }
+                                })
+                                .collect();
+                            let mut fixed_ch = ch.clone();
+                            if let Some(obj) = fixed_ch.as_object_mut() {
+                                obj.insert("scenes".to_string(), serde_json::Value::Array(fixed_scenes));
+                            }
+                            serde_json::from_value(fixed_ch).ok()
+                        } else {
+                            serde_json::from_value(ch.clone()).ok()
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        Ok(GameScript { meta, chapters, global_variables: vec![] })
     }
 
     /// 获取章节标签（如"第一章"）
@@ -2062,6 +2163,490 @@ impl GenerationPipeline {
             .filter(|(_, s)| s.background_generation_active || !s.first_chapter_ready)
             .map(|(id, _)| id.clone())
             .collect()
+    }
+
+    /// 启动后续章节的后台生成（高质量模式专用）
+    /// 从 generation_contexts 中取出保存的上下文，逐章生成后续章节
+    pub async fn start_remaining_chapters(&self, game_id: &str) -> Result<(), ProviderError> {
+        // 取出 GenerationContext（移出，避免长期持有锁）
+        let ctx = {
+            let mut contexts = self.generation_contexts.write().await;
+            contexts.remove(game_id).ok_or_else(|| {
+                ProviderError::NotFound(format!(
+                    "Generation context not found for game '{}'. This may not be a high-quality mode game or chapters are already being generated.",
+                    game_id
+                ))
+            })?
+        };
+
+        let config_manager = self.config_manager.clone();
+        let asset_manager = self.asset_manager.clone();
+        let app_handle = self.app_handle.clone();
+        let statuses = self.statuses.clone();
+        let call_history = self.call_history.clone();
+        let scripts = self.scripts.clone();
+        let game_id = game_id.to_string();
+
+        tokio::spawn(async move {
+            let game_type_str = ctx.game_type.as_ref().map(|gt| Self::game_type_display_str(gt)).unwrap_or("互动叙事");
+            let game_type_prompt = Self::get_game_type_prompt(game_type_str);
+
+            // 获取文本 provider
+            let deepseek = {
+                let config_manager = config_manager.read().await;
+                let config = config_manager.get_config();
+                let provider_config = config.providers.iter()
+                    .find(|p| p.id == "deepseek" && p.status == ProviderStatus::Connected)
+                    .or_else(|| config.providers.iter().find(|p| p.id == "deepseek"))
+                    .or_else(|| config.providers.iter().find(|p| {
+                        p.modality.contains(&AIModality::Text) && p.status == ProviderStatus::Connected
+                    }))
+                    .cloned();
+                drop(config_manager);
+
+                match provider_config {
+                    Some(pc) => DeepSeekProvider::new(&pc, asset_manager.base_path()),
+                    None => {
+                        log::error!("后续章节生成失败：无可用的文本 AI Provider");
+                        return;
+                    }
+                }
+            };
+
+            let deepseek = match deepseek {
+                Ok(d) => d,
+                Err(e) => {
+                    log::error!("后续章节生成失败：创建 Provider 失败: {:?}", e);
+                    return;
+                }
+            };
+
+            let model_name = {
+                let cm = config_manager.read().await;
+                let config = cm.get_config();
+                if let Some(pc) = config.providers.iter().find(|p| p.id == "deepseek") {
+                    let model = pc.models.iter().find(|m| m.is_default).map(|m| m.id.clone()).unwrap_or_default();
+                    format!("{}/{}", pc.id, model)
+                } else {
+                    "未知".to_string()
+                }
+            };
+
+            let mut messages = ctx.messages.clone();
+            let total_chapters = ctx.total_chapters;
+            let already_generated = ctx.chapter_details.len(); // 已生成的章节数
+
+            // 逐章生成后续章节
+            for ch_idx in (already_generated + 1)..=total_chapters {
+                // 检查是否已取消
+                if ctx.cancelled.load(std::sync::atomic::Ordering::Relaxed) {
+                    log::info!("后续章节生成已取消: game_id={}", game_id);
+                    if let Some(ref handle) = app_handle {
+                        let _ = handle.emit(
+                            "generation-step",
+                            serde_json::json!({
+                                "gameId": game_id,
+                                "step": "cancelled",
+                                "detail": "后续章节生成已取消",
+                                "modelName": "",
+                                "timestamp": SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs(),
+                            }),
+                        );
+                    }
+                    return;
+                }
+
+                let label = Self::get_chapter_label(ch_idx);
+
+                // 发送进度事件
+                if let Some(ref handle) = app_handle {
+                    let _ = handle.emit(
+                        "generation-step",
+                        serde_json::json!({
+                            "gameId": game_id,
+                            "step": "generating_chapter",
+                            "detail": format!("正在生成{}详细内容（{}/{}）", label, ch_idx, total_chapters),
+                            "modelName": model_name,
+                            "timestamp": SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs(),
+                        }),
+                    );
+                }
+
+                // 生成章节详情
+                let detail_user = format!(
+                    "现在请根据核心要素，生成{}的详细内容。\n\n\
+                     核心要素中关于{}的梗概是关键参考，请严格遵循。\
+                     同时保持与前面章节的连续性和一致性。\
+                     每个场景至少3-5个对话/旁白节点，选择节点至少2-3个选项。\
+                     场景描写要细腻，为后续生成资源提供充分的提示词依据。\n\n\
+                     {}",
+                    label, label, game_type_prompt
+                );
+
+                messages.push(crate::providers::deepseek::ChatMessage {
+                    role: "user".to_string(),
+                    content: detail_user,
+                });
+
+                let chapter_detail = match deepseek.chat(messages.clone(), None).await {
+                    Ok(d) => OutlineParser::strip_think_tags(&d),
+                    Err(e) => {
+                        log::error!("第{}章详情生成失败: {:?}", ch_idx, e);
+                        // 移除失败的 user message，继续下一章
+                        messages.pop();
+                        continue;
+                    }
+                };
+
+                log::info!("第{}章详情生成完成: 长度={}", ch_idx, chapter_detail.len());
+
+                // 保存章节详情
+                OutlineParser::save_raw_ai_response_sync(
+                    &format!("chapter_{}_detail", ch_idx),
+                    &chapter_detail,
+                );
+
+                messages.push(crate::providers::deepseek::ChatMessage {
+                    role: "assistant".to_string(),
+                    content: chapter_detail.clone(),
+                });
+
+                // 检查是否已取消
+                if ctx.cancelled.load(std::sync::atomic::Ordering::Relaxed) {
+                    log::info!("后续章节生成已取消: game_id={}", game_id);
+                    return;
+                }
+
+                // 生成该章节的 GameScript JSON
+                if let Some(ref handle) = app_handle {
+                    let _ = handle.emit(
+                        "generation-step",
+                        serde_json::json!({
+                            "gameId": game_id,
+                            "step": "generating_chapter_script",
+                            "detail": format!("正在生成{}游戏脚本", label),
+                            "modelName": model_name,
+                            "timestamp": SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs(),
+                        }),
+                    );
+                }
+
+                let script_user = format!(
+                    "根据核心要素和{}的详细内容，生成该章节的游戏脚本 JSON。\n\n\
+                     == 核心要素 ==\n{}\n\n\
+                     == {} 详细内容 ==\n{}\n\n\
+                     要求：只生成{}的脚本，包含完整的 scenes 和 sequence。\n\
+                     - 严格遵循核心要素中的世界观、角色设定和剧情走向\n\
+                     - 每个场景至少3-5个对话/旁白节点\n\
+                     - 选择节点至少2-3个选项\n\
+                     - 场景描写要细腻，注重氛围\n\
+                     - 角色对话要符合其性格\n\
+                     - 为所有资源编写详细的生成 prompt\n\
+                     {}",
+                    label, ctx.core_elements, label, chapter_detail, label, game_type_prompt
+                );
+
+                let script_messages = vec![
+                    crate::providers::deepseek::ChatMessage {
+                        role: "system".to_string(),
+                        content: PROMPT_COMBINED.to_string(),
+                    },
+                    crate::providers::deepseek::ChatMessage {
+                        role: "user".to_string(),
+                        content: script_user,
+                    },
+                ];
+
+                let response = match deepseek.chat(script_messages, None).await {
+                    Ok(r) => OutlineParser::strip_think_tags(&r),
+                    Err(e) => {
+                        log::error!("第{}章脚本生成失败: {:?}", ch_idx, e);
+                        continue;
+                    }
+                };
+
+                // 解析该章节的 JSON
+                match Self::extract_json_from_response(&response) {
+                    Ok(json_str) => {
+                        let json_str = OutlineParser::normalize_json(&json_str);
+                        match serde_json::from_str::<GameScript>(&json_str) {
+                            Ok(mut partial_script) => {
+                                Self::validate_and_fix_script(&mut partial_script).ok();
+
+                                if !partial_script.chapters.is_empty() {
+                                    // 将新章节追加到现有 GameScript
+                                    let new_chapter = partial_script.chapters.remove(0);
+                                    let chapter_id = new_chapter.id.clone();
+                                    let chapter_title = new_chapter.title.clone();
+
+                                    {
+                                        let mut scripts = scripts.write().await;
+                                        if let Some(existing_script) = scripts.get_mut(&game_id) {
+                                            existing_script.chapters.push(new_chapter);
+                                            let _ = asset_manager.save_game_script(&game_id, existing_script);
+                                        }
+                                    }
+
+                                    // 更新生成状态：添加新章节
+                                    {
+                                        let mut s = statuses.write().await;
+                                        if let Some(status) = s.get_mut(&game_id) {
+                                            status.chapter_status.insert(
+                                                chapter_id.clone(),
+                                                ChapterStatus {
+                                                    chapter_id: chapter_id.clone(),
+                                                    chapter_title: chapter_title.clone(),
+                                                    total_assets: 0,
+                                                    completed_assets: 0,
+                                                    status: "pending".to_string(),
+                                                },
+                                            );
+                                        }
+                                    }
+
+                                    // 发送 chapter-ready 事件
+                                    if let Some(ref handle) = app_handle {
+                                        let _ = handle.emit(
+                                            "chapter-ready",
+                                            serde_json::json!({
+                                                "gameId": game_id,
+                                                "chapterIndex": ch_idx - 1,
+                                                "totalChapters": total_chapters,
+                                                "chapterId": chapter_id,
+                                                "chapterTitle": chapter_title,
+                                            }),
+                                        );
+                                    }
+
+                                    // 收集该章节的 AssetRef 并启动资源生成
+                                    let asset_refs = {
+                                        let scripts = scripts.read().await;
+                                        if let Some(script) = scripts.get(&game_id) {
+                                            Self::extract_asset_refs_static(script)
+                                                .into_iter()
+                                                .filter(|(cid, _)| cid == &chapter_id)
+                                                .collect::<Vec<_>>()
+                                        } else {
+                                            Vec::new()
+                                        }
+                                    };
+
+                                    if !asset_refs.is_empty() {
+                                        // 更新章节状态
+                                        {
+                                            let mut s = statuses.write().await;
+                                            if let Some(status) = s.get_mut(&game_id) {
+                                                if let Some(cs) = status.chapter_status.get_mut(&chapter_id) {
+                                                    cs.total_assets = asset_refs.len();
+                                                    cs.status = "generating".to_string();
+                                                }
+                                                status.total_assets += asset_refs.len();
+                                            }
+                                        }
+
+                                        // 生成该章节的资源
+                                        let results = Self::fetch_assets_static(
+                                            &config_manager,
+                                            &asset_manager,
+                                            &call_history,
+                                            &game_id,
+                                            &asset_refs,
+                                        ).await;
+
+                                        // 处理结果
+                                        let mut chap_completed = 0usize;
+                                        let mut chap_failed = 0usize;
+
+                                        for (i, result) in results.into_iter().enumerate() {
+                                            let (_, asset_ref) = &asset_refs[i];
+                                            match result {
+                                                Ok(ref local_asset) => {
+                                                    // 更新 GameScript
+                                                    {
+                                                        let mut scripts = scripts.write().await;
+                                                        if let Some(script) = scripts.get_mut(&game_id) {
+                                                            Self::update_script_assets(script, |ar: &mut AssetRef| {
+                                                                if ar.id == asset_ref.id {
+                                                                    ar.url = Some(local_asset.local_path.clone());
+                                                                    ar.status = AssetStatus::Ready;
+                                                                    ar.source = ScriptAssetSource::AiGenerated;
+                                                                }
+                                                            });
+                                                            let _ = asset_manager.save_game_script(&game_id, script);
+                                                        }
+                                                    }
+                                                    // 发送 asset-ready 事件
+                                                    if let Some(ref handle) = app_handle {
+                                                        let _ = handle.emit(
+                                                            "asset-ready",
+                                                            serde_json::json!({
+                                                                "gameId": game_id,
+                                                                "assetRefId": asset_ref.id,
+                                                                "assetType": format!("{:?}", asset_ref.asset_type),
+                                                                "localPath": local_asset.local_path,
+                                                                "source": format!("{:?}", local_asset.source),
+                                                                "chapterId": chapter_id,
+                                                            }),
+                                                        );
+                                                    }
+                                                    chap_completed += 1;
+                                                }
+                                                Err(ref error) => {
+                                                    if let Some(ref handle) = app_handle {
+                                                        let _ = handle.emit(
+                                                            "asset-failed",
+                                                            serde_json::json!({
+                                                                "gameId": game_id,
+                                                                "assetRefId": asset_ref.id,
+                                                                "error": format!("{:?}", error),
+                                                                "fallbackToBuiltin": true,
+                                                                "chapterId": chapter_id,
+                                                            }),
+                                                        );
+                                                    }
+                                                    chap_failed += 1;
+                                                }
+                                            }
+                                        }
+
+                                        // 更新章节和整体状态
+                                        {
+                                            let mut s = statuses.write().await;
+                                            if let Some(status) = s.get_mut(&game_id) {
+                                                status.completed_assets += chap_completed;
+                                                status.failed_assets += chap_failed;
+                                                status.overall_progress = if status.total_assets > 0 {
+                                                    (status.completed_assets + status.failed_assets) as f32 / status.total_assets as f32
+                                                } else {
+                                                    1.0
+                                                };
+                                                if let Some(cs) = status.chapter_status.get_mut(&chapter_id) {
+                                                    cs.completed_assets = chap_completed;
+                                                    cs.status = if chap_completed + chap_failed >= cs.total_assets {
+                                                        if chap_failed > 0 { "partial".to_string() } else { "ready".to_string() }
+                                                    } else if chap_completed > 0 {
+                                                        "partial".to_string()
+                                                    } else {
+                                                        "generating".to_string()
+                                                    };
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    log::info!("第{}章生成完成: game_id={}", ch_idx, game_id);
+                                }
+                            }
+                            Err(e) => {
+                                log::warn!("第{}章脚本解析失败: {}, 跳过", ch_idx, e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!("第{}章JSON提取失败: {:?}, 跳过", ch_idx, e);
+                    }
+                }
+            }
+
+            // 所有章节生成完成
+            {
+                let mut s = statuses.write().await;
+                if let Some(status) = s.get_mut(&game_id) {
+                    status.background_generation_active = false;
+                }
+            }
+
+            if let Some(ref handle) = app_handle {
+                let _ = handle.emit(
+                    "all-chapters-ready",
+                    serde_json::json!({
+                        "gameId": game_id,
+                    }),
+                );
+                let timestamp = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+                let _ = handle.emit(
+                    "generation-step",
+                    serde_json::json!({
+                        "gameId": game_id,
+                        "step": "completed",
+                        "detail": "所有章节生成完成",
+                        "modelName": "",
+                        "timestamp": timestamp,
+                    }),
+                );
+                let _ = handle.emit(
+                    "generation-complete",
+                    serde_json::json!({ "gameId": game_id, "allChapters": true }),
+                );
+            }
+
+            log::info!("所有后续章节生成完成: game_id={}", game_id);
+        });
+
+        Ok(())
+    }
+
+    /// 取消后续章节的后台生成
+    pub async fn cancel_remaining_chapters(&self, game_id: &str) -> Result<(), ProviderError> {
+        let contexts = self.generation_contexts.read().await;
+        if let Some(ctx) = contexts.get(game_id) {
+            ctx.cancelled.store(true, std::sync::atomic::Ordering::Relaxed);
+            log::info!("已请求取消后续章节生成: game_id={}", game_id);
+            Ok(())
+        } else {
+            Err(ProviderError::NotFound(format!(
+                "Generation context not found for game '{}'", game_id
+            )))
+        }
+    }
+
+    /// 静态版本的 extract_asset_refs，用于后台任务
+    fn extract_asset_refs_static(script: &GameScript) -> Vec<(String, AssetRef)> {
+        let mut refs = Vec::new();
+        for chapter in &script.chapters {
+            for scene in &chapter.scenes {
+                if let Some(ref bg) = scene.assets.background_image {
+                    refs.push((chapter.id.clone(), bg.clone()));
+                }
+                if let Some(ref video) = scene.assets.background_video {
+                    refs.push((chapter.id.clone(), video.clone()));
+                }
+                if let Some(ref bgm) = scene.assets.bgm {
+                    refs.push((chapter.id.clone(), bgm.clone()));
+                }
+                if let Some(ref ambient) = scene.assets.ambient_sound {
+                    refs.push((chapter.id.clone(), ambient.clone()));
+                }
+                if let Some(ref cg) = scene.assets.cg_animation {
+                    refs.push((chapter.id.clone(), cg.clone()));
+                }
+                for node in &scene.sequence {
+                    match node {
+                        SceneNode::Dialogue(d) => {
+                            if let Some(ref avatar) = d.speaker_avatar {
+                                refs.push((chapter.id.clone(), avatar.clone()));
+                            }
+                            if let Some(ref voice) = d.voice_asset {
+                                refs.push((chapter.id.clone(), voice.clone()));
+                            }
+                        }
+                        SceneNode::Narration(n) => {
+                            if let Some(ref voice) = n.voice_asset {
+                                refs.push((chapter.id.clone(), voice.clone()));
+                            }
+                        }
+                        SceneNode::Cg(c) => {
+                            refs.push((chapter.id.clone(), c.video_asset.clone()));
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        refs
     }
 
     // --- Helper methods ---

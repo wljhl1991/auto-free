@@ -18,7 +18,7 @@ export interface CreationHistoryEntry {
 
 export function useGame() {
   return useMemo(() => ({
-    createGame: (input: string, gameType?: string, useLocalFallback?: boolean, highQuality?: boolean) => invoke<GameInfo>('create_game', { input, gameType: gameType || null, useLocalFallback: useLocalFallback ?? null, highQuality: highQuality ?? null }),
+    createGame: (input: string, gameType?: string, useLocalFallback?: boolean, highQuality?: boolean, chapterCount?: number) => invoke<GameInfo>('create_game', { input, gameType: gameType || null, useLocalFallback: useLocalFallback ?? null, highQuality: highQuality ?? null, chapterCount: chapterCount ?? null }),
     createGameFromScript: (scriptJson: string) => invoke<GameInfo>('create_game_from_script', { scriptJson }),
     getRandomOutline: (gameType?: string, themes?: string[]) => invoke<string>('random_outline', { gameType: gameType || null, themes: themes || [] }),
     getGame: (gameId: string) => invoke<GameInfo>('get_game', { gameId }),

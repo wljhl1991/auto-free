@@ -144,14 +144,15 @@ pub async fn create_game(
     game_type: Option<String>,
     use_local_fallback: Option<bool>,
     high_quality: Option<bool>,
+    chapter_count: Option<u32>,
     pipeline: tauri::State<'_, Arc<RwLock<GenerationPipeline>>>,
 ) -> Result<GameInfo, String> {
     let gt = game_type.as_deref().and_then(|s| parse_game_type(s).ok());
     let fallback = use_local_fallback.unwrap_or(true);
     let hq = high_quality.unwrap_or(false);
-    log::info!("创建游戏: input_len={}, game_type={:?}, use_local_fallback={}, high_quality={}", input.len(), gt, fallback, hq);
+    log::info!("创建游戏: input_len={}, game_type={:?}, use_local_fallback={}, high_quality={}, chapter_count={:?}", input.len(), gt, fallback, hq, chapter_count);
     let p = pipeline.read().await;
-    let (game_id, script) = p.create_game(&input, gt, fallback, hq).await
+    let (game_id, script) = p.create_game(&input, gt, fallback, hq, chapter_count).await
         .map_err(|e| {
             let msg = match e {
                 ProviderError::InvalidConfig(msg) => format!("配置错误：{}。请在设置中配置 AI 服务后重试。", msg),
@@ -360,4 +361,24 @@ pub async fn load_save(_game_id: String, _save_id: String) -> Result<GameState, 
 #[command]
 pub async fn list_saves(_game_id: String) -> Result<Vec<SaveInfo>, String> {
     Err("not implemented".to_string())
+}
+
+#[command]
+pub async fn start_remaining_chapters(
+    game_id: String,
+    pipeline: tauri::State<'_, Arc<RwLock<GenerationPipeline>>>,
+) -> Result<(), String> {
+    let p = pipeline.read().await;
+    p.start_remaining_chapters(&game_id).await
+        .map_err(|e| format!("{:?}", e))
+}
+
+#[command]
+pub async fn cancel_remaining_chapters(
+    game_id: String,
+    pipeline: tauri::State<'_, Arc<RwLock<GenerationPipeline>>>,
+) -> Result<(), String> {
+    let p = pipeline.read().await;
+    p.cancel_remaining_chapters(&game_id).await
+        .map_err(|e| format!("{:?}", e))
 }

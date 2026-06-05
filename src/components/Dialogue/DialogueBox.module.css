@@ -4,7 +4,7 @@
   left: 0;
   right: 0;
   padding: 1.5rem 2rem;
-  background: linear-gradient(to top, rgba(255, 255, 255, 0.92) 0%, rgba(255, 255, 255, 0.8) 70%, transparent 100%);
+  background: linear-gradient(to top, rgba(15, 20, 25, 0.95) 0%, rgba(15, 20, 25, 0.85) 70%, transparent 100%);
   max-height: 35%;
   overflow-y: auto;
   display: flex;
@@ -28,35 +28,35 @@
   height: 48px;
   border-radius: 50%;
   object-fit: cover;
-  border: 2px solid #6366f1;
+  border: 2px solid #c9a962;
   flex-shrink: 0;
-  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.2);
+  box-shadow: 0 2px 8px rgba(201, 169, 98, 0.3);
 }
 
 .avatarPlaceholder {
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #6366f1, #ec4899);
+  background: linear-gradient(135deg, #c9a962, #4a9eff);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 1.2rem;
   font-weight: 700;
-  color: #fff;
+  color: #0f1419;
   flex-shrink: 0;
-  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+  box-shadow: 0 2px 8px rgba(201, 169, 98, 0.4);
 }
 
 .speakerName {
   font-size: 1.1rem;
   font-weight: 600;
-  color: #1a1a2e;
+  color: #e8eaed;
 }
 
-.emotionNeutral { border-color: #6366f1; }
+.emotionNeutral { border-color: #c9a962; }
 .emotionHappy { border-color: #22c55e; }
-.emotionSad { border-color: #3b82f6; }
+.emotionSad { border-color: #4a9eff; }
 .emotionAngry { border-color: #ef4444; }
 .emotionSurprised { border-color: #f59e0b; }
 .emotionFear { border-color: #a855f7; }
@@ -64,7 +64,7 @@
 .text {
   font-size: 1rem;
   line-height: 1.8;
-  color: #2d2d44;
+  color: #d0d4da;
   padding-left: 0.25rem;
 }
 
@@ -72,7 +72,7 @@
   display: inline-block;
   width: 2px;
   height: 1.1em;
-  background-color: #6366f1;
+  background-color: #c9a962;
   margin-left: 2px;
   vertical-align: text-bottom;
   animation: blink 0.8s step-end infinite;

@@ -14,20 +14,20 @@ export default function ProviderCard({ provider, onConfigure, onCheck }: Provide
     <div style={{
       padding: '1.2rem',
       borderRadius: '14px',
-      border: '1px solid rgba(99, 102, 241, 0.12)',
-      backgroundColor: 'rgba(255, 255, 255, 0.7)',
+      border: '1px solid #2a3a4e',
+      backgroundColor: 'rgba(26, 35, 50, 0.9)',
       transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
       backdropFilter: 'blur(12px)',
       WebkitBackdropFilter: 'blur(12px)',
-      boxShadow: '0 4px 16px rgba(99, 102, 241, 0.08)',
+      boxShadow: '0 4px 16px rgba(0, 0, 0, 0.3)',
     }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = '#6366f1';
-        e.currentTarget.style.boxShadow = '0 6px 20px rgba(99, 102, 241, 0.15)';
+        e.currentTarget.style.borderColor = '#c9a962';
+        e.currentTarget.style.boxShadow = '0 6px 20px rgba(201, 169, 98, 0.15)';
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.12)';
-        e.currentTarget.style.boxShadow = '0 4px 16px rgba(99, 102, 241, 0.08)';
+        e.currentTarget.style.borderColor = '#2a3a4e';
+        e.currentTarget.style.boxShadow = '0 4px 16px rgba(0, 0, 0, 0.3)';
       }}
     >
       <div style={{
@@ -40,14 +40,14 @@ export default function ProviderCard({ provider, onConfigure, onCheck }: Provide
           <h4 style={{
             fontSize: '1rem',
             fontWeight: 600,
-            color: '#1a1a2e',
+            color: '#e8eaed',
             marginBottom: '0.25rem',
           }}>
             {provider.name}
           </h4>
           <p style={{
             fontSize: '0.8rem',
-            color: '#6b7280',
+            color: '#7a8594',
             lineHeight: 1.4,
           }}>
             {provider.description}
@@ -59,10 +59,10 @@ export default function ProviderCard({ provider, onConfigure, onCheck }: Provide
       {defaultModel && (
         <div style={{
           fontSize: '0.8rem',
-          color: '#9ca3af',
+          color: '#5a6577',
           marginBottom: '0.75rem',
         }}>
-          当前模型：<span style={{ color: '#4a4a6a' }}>{defaultModel.name}</span>
+          当前模型：<span style={{ color: '#b0b8c4' }}>{defaultModel.name}</span>
         </div>
       )}
 

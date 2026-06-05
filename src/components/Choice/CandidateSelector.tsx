@@ -52,19 +52,19 @@ function CandidateSelector({ candidates, onSelect, onRegenerateAll, onClose, isR
       }}
     >
       <div style={{
-        backgroundColor: 'rgba(255, 255, 255, 0.85)',
-        border: '1px solid rgba(99, 102, 241, 0.15)',
+        backgroundColor: 'rgba(26, 35, 50, 0.95)',
+        border: '1px solid #2a3a4e',
         borderRadius: '16px',
         padding: '1.5rem',
         width: '90%',
         maxWidth: '640px',
         backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
-        boxShadow: '0 8px 32px rgba(99, 102, 241, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06)',
+        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.2)',
       }}>
         <h3 style={{
           fontSize: '1.1rem',
           fontWeight: 600,
-          color: '#1a1a2e',
+          color: '#e8eaed',
           marginBottom: '1rem',
         }}>
           选择候选资源
@@ -85,12 +85,12 @@ function CandidateSelector({ candidates, onSelect, onRegenerateAll, onClose, isR
                 borderRadius: '8px',
                 overflow: 'hidden',
                 border: selectedIndex === index
-                  ? '2px solid #6366f1'
-                  : '2px solid rgba(99, 102, 241, 0.15)',
+                  ? '2px solid #c9a962'
+                  : '2px solid #2a3a4e',
                 cursor: isRegenerating ? 'not-allowed' : 'pointer',
                 transition: 'border-color 0.2s ease',
                 aspectRatio: '16/10',
-                backgroundColor: 'rgba(255, 255, 255, 0.8)',
+                backgroundColor: 'rgba(26, 35, 50, 0.9)',
               }}
             >
               {candidate.type === 'Video' ? (
@@ -120,9 +120,9 @@ function CandidateSelector({ candidates, onSelect, onRegenerateAll, onClose, isR
                 left: 0,
                 right: 0,
                 padding: '0.4rem 0.6rem',
-                backgroundColor: 'rgba(255, 255, 255, 0.85)',
+                backgroundColor: 'rgba(15, 20, 25, 0.9)',
                 fontSize: '0.8rem',
-                color: '#4a4a6a',
+                color: '#b0b8c4',
               }}>
                 候选 {index + 1}
               </div>
@@ -134,7 +134,7 @@ function CandidateSelector({ candidates, onSelect, onRegenerateAll, onClose, isR
                   width: '24px',
                   height: '24px',
                   borderRadius: '50%',
-                  backgroundColor: '#6366f1',
+                  backgroundColor: '#c9a962',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',

@@ -23,7 +23,7 @@ export default function ConnectivityBadge({ status }: ConnectivityBadgeProps) {
       alignItems: 'center',
       gap: '6px',
       fontSize: '0.8rem',
-      color: '#6b7280',
+      color: '#7a8594',
     }}>
       <span style={{
         width: '8px',

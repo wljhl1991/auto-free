@@ -8,14 +8,14 @@
   flex-direction: column;
   align-items: center;
   gap: 0.75rem;
-  background: linear-gradient(to top, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.7) 60%, transparent 100%);
+  background: linear-gradient(to top, rgba(15, 20, 25, 0.95) 0%, rgba(15, 20, 25, 0.8) 60%, transparent 100%);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
 
 .prompt {
   font-size: 1rem;
-  color: #6b7280;
+  color: #7a8594;
   margin-bottom: 0.5rem;
   text-align: center;
 }
@@ -34,9 +34,9 @@
   font-size: 1rem;
   font-family: inherit;
   line-height: 1.4;
-  color: #1a1a2e;
-  background: rgba(255, 255, 255, 0.8);
-  border: 1px solid rgba(99, 102, 241, 0.15);
+  color: #e8eaed;
+  background: rgba(26, 35, 50, 0.9);
+  border: 1px solid #2a3a4e;
   border-radius: 12px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -47,11 +47,11 @@
 }
 
 .optionBtn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.95);
-  border-color: #6366f1;
-  color: #6366f1;
+  background: rgba(42, 58, 78, 0.9);
+  border-color: #c9a962;
+  color: #c9a962;
   transform: translateX(4px);
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15);
+  box-shadow: 0 4px 12px rgba(201, 169, 98, 0.15);
 }
 
 .optionBtn:active:not(:disabled) {
@@ -59,13 +59,13 @@
 }
 
 .optionBtn:disabled {
-  color: #9ca3af;
+  color: #5a6577;
   cursor: not-allowed;
   opacity: 0.6;
 }
 
 .optionBtn.selected {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(236, 72, 153, 0.1));
-  border-color: #6366f1;
-  color: #6366f1;
+  background: rgba(201, 169, 98, 0.1);
+  border-color: #c9a962;
+  color: #c9a962;
 }

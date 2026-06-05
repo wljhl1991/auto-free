@@ -145,6 +145,36 @@ function GamePlay() {
       }));
     }).then(unlisten => unlisteners.push(unlisten));
 
+    // 监听 chapter-ready 事件，动态加载新章节
+    listen('chapter-ready', (event: any) => {
+      const payload = event.payload;
+      if (!payload || payload.gameId !== gameId) return;
+
+      // 重新加载 GameScript 以获取新章节
+      game.getGameScript(gameId).then(script => {
+        if (executorRef.current) {
+          executorRef.current.updateScript(script);
+        }
+      }).catch(err => {
+        console.error('Failed to reload game script after chapter-ready:', err);
+      });
+    }).then(unlisten => unlisteners.push(unlisten));
+
+    // 监听 all-chapters-ready 事件
+    listen('all-chapters-ready', (event: any) => {
+      const payload = event.payload;
+      if (!payload || payload.gameId !== gameId) return;
+
+      // 重新加载 GameScript
+      game.getGameScript(gameId).then(script => {
+        if (executorRef.current) {
+          executorRef.current.updateScript(script);
+        }
+      }).catch(err => {
+        console.error('Failed to reload game script after all-chapters-ready:', err);
+      });
+    }).then(unlisten => unlisteners.push(unlisten));
+
     return () => unlisteners.forEach(fn => fn());
   }, [gameId, currentBgAssetRefId]);
 
@@ -275,6 +305,16 @@ function GamePlay() {
     audioEngineRef.current.stopBgm();
     navigate('/');
   }, []);
+
+  // 取消后续章节生成
+  const handleCancelGeneration = useCallback(async () => {
+    if (!gameId) return;
+    try {
+      await generation.cancelRemainingChapters(gameId);
+    } catch (err) {
+      console.error('取消后续生成失败:', err);
+    }
+  }, [gameId]);
 
   const handleSave = useCallback(async () => {
     if (!gameId) return;
@@ -623,6 +663,7 @@ function GamePlay() {
           onLoad={handleLoad}
           onBackToMenu={handleBackToMenu}
           onExportGame={handleExportGame}
+          onCancelGeneration={handleCancelGeneration}
           onClose={() => setShowMenu(false)}
         />
       )}

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useGeneration, GenerationStepEvent } from '../hooks/useGeneration';
+import { useGeneration, GenerationStepEvent, ChapterReadyEvent } from '../hooks/useGeneration';
 import TaskManager from '../components/HUD/TaskManager';
 
 interface ChapterProgress {
@@ -36,7 +36,9 @@ const SOURCE_LABELS: Record<string, string> = {
 
 const STEP_ICONS: Record<string, string> = {
   starting: '🚀',
+  generating_core: '🎯',
   generating_outline: '📝',
+  generating_chapter: '📖',
   generating_script: '✍️',
   parsing_script: '🔍',
   generating_assets: '🎨',
@@ -132,6 +134,8 @@ export default function GenerationProgress() {
     backgroundGenerationActive: false,
     overallProgress: 0,
   });
+  const [totalChaptersExpected, setTotalChaptersExpected] = useState<number>(0);
+  const [chaptersReadyCount, setChaptersReadyCount] = useState<number>(0);
 
   // 进度步骤事件
   const [progressSteps, setProgressSteps] = useState<GenerationStepEvent[]>([]);
@@ -267,6 +271,42 @@ export default function GenerationProgress() {
       if (chapters.length > 0 && chapters[0].chapterId === chapterId) {
         setGenStatus(prev => ({ ...prev, firstChapterReady: true }));
       }
+    }).then(unlisten => unlisteners.push(unlisten));
+
+    // 监听 chapter-ready 事件（高质量模式后续章节就绪）
+    generation.onChapterReady((event: any) => {
+      const payload = event.payload as ChapterReadyEvent;
+      if (!payload || payload.gameId !== gameId) return;
+
+      const { chapterIndex, totalChapters, chapterId, chapterTitle } = payload;
+      setTotalChaptersExpected(totalChapters);
+
+      // 添加新章节到进度列表
+      setChapters(prev => {
+        const exists = prev.find(ch => ch.chapterId === chapterId);
+        if (exists) return prev;
+        return [
+          ...prev,
+          {
+            chapterId,
+            chapterTitle: chapterTitle || `第${chapterIndex + 1}章`,
+            totalAssets: 0,
+            completedAssets: 0,
+            assetStatus: {},
+            assetSources: {},
+            status: 'generating' as const,
+          },
+        ];
+      });
+
+      setChaptersReadyCount(prev => prev + 1);
+    }).then(unlisten => unlisteners.push(unlisten));
+
+    // 监听 all-chapters-ready 事件
+    generation.onAllChaptersReady((event: any) => {
+      const payload = event.payload;
+      if (!payload || payload.gameId !== gameId) return;
+      setGenStatus(prev => ({ ...prev, backgroundGenerationActive: false }));
     }).then(unlisten => unlisteners.push(unlisten));
 
     return () => unlisteners.forEach(fn => fn());
@@ -433,6 +473,25 @@ export default function GenerationProgress() {
         <div className="background-generation-hint">
           <span className="hint-icon">⟳</span>
           后续章节正在后台生成中，您可以先开始游玩第一章
+          {totalChaptersExpected > 0 && (
+            <span className="hint-detail">（已就绪 {chaptersReadyCount + 1}/{totalChaptersExpected} 章）</span>
+          )}
+          <button
+            className="btn btn-secondary"
+            style={{ marginLeft: '1rem', padding: '0.3rem 0.8rem', fontSize: '0.8rem' }}
+            onClick={async () => {
+              if (gameId) {
+                try {
+                  await generation.cancelRemainingChapters(gameId);
+                  setGenStatus(prev => ({ ...prev, backgroundGenerationActive: false }));
+                } catch (err) {
+                  console.error('取消后续生成失败:', err);
+                }
+              }
+            }}
+          >
+            取消后续生成
+          </button>
         </div>
       )}
 

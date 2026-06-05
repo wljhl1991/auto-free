@@ -244,16 +244,8 @@ export default function ProviderConfigModal({
   };
 
   const handleCheck = async () => {
-    // 先保存再测试
-    setSaving(true);
-    try {
-      await onSave(editedProvider);
-    } finally {
-      setSaving(false);
-    }
-
+    // 直接测试，不先保存，避免保存后状态重置导致自定义模型丢失
     setChecking(true);
-    // 不清除旧结果，避免一闪而逝
     try {
       const result = await onCheck(editedProvider.id, testPrompt || undefined, selectedModelId !== CUSTOM_MODEL_ID ? selectedModelId : undefined);
       setCheckResult({
@@ -329,30 +321,30 @@ export default function ProviderConfigModal({
   // --- Styles ---
   const inputStyle: React.CSSProperties = {
     width: '100%', padding: '0.6rem 0.8rem', fontSize: '0.9rem',
-    fontFamily: 'monospace', backgroundColor: 'rgba(255, 255, 255, 0.8)', color: '#1a1a2e',
-    border: '1px solid rgba(99, 102, 241, 0.2)', borderRadius: '10px', outline: 'none',
+    fontFamily: 'monospace', backgroundColor: '#1a2332', color: '#e8eaed',
+    border: '1px solid #2a3a4e', borderRadius: '10px', outline: 'none',
     boxSizing: 'border-box', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
   };
 
   const selectStyle: React.CSSProperties = {
     width: '100%', padding: '0.6rem 0.8rem', fontSize: '0.9rem',
-    backgroundColor: 'rgba(255, 255, 255, 0.8)', color: '#1a1a2e',
-    border: '1px solid rgba(99, 102, 241, 0.2)', borderRadius: '10px', outline: 'none',
+    backgroundColor: '#1a2332', color: '#e8eaed',
+    border: '1px solid #2a3a4e', borderRadius: '10px', outline: 'none',
     boxSizing: 'border-box', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
   };
 
   const labelStyle: React.CSSProperties = {
-    display: 'block', fontSize: '0.85rem', color: '#4a4a6a', marginBottom: '0.4rem', fontWeight: 500,
+    display: 'block', fontSize: '0.85rem', color: '#b0b8c4', marginBottom: '0.4rem', fontWeight: 500,
   };
 
   const sectionHeaderStyle: React.CSSProperties = {
-    fontSize: '0.8rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase',
+    fontSize: '0.8rem', fontWeight: 600, color: '#7a8594', textTransform: 'uppercase',
     letterSpacing: '0.05em', marginBottom: '0.75rem', paddingBottom: '0.4rem',
-    borderBottom: '1px solid rgba(99, 102, 241, 0.1)',
+    borderBottom: '1px solid #2a3a4e',
   };
 
   const readOnlyStyle: React.CSSProperties = {
-    ...inputStyle, color: '#9ca3af', backgroundColor: 'rgba(255, 255, 255, 0.5)', cursor: 'default',
+    ...inputStyle, color: '#5a6577', backgroundColor: 'rgba(26, 35, 50, 0.6)', cursor: 'default',
   };
 
   // --- 右侧测试结果面板 ---
@@ -361,7 +353,7 @@ export default function ProviderConfigModal({
       return (
         <div style={{
           display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-          height: '100%', color: '#9ca3af', fontSize: '0.9rem', textAlign: 'center', padding: '2rem',
+          height: '100%', color: '#5a6577', fontSize: '0.9rem', textAlign: 'center', padding: '2rem',
         }}>
           <div style={{ fontSize: '2rem', marginBottom: '1rem', opacity: 0.3 }}>&#9881;</div>
           <div>点击左侧"测试连接"按钮</div>
@@ -384,7 +376,7 @@ export default function ProviderConfigModal({
             {isSuccess ? '✓ 连接成功' : '✗ 连接失败'}
           </div>
           {checkResult.latency != null && (
-            <div style={{ color: '#6b7280', fontSize: '0.85rem', marginTop: '0.2rem' }}>
+            <div style={{ color: '#7a8594', fontSize: '0.85rem', marginTop: '0.2rem' }}>
               延迟: {checkResult.latency}ms
               {checkResult.latency < 500 ? ' (很快)' : checkResult.latency < 2000 ? ' (正常)' : ' (较慢)'}
             </div>
@@ -402,11 +394,11 @@ export default function ProviderConfigModal({
 
           {checkResult.requestEndpoint && (
             <div style={{ marginBottom: '0.5rem' }}>
-              <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.15rem' }}>接口地址</div>
+              <div style={{ fontSize: '0.75rem', color: '#7a8594', marginBottom: '0.15rem' }}>接口地址</div>
               <div style={{
-                padding: '0.4rem 0.6rem', backgroundColor: 'rgba(255, 255, 255, 0.6)', borderRadius: '6px',
-                fontSize: '0.8rem', color: '#4a4a6a', fontFamily: 'monospace',
-                wordBreak: 'break-all', border: '1px solid rgba(99, 102, 241, 0.1)',
+                padding: '0.4rem 0.6rem', backgroundColor: 'rgba(26, 35, 50, 0.8)', borderRadius: '6px',
+                fontSize: '0.8rem', color: '#b0b8c4', fontFamily: 'monospace',
+                wordBreak: 'break-all', border: '1px solid #2a3a4e',
               }}>
                 {checkResult.requestEndpoint}
               </div>
@@ -415,11 +407,11 @@ export default function ProviderConfigModal({
 
           {checkResult.requestModel && (
             <div style={{ marginBottom: '0.5rem' }}>
-              <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.15rem' }}>模型</div>
+              <div style={{ fontSize: '0.75rem', color: '#7a8594', marginBottom: '0.15rem' }}>模型</div>
               <div style={{
-                padding: '0.4rem 0.6rem', backgroundColor: 'rgba(255, 255, 255, 0.6)', borderRadius: '6px',
-                fontSize: '0.8rem', color: '#4a4a6a', fontFamily: 'monospace',
-                border: '1px solid rgba(99, 102, 241, 0.1)',
+                padding: '0.4rem 0.6rem', backgroundColor: 'rgba(26, 35, 50, 0.8)', borderRadius: '6px',
+                fontSize: '0.8rem', color: '#b0b8c4', fontFamily: 'monospace',
+                border: '1px solid #2a3a4e',
               }}>
                 {checkResult.requestModel}
               </div>
@@ -428,11 +420,11 @@ export default function ProviderConfigModal({
 
           {checkResult.testPrompt && (
             <div style={{ marginBottom: '0.5rem' }}>
-              <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.15rem' }}>提示词</div>
+              <div style={{ fontSize: '0.75rem', color: '#7a8594', marginBottom: '0.15rem' }}>提示词</div>
               <div style={{
-                padding: '0.4rem 0.6rem', backgroundColor: 'rgba(255, 255, 255, 0.6)', borderRadius: '6px',
-                fontSize: '0.8rem', color: '#4a4a6a', fontFamily: 'monospace',
-                border: '1px solid rgba(99, 102, 241, 0.1)', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                padding: '0.4rem 0.6rem', backgroundColor: 'rgba(26, 35, 50, 0.8)', borderRadius: '6px',
+                fontSize: '0.8rem', color: '#b0b8c4', fontFamily: 'monospace',
+                border: '1px solid #2a3a4e', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
               }}>
                 {checkResult.testPrompt}
               </div>
@@ -441,11 +433,11 @@ export default function ProviderConfigModal({
 
           {checkResult.requestHeaders && (
             <div style={{ marginBottom: '0.5rem' }}>
-              <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.15rem' }}>请求头</div>
+              <div style={{ fontSize: '0.75rem', color: '#7a8594', marginBottom: '0.15rem' }}>请求头</div>
               <pre style={{
-                padding: '0.5rem 0.6rem', backgroundColor: 'rgba(255, 255, 255, 0.6)', borderRadius: '6px',
-                fontSize: '0.75rem', color: '#6b7280', fontFamily: 'monospace',
-                border: '1px solid rgba(99, 102, 241, 0.1)', margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+                padding: '0.5rem 0.6rem', backgroundColor: 'rgba(26, 35, 50, 0.8)', borderRadius: '6px',
+                fontSize: '0.75rem', color: '#7a8594', fontFamily: 'monospace',
+                border: '1px solid #2a3a4e', margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
                 maxHeight: '120px', overflowY: 'auto',
               }}>
                 {formatJson(checkResult.requestHeaders)}
@@ -455,11 +447,11 @@ export default function ProviderConfigModal({
 
           {checkResult.requestBody && (
             <div style={{ marginBottom: '0.5rem' }}>
-              <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.15rem' }}>请求体</div>
+              <div style={{ fontSize: '0.75rem', color: '#7a8594', marginBottom: '0.15rem' }}>请求体</div>
               <pre style={{
-                padding: '0.5rem 0.6rem', backgroundColor: 'rgba(255, 255, 255, 0.6)', borderRadius: '6px',
-                fontSize: '0.75rem', color: '#6b7280', fontFamily: 'monospace',
-                border: '1px solid rgba(99, 102, 241, 0.1)', margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+                padding: '0.5rem 0.6rem', backgroundColor: 'rgba(26, 35, 50, 0.8)', borderRadius: '6px',
+                fontSize: '0.75rem', color: '#7a8594', fontFamily: 'monospace',
+                border: '1px solid #2a3a4e', margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
                 maxHeight: '200px', overflowY: 'auto',
               }}>
                 {formatJson(checkResult.requestBody)}
@@ -474,7 +466,7 @@ export default function ProviderConfigModal({
 
           {checkResult.responseStatus != null && (
             <div style={{ marginBottom: '0.5rem' }}>
-              <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.15rem' }}>状态码</div>
+              <div style={{ fontSize: '0.75rem', color: '#7a8594', marginBottom: '0.15rem' }}>状态码</div>
               <span style={{
                 display: 'inline-block', padding: '0.2rem 0.6rem', borderRadius: '6px',
                 fontSize: '0.85rem', fontWeight: 600, fontFamily: 'monospace',
@@ -491,11 +483,11 @@ export default function ProviderConfigModal({
           {/* 文本响应 */}
           {checkResult.responsePreview && (
             <div style={{ marginBottom: '0.5rem' }}>
-              <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.15rem' }}>AI 响应</div>
+              <div style={{ fontSize: '0.75rem', color: '#7a8594', marginBottom: '0.15rem' }}>AI 响应</div>
               <div style={{
-                padding: '0.6rem', backgroundColor: 'rgba(255, 255, 255, 0.6)', borderRadius: '8px',
-                fontSize: '0.85rem', color: '#2d2d44', lineHeight: 1.6,
-                border: '1px solid rgba(99, 102, 241, 0.1)',
+                padding: '0.6rem', backgroundColor: 'rgba(26, 35, 50, 0.8)', borderRadius: '8px',
+                fontSize: '0.85rem', color: '#d0d4da', lineHeight: 1.6,
+                border: '1px solid #2a3a4e',
                 maxHeight: '200px', overflowY: 'auto',
                 whiteSpace: 'pre-wrap', wordBreak: 'break-word',
               }}>
@@ -507,11 +499,11 @@ export default function ProviderConfigModal({
           {/* 图片 */}
           {checkResult.mediaUrl && checkResult.mediaType === 'image' && (
             <div style={{ marginBottom: '0.5rem' }}>
-              <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>测试图片</div>
+              <div style={{ fontSize: '0.75rem', color: '#7a8594', marginBottom: '0.25rem' }}>测试图片</div>
               <img
                 src={convertFileSrc(checkResult.mediaUrl)}
                 alt="Test result"
-                style={{ maxWidth: '100%', maxHeight: '250px', borderRadius: '10px', border: '1px solid rgba(99, 102, 241, 0.15)' }}
+                style={{ maxWidth: '100%', maxHeight: '250px', borderRadius: '10px', border: '1px solid #2a3a4e' }}
               />
             </div>
           )}
@@ -519,7 +511,7 @@ export default function ProviderConfigModal({
           {/* 音频 */}
           {checkResult.mediaUrl && checkResult.mediaType === 'audio' && (
             <div style={{ marginBottom: '0.5rem' }}>
-              <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>测试音频</div>
+              <div style={{ fontSize: '0.75rem', color: '#7a8594', marginBottom: '0.25rem' }}>测试音频</div>
               <audio controls src={convertFileSrc(checkResult.mediaUrl)} style={{ width: '100%' }} />
             </div>
           )}
@@ -527,7 +519,7 @@ export default function ProviderConfigModal({
           {/* 视频 */}
           {checkResult.mediaUrl && checkResult.mediaType === 'video' && (
             <div style={{ marginBottom: '0.5rem' }}>
-              <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>测试视频</div>
+              <div style={{ fontSize: '0.75rem', color: '#7a8594', marginBottom: '0.25rem' }}>测试视频</div>
               <video controls src={convertFileSrc(checkResult.mediaUrl)} style={{ maxWidth: '100%', maxHeight: '250px', borderRadius: '8px' }} />
             </div>
           )}
@@ -544,32 +536,32 @@ export default function ProviderConfigModal({
       zIndex: 1000,
     }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div style={{
-        backgroundColor: 'rgba(255, 255, 255, 0.85)', border: '1px solid rgba(99, 102, 241, 0.15)',
+        backgroundColor: 'rgba(26, 35, 50, 0.95)', border: '1px solid #2a3a4e',
         borderRadius: '16px',
         width: '95%', maxWidth: checkResult ? '1100px' : '600px',
         maxHeight: '88vh',
         display: 'flex',
         transition: 'max-width 0.3s ease',
         backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
-        boxShadow: '0 8px 32px rgba(99, 102, 241, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06)',
+        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.2)',
       }} onClick={e => e.stopPropagation()}>
         {/* ===== 左侧：配置表单 ===== */}
         <div style={{
           flex: '0 0 420px', maxWidth: '420px',
           padding: '1.5rem',
           overflowY: 'auto',
-          borderRight: checkResult ? '1px solid rgba(99, 102, 241, 0.1)' : 'none',
+          borderRight: checkResult ? '1px solid #2a3a4e' : 'none',
         }}>
           {/* Header */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
             <div>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#1a1a2e', marginBottom: '0.2rem' }}>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#e8eaed', marginBottom: '0.2rem' }}>
                 {isNew ? '添加自定义模型' : editedProvider.name}
               </h3>
               {!isNew && (
                 <span style={{
                   display: 'inline-flex', alignItems: 'center', gap: '6px',
-                  fontSize: '0.75rem', color: '#6b7280',
+                  fontSize: '0.75rem', color: '#7a8594',
                 }}>
                   <span style={{
                     width: '7px', height: '7px', borderRadius: '50%',
@@ -582,7 +574,7 @@ export default function ProviderConfigModal({
             <button
               onClick={onClose}
               style={{
-                background: 'none', border: 'none', color: '#9ca3af', fontSize: '1.1rem',
+                background: 'none', border: 'none', color: '#5a6577', fontSize: '1.1rem',
                 cursor: 'pointer', padding: '0.2rem',
               }}
             >
@@ -609,7 +601,7 @@ export default function ProviderConfigModal({
             </div>
 
             <div style={{ marginBottom: '0.4rem' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: '#4a4a6a', cursor: 'pointer' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: '#b0b8c4', cursor: 'pointer' }}>
                 <input type="checkbox" checked={isMultimodal}
                   onChange={e => handleMultimodalChange(e.target.checked)}
                   style={{ width: '15px', height: '15px', cursor: 'pointer' }} />
@@ -619,7 +611,7 @@ export default function ProviderConfigModal({
             {isMultimodal && (
               <div style={{ marginBottom: '0.75rem', paddingLeft: '1.25rem', display: 'flex', flexWrap: 'wrap', gap: '0.6rem' }}>
                 {MODALITY_OPTIONS.map(opt => (
-                  <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem', color: '#4a4a6a', cursor: 'pointer' }}>
+                  <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem', color: '#b0b8c4', cursor: 'pointer' }}>
                     <input type="checkbox" checked={editedProvider.modality.includes(opt.value)}
                       onChange={e => handleModalityToggle(opt.value, e.target.checked)} style={{ cursor: 'pointer' }} />
                     {opt.label}
@@ -643,7 +635,7 @@ export default function ProviderConfigModal({
               <input type="text" value={currentEndpoint}
                 onChange={e => handleEndpointChange(e.target.value)}
                 placeholder="https://api.example.com/v1" style={inputStyle} />
-              <span style={{ fontSize: '0.7rem', color: '#9ca3af', marginTop: '0.2rem', display: 'block' }}>
+              <span style={{ fontSize: '0.7rem', color: '#5a6577', marginTop: '0.2rem', display: 'block' }}>
                 {currentEndpoint.includes('/chat/completions') || currentEndpoint.includes('/completions')
                   ? '当前为完整 URL，调用时将直接使用此地址'
                   : '当前为基础 URL，调用时将自动追加 /chat/completions'}
@@ -654,12 +646,26 @@ export default function ProviderConfigModal({
             <div style={{ marginBottom: '0.75rem' }}>
               <label style={labelStyle}>模型 ID</label>
               {editedProvider.models.length > 0 && !isCustomModel ? (
-                <select value={selectedModelId} onChange={e => handleModelSelectChange(e.target.value)} style={selectStyle}>
-                  {editedProvider.models.map(model => (
-                    <option key={model.id} value={model.id}>{model.id}</option>
-                  ))}
-                  <option value={CUSTOM_MODEL_ID}>自定义...</option>
-                </select>
+                <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                  <select value={selectedModelId} onChange={e => handleModelSelectChange(e.target.value)} style={{ ...selectStyle, flex: 1 }}>
+                    {editedProvider.models.map(model => (
+                      <option key={model.id} value={model.id}>{model.id}</option>
+                    ))}
+                    <option value={CUSTOM_MODEL_ID}>自定义...</option>
+                  </select>
+                  {selectedModelId && selectedModelId !== CUSTOM_MODEL_ID && !provider?.models.some(m => m.id === selectedModelId) && editedProvider.models.length > 1 && (
+                    <button
+                      onClick={() => handleDeleteModel(selectedModelId)}
+                      title="删除此模型"
+                      style={{
+                        padding: '0.5rem 0.6rem', fontSize: '0.8rem', color: '#ef4444',
+                        backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)',
+                        borderRadius: '10px', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
+                      }}>
+                      ✕
+                    </button>
+                  )}
+                </div>
               ) : (
                 <div>
                   <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.4rem' }}>
@@ -682,7 +688,7 @@ export default function ProviderConfigModal({
                     )}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                    <label style={{ fontSize: '0.8rem', color: '#4a4a6a', whiteSpace: 'nowrap' }}>模态:</label>
+                    <label style={{ fontSize: '0.8rem', color: '#b0b8c4', whiteSpace: 'nowrap' }}>模态:</label>
                     <select value={customModelModality}
                       onChange={e => setCustomModelModality(e.target.value as AIModality)}
                       style={{ ...selectStyle, flex: 1 }}>
@@ -701,8 +707,8 @@ export default function ProviderConfigModal({
                 return (
                   <div style={{
                     marginTop: '0.4rem', padding: '0.5rem 0.6rem',
-                    backgroundColor: 'rgba(255, 255, 255, 0.6)', borderRadius: '8px',
-                    fontSize: '0.75rem', color: '#6b7280', border: '1px solid rgba(99, 102, 241, 0.1)',
+                    backgroundColor: 'rgba(26, 35, 50, 0.8)', borderRadius: '8px',
+                    fontSize: '0.75rem', color: '#7a8594', border: '1px solid #2a3a4e',
                   }}>
                     {sm.name !== sm.id && <div>名称: {sm.name}</div>}
                     <div>模态: {MODALITY_OPTIONS.find(o => o.value === sm.modality)?.label || sm.modality}</div>
@@ -747,7 +753,7 @@ export default function ProviderConfigModal({
                 </div>
                 {editedProvider.authConfig.apiKey.helpUrl && (
                   <a href={editedProvider.authConfig.apiKey.helpUrl} target="_blank" rel="noopener noreferrer"
-                    style={{ display: 'inline-block', marginTop: '0.3rem', fontSize: '0.75rem', color: '#6366f1', textDecoration: 'none' }}>
+                    style={{ display: 'inline-block', marginTop: '0.3rem', fontSize: '0.75rem', color: '#c9a962', textDecoration: 'none' }}>
                     获取 API Key →
                   </a>
                 )}
@@ -768,7 +774,7 @@ export default function ProviderConfigModal({
               <input type="text" value={testPrompt}
                 onChange={e => setTestPrompt(e.target.value)}
                 placeholder="输入测试提示词（默认: hi）" style={inputStyle} />
-              <span style={{ fontSize: '0.7rem', color: '#9ca3af', marginTop: '0.2rem', display: 'block' }}>
+              <span style={{ fontSize: '0.7rem', color: '#5a6577', marginTop: '0.2rem', display: 'block' }}>
                 连接测试时发送给 AI 的提示词，仅对文本类服务商有效
               </span>
             </div>
@@ -791,19 +797,19 @@ export default function ProviderConfigModal({
               marginBottom: '1rem', padding: '0.6rem',
               backgroundColor: 'rgba(255, 255, 255, 0.5)', borderRadius: '10px', fontSize: '0.8rem',
             }}>
-              <div style={{ color: '#4a4a6a', marginBottom: '0.3rem' }}>注册指引</div>
+              <div style={{ color: '#b0b8c4', marginBottom: '0.3rem' }}>注册指引</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
                 {editedProvider.officialUrl && (
                   <a href={editedProvider.officialUrl} target="_blank" rel="noopener noreferrer"
-                    style={{ color: '#6366f1', textDecoration: 'none', fontSize: '0.75rem' }}>官方网站 →</a>
+                    style={{ color: '#c9a962', textDecoration: 'none', fontSize: '0.75rem' }}>官方网站 →</a>
                 )}
                 {editedProvider.registerUrl && (
                   <a href={editedProvider.registerUrl} target="_blank" rel="noopener noreferrer"
-                    style={{ color: '#6366f1', textDecoration: 'none', fontSize: '0.75rem' }}>注册账号 →</a>
+                    style={{ color: '#c9a962', textDecoration: 'none', fontSize: '0.75rem' }}>注册账号 →</a>
                 )}
                 {editedProvider.docsUrl && (
                   <a href={editedProvider.docsUrl} target="_blank" rel="noopener noreferrer"
-                    style={{ color: '#6366f1', textDecoration: 'none', fontSize: '0.75rem' }}>API 文档 →</a>
+                    style={{ color: '#c9a962', textDecoration: 'none', fontSize: '0.75rem' }}>API 文档 →</a>
                 )}
               </div>
             </div>
@@ -821,7 +827,7 @@ export default function ProviderConfigModal({
             }}>
               <span>{saveResult === 'success' ? '✓ 保存成功' : '✗ 保存失败'}</span>
               <button onClick={() => setSaveResult(null)}
-                style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: '0.75rem', padding: '0.1rem' }}>
+                style={{ background: 'none', border: 'none', color: '#5a6577', cursor: 'pointer', fontSize: '0.75rem', padding: '0.1rem' }}>
                 ✕
               </button>
             </div>
@@ -853,16 +859,16 @@ export default function ProviderConfigModal({
             minWidth: 0,
             maxHeight: '88vh',
             overflowY: 'auto',
-            backgroundColor: 'rgba(255, 255, 255, 0.6)',
+            backgroundColor: 'rgba(26, 35, 50, 0.8)',
             borderRadius: '0 16px 16px 0',
           }}>
             <div style={{
-              padding: '0.8rem 1rem', borderBottom: '1px solid rgba(99, 102, 241, 0.1)',
+              padding: '0.8rem 1rem', borderBottom: '1px solid #2a3a4e',
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             }}>
-              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#4a4a6a' }}>测试结果</span>
+              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#b0b8c4' }}>测试结果</span>
               <button onClick={() => setCheckResult(null)}
-                style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: '0.9rem', padding: '0.1rem' }}>
+                style={{ background: 'none', border: 'none', color: '#5a6577', cursor: 'pointer', fontSize: '0.9rem', padding: '0.1rem' }}>
                 ✕
               </button>
             </div>

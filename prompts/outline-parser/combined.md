@@ -38,15 +38,15 @@
             "backgroundImage": {
               "id": "bg_1_1",
               "type": "image",
-              "prompt": "详细的图片生成提示词",
-              "negativePrompt": "低质量，模糊",
+              "prompt": "详细的图片生成提示词，英文，描述场景的视觉元素、光影、色调、构图",
+              "negativePrompt": "low quality, blurry, distorted",
               "source": "ai_generated",
               "status": "pending"
             },
             "bgm": {
               "id": "bgm_1",
               "type": "audio",
-              "prompt": "音乐生成提示词",
+              "prompt": "音乐生成提示词，描述音乐风格、乐器、节奏、情绪氛围",
               "negativePrompt": null,
               "source": "ai_generated",
               "status": "pending"
@@ -60,7 +60,7 @@
               "type": "narration",
               "id": "n1",
               "text": "旁白文本内容",
-              "voicePrompt": "语音生成提示词",
+              "voicePrompt": "语音生成提示词，描述说话者性别、语调、语速、情感",
               "voiceAsset": null
             },
             {
@@ -71,7 +71,7 @@
               "speakerAvatar": {
                 "id": "avatar_char1",
                 "type": "image",
-                "prompt": "角色立绘生成提示词",
+                "prompt": "角色立绘生成提示词，英文，描述角色外貌、服装、表情、姿态",
                 "negativePrompt": null,
                 "source": "ai_generated",
                 "status": "pending"
@@ -120,6 +120,12 @@
 - "cacheKey" 可以为 null 或省略
 - "style" 可以为 null 或省略
 
+资源 prompt 编写要求（极其重要，程序将用这些 prompt 调用其他 AI 服务生成资源）：
+- 图片 prompt（backgroundImage、speakerAvatar 等 type="image" 的资源）：必须用英文编写，详细描述视觉元素，包括：主体内容、场景环境、光影效果、色调氛围、构图方式、艺术风格。例如："A mysterious ancient library at night, dim candlelight casting long shadows, dusty bookshelves reaching to the ceiling, gothic architecture, dark blue and amber color palette, cinematic composition, digital painting style"
+- 音乐 prompt（bgm、ambientSound 等 type="audio" 的资源）：用中文或英文描述音乐风格，包括：音乐类型、主要乐器、节奏速度、情绪氛围、参考风格。例如："悬疑紧张的管弦乐，低音提琴拨弦，缓慢节奏，不和谐和弦，黑暗氛围，类似悬疑电影配乐"
+- 语音 prompt（voicePrompt 字段）：描述说话者特征，包括：性别、年龄段、语调、语速、情感状态。例如："女性，温柔，语速缓慢，略带忧伤"
+- 视频 prompt（backgroundVideo、cgAnimation 等 type="video" 的资源）：用英文编写，描述视频内容、镜头运动、时长、视觉风格。例如："Camera slowly panning across a misty forest at dawn, soft golden light filtering through trees, mysterious atmosphere, 10 seconds, cinematic style"
+
 SceneNode 节点类型（type 字段）可选值：
 - "narration"（旁白）
 - "dialogue"（对话）
@@ -141,5 +147,7 @@ gameType（游戏类型）可选值：
 - choice.options[].condition 必须为 null，不要填写字符串条件
 - transitionType 只能是以下值之一："fade"、"dissolve"、"slide"、"instant"
 - node type 标签必须完全匹配上述列举的 snake_case 值
+- 不要使用上述列举之外的任何 type 值，不要自创类型如 "audio_play"、"wait"、"text" 等
+- 所有资源 prompt 必须详细具体，不要写空字符串或过于简短的描述
 
 只输出 JSON 代码块，不要有任何额外文字。

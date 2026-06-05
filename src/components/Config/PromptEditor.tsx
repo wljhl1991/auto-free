@@ -32,19 +32,19 @@ function PromptEditor({ prompt, negativePrompt, onRegenerate, onCancel }: Prompt
       }}
     >
       <div style={{
-        backgroundColor: 'rgba(255, 255, 255, 0.85)',
-        border: '1px solid rgba(99, 102, 241, 0.15)',
+        backgroundColor: 'rgba(26, 35, 50, 0.95)',
+        border: '1px solid #2a3a4e',
         borderRadius: '16px',
         padding: '1.5rem',
         width: '90%',
         maxWidth: '480px',
         backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
-        boxShadow: '0 8px 32px rgba(99, 102, 241, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06)',
+        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.2)',
       }}>
         <h3 style={{
           fontSize: '1.1rem',
           fontWeight: 600,
-          color: '#1a1a2e',
+          color: '#e8eaed',
           marginBottom: '1rem',
         }}>
           编辑 Prompt
@@ -54,7 +54,7 @@ function PromptEditor({ prompt, negativePrompt, onRegenerate, onCancel }: Prompt
           <label style={{
             display: 'block',
             fontSize: '0.85rem',
-            color: '#4a4a6a',
+            color: '#b0b8c4',
             marginBottom: '0.4rem',
           }}>
             Prompt
@@ -68,19 +68,19 @@ function PromptEditor({ prompt, negativePrompt, onRegenerate, onCancel }: Prompt
               padding: '0.6rem 0.8rem',
               fontSize: '0.9rem',
               fontFamily: 'inherit',
-              backgroundColor: 'rgba(255, 255, 255, 0.8)',
-              color: '#1a1a2e',
-              border: '1px solid rgba(99, 102, 241, 0.2)',
+              backgroundColor: '#1a2332',
+              color: '#e8eaed',
+              border: '1px solid #2a3a4e',
               borderRadius: '10px',
               outline: 'none',
               resize: 'vertical',
               boxSizing: 'border-box',
             }}
             onFocus={(e) => {
-              e.currentTarget.style.borderColor = '#6366f1';
+              e.currentTarget.style.borderColor = '#c9a962';
             }}
             onBlur={(e) => {
-              e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.2)';
+              e.currentTarget.style.borderColor = '#2a3a4e';
             }}
           />
         </div>
@@ -89,7 +89,7 @@ function PromptEditor({ prompt, negativePrompt, onRegenerate, onCancel }: Prompt
           <label style={{
             display: 'block',
             fontSize: '0.85rem',
-            color: '#4a4a6a',
+            color: '#b0b8c4',
             marginBottom: '0.4rem',
           }}>
             Negative Prompt
@@ -104,19 +104,19 @@ function PromptEditor({ prompt, negativePrompt, onRegenerate, onCancel }: Prompt
               padding: '0.6rem 0.8rem',
               fontSize: '0.9rem',
               fontFamily: 'inherit',
-              backgroundColor: 'rgba(255, 255, 255, 0.8)',
-              color: '#1a1a2e',
-              border: '1px solid rgba(99, 102, 241, 0.2)',
+              backgroundColor: '#1a2332',
+              color: '#e8eaed',
+              border: '1px solid #2a3a4e',
               borderRadius: '10px',
               outline: 'none',
               resize: 'vertical',
               boxSizing: 'border-box',
             }}
             onFocus={(e) => {
-              e.currentTarget.style.borderColor = '#6366f1';
+              e.currentTarget.style.borderColor = '#c9a962';
             }}
             onBlur={(e) => {
-              e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.2)';
+              e.currentTarget.style.borderColor = '#2a3a4e';
             }}
           />
         </div>

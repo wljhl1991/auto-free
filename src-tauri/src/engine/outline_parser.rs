@@ -115,10 +115,14 @@ impl OutlineParser {
             e
         })?;
         let json_str = Self::normalize_json(&json_str);
-        let mut script: GameScript = serde_json::from_str(&json_str).map_err(|e| {
-            Self::save_raw_ai_response_sync("parse_json_error", &response);
-            ProviderError::GenerationFailed(format!("Failed to parse GameScript JSON: {}", e))
-        })?;
+        let mut script: GameScript = match serde_json::from_str(&json_str) {
+            Ok(s) => s,
+            Err(e) => {
+                log::error!("GameScript JSON 解析失败(parse): {}, 尝试宽松解析", e);
+                Self::save_raw_ai_response_sync("parse_json_error", &response);
+                Self::parse_script_lenient(&json_str)?
+            }
+        };
 
         self.validate_and_fix(&mut script)?;
         Ok(script)
@@ -160,10 +164,14 @@ impl OutlineParser {
             e
         })?;
         let json_str = Self::normalize_json(&json_str);
-        let mut script: GameScript = serde_json::from_str(&json_str).map_err(|e| {
-            Self::save_raw_ai_response_sync("combined_json_error", &response);
-            ProviderError::GenerationFailed(format!("Failed to parse GameScript JSON: {}", e))
-        })?;
+        let mut script: GameScript = match serde_json::from_str(&json_str) {
+            Ok(s) => s,
+            Err(e) => {
+                log::error!("GameScript JSON 解析失败(combined): {}, 尝试宽松解析", e);
+                Self::save_raw_ai_response_sync("combined_json_error", &response);
+                Self::parse_script_lenient(&json_str)?
+            }
+        };
 
         self.validate_and_fix(&mut script)?;
         Ok(script)
@@ -478,6 +486,71 @@ impl OutlineParser {
         }
     }
 
+    /// 宽松解析 GameScript JSON：逐章解析，跳过有问题的节点
+    fn parse_script_lenient(json_str: &str) -> Result<GameScript, ProviderError> {
+        let value: serde_json::Value = serde_json::from_str(json_str)
+            .map_err(|e| ProviderError::GenerationFailed(format!("JSON 格式无效: {}", e)))?;
+
+        // 提取 meta
+        let meta = value.get("meta")
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_default();
+
+        // 逐章解析
+        let chapters = value.get("chapters")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|ch| {
+                        if let Some(scenes) = ch.get("scenes").and_then(|v| v.as_array()) {
+                            let fixed_scenes: Vec<serde_json::Value> = scenes.iter()
+                                .filter_map(|scene| {
+                                    if let Some(seq) = scene.get("sequence").and_then(|v| v.as_array()) {
+                                        let fixed_seq: Vec<serde_json::Value> = seq.iter()
+                                            .filter_map(|node| {
+                                                match serde_json::from_value::<SceneNode>(node.clone()) {
+                                                    Ok(_) => Some(node.clone()),
+                                                    Err(e) => {
+                                                        log::warn!("跳过无法解析的节点: {}", e);
+                                                        // 尝试降级为 action
+                                                        let mut fixed = node.clone();
+                                                        if let Some(obj) = fixed.as_object_mut() {
+                                                            obj.insert("type".to_string(), serde_json::Value::String("action".to_string()));
+                                                        }
+                                                        match serde_json::from_value::<SceneNode>(fixed.clone()) {
+                                                            Ok(_) => Some(fixed),
+                                                            Err(_) => None,
+                                                        }
+                                                    }
+                                                }
+                                            })
+                                            .collect();
+                                        let mut fixed_scene = scene.clone();
+                                        if let Some(obj) = fixed_scene.as_object_mut() {
+                                            obj.insert("sequence".to_string(), serde_json::Value::Array(fixed_seq));
+                                        }
+                                        Some(fixed_scene)
+                                    } else {
+                                        Some(scene.clone())
+                                    }
+                                })
+                                .collect();
+                            let mut fixed_ch = ch.clone();
+                            if let Some(obj) = fixed_ch.as_object_mut() {
+                                obj.insert("scenes".to_string(), serde_json::Value::Array(fixed_scenes));
+                            }
+                            serde_json::from_value(fixed_ch).ok()
+                        } else {
+                            serde_json::from_value(ch.clone()).ok()
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        Ok(GameScript { meta, chapters, global_variables: vec![] })
+    }
+
     /// 获取游戏类型的显示名称
     fn game_type_display(game_type: &GameType) -> &'static str {
         match game_type {
@@ -537,7 +610,28 @@ fn normalize_node_type(s: &str) -> Option<String> {
         "conditional" => "condition",
         "transition" => "scene_transition",
         "sceneTransition" => "scene_transition",
-        _ => return None,
+        // AI 可能生成的非标准类型 → 映射到最接近的合法类型
+        "audio_play" | "audio" | "sound" | "play_audio" | "play_sound" | "sfx" => "action",
+        "music" | "play_music" | "bgm" => "action",
+        "wait" | "delay" | "pause" => "action",
+        "text" | "message" | "description" => "narration",
+        "talk" | "speak" | "conversation" => "dialogue",
+        "select" | "decision" | "branch" | "choose" => "choice",
+        "if" | "check" | "branch_condition" => "condition",
+        "cutscene" | "cinematic" | "animation" | "movie" => "cg",
+        "change_scene" | "goto_scene" | "next_scene" | "move_to_scene" => "scene_transition",
+        _ => {
+            // 未知类型降级为 action，避免 serde 解析失败
+            let snake = camel_to_snake(s);
+            if !VALID_TYPES.contains(&snake.as_str()) {
+                log::warn!("未知的 SceneNode 类型 '{}'，降级为 action", s);
+                "action"
+            } else {
+                // camel_to_snake 后是合法类型，但前面已经检查过了
+                // 这里不应该到达，但作为安全措施返回 snake 的引用
+                return Some(snake);
+            }
+        }
     };
 
     Some(corrected.to_string())

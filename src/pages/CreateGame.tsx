@@ -29,6 +29,7 @@ export default function CreateGame() {
   const [outline, setOutline] = useState('');
   const [gameType, setGameType] = useState('');
   const [highQuality, setHighQuality] = useState(false);
+  const [chapterCount, setChapterCount] = useState(3);
   const [loading, setLoading] = useState(false);
   const [loadingPhase, setLoadingPhase] = useState<'checking' | 'submitting' | null>(null);
   const [randomLoading, setRandomLoading] = useState(false);
@@ -97,7 +98,7 @@ export default function CreateGame() {
       // 保存历史失败不影响创建流程
     }
     try {
-      const gameInfo = await createGame(outline, gameType || undefined, useLocalFallback, highQuality);
+      const gameInfo = await createGame(outline, gameType || undefined, useLocalFallback, highQuality, chapterCount);
       navigate(`/generate/${gameInfo.id}`);
     } catch (e: any) {
       const msg = typeof e === 'string' ? e : (e?.message || '创建失败，请重试');
@@ -209,7 +210,7 @@ export default function CreateGame() {
             style={{
               background: 'none',
               border: 'none',
-              color: '#8888aa',
+              color: '#7a8594',
               fontSize: '0.85rem',
               cursor: 'pointer',
               padding: '0.3rem 0',
@@ -219,8 +220,8 @@ export default function CreateGame() {
               gap: '0.4rem',
               transition: 'color 0.2s ease',
             }}
-            onMouseEnter={e => (e.currentTarget.style.color = '#4a90d9')}
-            onMouseLeave={e => (e.currentTarget.style.color = '#8888aa')}
+            onMouseEnter={e => (e.currentTarget.style.color = '#4a9eff')}
+            onMouseLeave={e => (e.currentTarget.style.color = '#7a8594')}
           >
             <span style={{ fontSize: '0.7rem', transition: 'transform 0.2s', transform: showHistory ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block' }}>▶</span>
             输入历史 {history.length > 0 && `(${history.length})`}
@@ -232,7 +233,7 @@ export default function CreateGame() {
               style={{
                 background: 'none',
                 border: 'none',
-                color: '#555570',
+                color: '#7a8594',
                 fontSize: '0.8rem',
                 cursor: 'pointer',
                 padding: '0.2rem 0.5rem',
@@ -240,7 +241,7 @@ export default function CreateGame() {
                 transition: 'color 0.15s ease',
               }}
               onMouseEnter={e => (e.currentTarget.style.color = '#f87171')}
-              onMouseLeave={e => (e.currentTarget.style.color = '#555570')}
+              onMouseLeave={e => (e.currentTarget.style.color = '#7a8594')}
             >
               清空全部
             </button>
@@ -252,12 +253,12 @@ export default function CreateGame() {
             marginTop: '0.5rem',
             maxHeight: '320px',
             overflowY: 'auto',
-            backgroundColor: '#12121f',
-            border: '1px solid #1e1e30',
+            backgroundColor: '#0f1419',
+            border: '1px solid #2a3a4e',
             borderRadius: '8px',
           }}>
             {history.length === 0 ? (
-              <p style={{ color: '#555570', fontSize: '0.85rem', padding: '1rem', textAlign: 'center', margin: 0 }}>暂无历史记录</p>
+              <p style={{ color: '#5a6577', fontSize: '0.85rem', padding: '1rem', textAlign: 'center', margin: 0 }}>暂无历史记录</p>
             ) : (
               history.map((item) => (
                 <div
@@ -267,18 +268,18 @@ export default function CreateGame() {
                     alignItems: 'flex-start',
                     gap: '0.6rem',
                     padding: '0.7rem 0.85rem',
-                    borderBottom: '1px solid #1e1e30',
+                    borderBottom: '1px solid #2a3a4e',
                     cursor: 'pointer',
                     transition: 'background-color 0.15s ease',
                   }}
-                  onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#1a1a2e')}
+                  onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#1a2332')}
                   onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
                   onClick={() => { setOutline(item.outline); setGameType(item.gameType); setError(''); }}
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{
                       fontSize: '0.85rem',
-                      color: '#c0c0d0',
+                      color: '#d0d4da',
                       lineHeight: '1.5',
                       maxHeight: '120px',
                       overflowY: 'auto',
@@ -287,8 +288,8 @@ export default function CreateGame() {
                     }}>
                       {item.outline}
                     </div>
-                    <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.3rem', fontSize: '0.75rem', color: '#666680' }}>
-                      <span style={{ color: '#7b68ee', backgroundColor: 'rgba(123, 104, 238, 0.12)', border: '1px solid rgba(123, 104, 238, 0.25)', borderRadius: '8px', padding: '0 6px' }}>
+                    <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.3rem', fontSize: '0.75rem', color: '#5a6577' }}>
+                      <span style={{ color: '#c9a962', backgroundColor: 'rgba(201, 169, 98, 0.12)', border: '1px solid rgba(201, 169, 98, 0.25)', borderRadius: '8px', padding: '0 6px' }}>
                         {gameTypeLabel(item.gameType)}
                       </span>
                       <span>{new Date(item.timestamp).toLocaleString('zh-CN')}</span>
@@ -300,7 +301,7 @@ export default function CreateGame() {
                     style={{
                       background: 'none',
                       border: 'none',
-                      color: '#555570',
+                      color: '#5a6577',
                       fontSize: '1rem',
                       cursor: 'pointer',
                       padding: '0.15rem 0.3rem',
@@ -310,7 +311,7 @@ export default function CreateGame() {
                       flexShrink: 0,
                     }}
                     onMouseEnter={e => { e.currentTarget.style.color = '#f87171'; e.currentTarget.style.backgroundColor = 'rgba(248, 113, 113, 0.1)'; }}
-                    onMouseLeave={e => { e.currentTarget.style.color = '#555570'; e.currentTarget.style.backgroundColor = 'transparent'; }}
+                    onMouseLeave={e => { e.currentTarget.style.color = '#5a6577'; e.currentTarget.style.backgroundColor = 'transparent'; }}
                     title="删除"
                   >
                     ×
@@ -336,6 +337,19 @@ export default function CreateGame() {
           </select>
         </div>
 
+        <div className="form-group form-group-inline">
+          <label className="form-label">章节数</label>
+          <input
+            type="number"
+            min={1}
+            max={9}
+            value={chapterCount}
+            onChange={(e) => setChapterCount(Math.min(9, Math.max(1, parseInt(e.target.value) || 3)))}
+            className="form-select"
+            style={{ width: '80px', textAlign: 'center' }}
+          />
+        </div>
+
         <button className="btn btn-secondary" onClick={handleRandomOutline} disabled={randomLoading}>
           {randomLoading ? '⏳ 生成中...' : '🎲 随机大纲'}
         </button>
@@ -344,14 +358,14 @@ export default function CreateGame() {
       <div style={{
         marginBottom: '1.25rem',
         padding: '0.85rem 1rem',
-        backgroundColor: highQuality ? 'rgba(123, 104, 238, 0.08)' : 'rgba(255, 255, 255, 0.02)',
-        border: `1px solid ${highQuality ? 'rgba(123, 104, 238, 0.3)' : 'rgba(255, 255, 255, 0.06)'}`,
+        backgroundColor: highQuality ? 'rgba(201, 169, 98, 0.08)' : 'rgba(26, 35, 50, 0.5)',
+        border: `1px solid ${highQuality ? 'rgba(201, 169, 98, 0.3)' : '#2a3a4e'}`,
         borderRadius: '10px',
         transition: 'all 0.2s ease',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-            <span style={{ fontSize: '0.9rem', color: '#c0c0d0' }}>✨ 高质量模式</span>
+            <span style={{ fontSize: '0.9rem', color: '#d0d4da' }}>✨ 高质量模式</span>
             <button
               type="button"
               onClick={() => setHighQuality(!highQuality)}
@@ -362,7 +376,7 @@ export default function CreateGame() {
                 borderRadius: '12px',
                 border: 'none',
                 cursor: 'pointer',
-                backgroundColor: highQuality ? '#7b68ee' : '#3a3a50',
+                backgroundColor: highQuality ? '#c9a962' : '#3a3a50',
                 transition: 'background-color 0.2s ease',
                 padding: 0,
                 outline: 'none',

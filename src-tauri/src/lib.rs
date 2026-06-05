@@ -111,6 +111,8 @@ pub fn run() {
             game::save_game,
             game::load_save,
             game::list_saves,
+            game::start_remaining_chapters,
+            game::cancel_remaining_chapters,
             game::save_creation_history,
             game::get_creation_history,
             game::delete_creation_history,

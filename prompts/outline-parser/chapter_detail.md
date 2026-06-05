@@ -8,6 +8,7 @@
 4. **选择设计**：每个选择都有意义和后果，避免无意义的选项
 5. **节奏控制**：紧张与舒缓交替，避免持续高压或持续平淡
 6. **伏笔埋设**：根据核心要素中的伏笔规划，在合适位置埋设或回收
+7. **资源描述**：每个场景必须提供详细的资源生成描述（程序将用这些描述调用其他AI服务生成图片、音乐等资源）
 
 ## 输出格式
 
@@ -27,13 +28,24 @@
   [旁白] ...
   [选择] 你想怎么做？ → 选项1: ... | 选项2: ...
   [旁白] ...
-- 资源需求：背景图提示词、BGM提示词、角色立绘提示词
+- 资源需求：
+  背景图（英文prompt）：A mysterious ancient library at night, dim candlelight casting long shadows, dusty bookshelves reaching to the ceiling, gothic architecture, dark blue and amber color palette, cinematic composition, digital painting style
+  BGM（中文描述）：悬疑紧张的管弦乐，低音提琴拨弦，缓慢节奏，不和谐和弦，黑暗氛围
+  角色立绘（英文prompt）：A young woman with long silver hair, wearing a dark blue cloak, piercing green eyes, serious expression, standing pose, anime style
+  语音（中文描述）：女性，温柔，语速缓慢，略带忧伤
 
 【场景2：标题】
 ...
 
 【章节结尾过渡】...
 ```
+
+资源描述编写要求（极其重要）：
+- 背景图 prompt：必须用英文，详细描述视觉元素（主体、环境、光影、色调、构图、艺术风格）
+- BGM prompt：用中文描述音乐风格（类型、乐器、节奏、情绪、参考风格）
+- 角色立绘 prompt：必须用英文，详细描述角色外貌（发型、服装、表情、姿态、艺术风格）
+- 语音 prompt：用中文描述说话者特征（性别、年龄段、语调、语速、情感）
+- 视频 prompt：必须用英文，描述视频内容（镜头运动、时长、视觉风格）
 
 每个场景至少3-5个对话/旁白节点，选择节点至少2-3个选项。
 场景描写要细腻，为后续生成资源提供充分的提示词依据。

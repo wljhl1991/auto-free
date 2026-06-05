@@ -36,6 +36,11 @@ export class SceneExecutor {
     this.onEvent = callback;
   }
 
+  // 更新 GameScript（用于后续章节动态加载）
+  updateScript(script: GameScript) {
+    this.script = script;
+  }
+
   getCurrentChapterId(): string | null {
     return this.currentChapterId;
   }
