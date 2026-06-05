@@ -210,6 +210,12 @@ pub struct ConnectivityCheck {
     pub test_prompt: Option<String>,
     pub media_url: Option<String>,
     pub media_type: Option<String>,
+    /// 请求详情
+    pub request_endpoint: Option<String>,
+    pub request_model: Option<String>,
+    pub request_headers: Option<String>,
+    pub request_body: Option<String>,
+    pub response_status: Option<u16>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

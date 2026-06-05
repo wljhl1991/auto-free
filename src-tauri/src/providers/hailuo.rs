@@ -358,6 +358,9 @@ impl IAssetProvider for HailuoProvider {
             image_size: Some("256x256".to_string()),
         };
 
+        let request_body = serde_json::to_string(&request).unwrap_or_default();
+        let request_headers = r#"{"Authorization":"Bearer ***","Content-Type":"application/json"}"#.to_string();
+
         let result = self.send_image_request(&request).await;
         let latency = SystemTime::now()
             .duration_since(start)
@@ -382,6 +385,11 @@ impl IAssetProvider for HailuoProvider {
                     test_prompt: Some(test_prompt.to_string()),
                     media_url,
                     media_type: Some("image".to_string()),
+                    request_endpoint: Some(self.endpoint.clone()),
+                    request_model: Some(self.default_model.clone()),
+                    request_headers: Some(request_headers.clone()),
+                    request_body: Some(truncate_str(&request_body, 2000).to_string()),
+                    response_status: Some(200),
                 })
             }
             Err(ProviderError::AuthFailed(msg)) => Ok(ConnectivityCheck {
@@ -398,6 +406,11 @@ impl IAssetProvider for HailuoProvider {
                 test_prompt: Some(test_prompt.to_string()),
                 media_url: None,
                 media_type: None,
+                request_endpoint: Some(self.endpoint.clone()),
+                request_model: Some(self.default_model.clone()),
+                request_headers: Some(request_headers.clone()),
+                request_body: Some(truncate_str(&request_body, 2000).to_string()),
+                response_status: Some(401),
             }),
             Err(ProviderError::QuotaExceeded(msg)) => Ok(ConnectivityCheck {
                 provider_id: self.config.id.clone(),
@@ -413,6 +426,11 @@ impl IAssetProvider for HailuoProvider {
                 test_prompt: Some(test_prompt.to_string()),
                 media_url: None,
                 media_type: None,
+                request_endpoint: Some(self.endpoint.clone()),
+                request_model: Some(self.default_model.clone()),
+                request_headers: Some(request_headers.clone()),
+                request_body: Some(truncate_str(&request_body, 2000).to_string()),
+                response_status: Some(429),
             }),
             Err(e) => Ok(ConnectivityCheck {
                 provider_id: self.config.id.clone(),
@@ -428,6 +446,11 @@ impl IAssetProvider for HailuoProvider {
                 test_prompt: Some(test_prompt.to_string()),
                 media_url: None,
                 media_type: None,
+                request_endpoint: Some(self.endpoint.clone()),
+                request_model: Some(self.default_model.clone()),
+                request_headers: Some(request_headers),
+                request_body: Some(truncate_str(&request_body, 2000).to_string()),
+                response_status: None,
             }),
         }
     }

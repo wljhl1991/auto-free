@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useGeneration } from '../hooks/useGeneration';
+import { useGeneration, GenerationStepEvent } from '../hooks/useGeneration';
 import TaskManager from '../components/HUD/TaskManager';
 
 interface ChapterProgress {
@@ -32,6 +32,17 @@ const ASSET_LABELS: Record<string, string> = {
 const SOURCE_LABELS: Record<string, string> = {
   ai_generated: 'AI 生成',
   builtin: '内置默认',
+};
+
+const STEP_ICONS: Record<string, string> = {
+  starting: '🚀',
+  generating_outline: '📝',
+  generating_script: '✍️',
+  parsing_script: '🔍',
+  generating_assets: '🎨',
+  asset_ready: '✅',
+  first_chapter_ready: '📖',
+  completed: '🎉',
 };
 
 function AssetStatusIcon({ status }: { status: 'pending' | 'generating' | 'ready' | 'failed' }) {
@@ -101,6 +112,11 @@ function ChapterProgressCard({ chapter, isFirst }: { chapter: ChapterProgress; i
   );
 }
 
+function formatTimestamp(ts: number): string {
+  const d = new Date(ts * 1000);
+  return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
 export default function GenerationProgress() {
   const { gameId } = useParams<{ gameId: string }>();
   const navigate = useNavigate();
@@ -117,6 +133,11 @@ export default function GenerationProgress() {
     overallProgress: 0,
   });
 
+  // 进度步骤事件
+  const [progressSteps, setProgressSteps] = useState<GenerationStepEvent[]>([]);
+  const [currentStep, setCurrentStep] = useState<GenerationStepEvent | null>(null);
+  const timelineRef = useRef<HTMLDivElement>(null);
+
   const updateChapterProgress = useCallback(
     (chapterId: string, updater: (ch: ChapterProgress) => ChapterProgress) => {
       setChapters(prev =>
@@ -125,6 +146,28 @@ export default function GenerationProgress() {
     },
     []
   );
+
+  // 监听 generation-step 事件
+  useEffect(() => {
+    const unlisteners: (() => void)[] = [];
+
+    generation.onGenerationStep((event: any) => {
+      const payload = event.payload as GenerationStepEvent;
+      if (!payload || payload.gameId !== gameId) return;
+
+      setProgressSteps(prev => [...prev, payload]);
+      setCurrentStep(payload);
+
+      // 自动滚动到底部
+      setTimeout(() => {
+        if (timelineRef.current) {
+          timelineRef.current.scrollTop = timelineRef.current.scrollHeight;
+        }
+      }, 50);
+    }).then(unlisten => unlisteners.push(unlisten));
+
+    return () => unlisteners.forEach(fn => fn());
+  }, [gameId]);
 
   useEffect(() => {
     const unlisteners: (() => void)[] = [];
@@ -274,6 +317,7 @@ export default function GenerationProgress() {
 
   const firstChapterReady = chapters.length > 0 && (chapters[0].status === 'ready' || chapters[0].status === 'partial' || genStatus.firstChapterReady);
   const hasRemainingChapters = chapters.length > 1;
+  const isCompleted = currentStep?.step === 'completed';
 
   return (
     <div className="page generation-progress">
@@ -284,15 +328,63 @@ export default function GenerationProgress() {
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-        <h2 className="page-title" style={{ marginBottom: 0 }}>正在生成游戏：{gameTitle || '加载中...'}</h2>
+        <h2 className="page-title" style={{ marginBottom: 0 }}>
+          {isCompleted ? `游戏生成完成：${gameTitle || '加载中...'}` : `正在生成游戏：${gameTitle || '加载中...'}`}
+        </h2>
         <button className="btn btn-secondary" style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}
           onClick={() => setTaskManagerOpen(true)}>
           任务管理
         </button>
       </div>
 
+      {/* 当前步骤高亮显示 */}
+      {currentStep && !isCompleted && (
+        <div className="current-step-banner">
+          <span className="current-step-icon">{STEP_ICONS[currentStep.step] || '⏳'}</span>
+          <div className="current-step-info">
+            <span className="current-step-detail">{currentStep.detail}</span>
+            {currentStep.modelName && (
+              <span className="current-step-model">等待 {currentStep.modelName} 返回</span>
+            )}
+          </div>
+          <div className="current-step-pulse" />
+        </div>
+      )}
+
+      {/* 进度时间线 */}
+      {progressSteps.length > 0 && (
+        <div className="progress-timeline-container">
+          <div className="progress-timeline" ref={timelineRef}>
+            {progressSteps.map((step, index) => {
+              const isLast = index === progressSteps.length - 1;
+              const isDone = !isLast || step.step === 'completed' || step.step === 'asset_ready' || step.step === 'first_chapter_ready';
+              return (
+                <div key={`${step.timestamp}-${index}`} className={`timeline-item ${isLast && !isDone ? 'timeline-active' : ''} ${isDone ? 'timeline-done' : ''}`}>
+                  <div className="timeline-dot">
+                    {isDone ? '✓' : '⏳'}
+                  </div>
+                  {!isLast && <div className="timeline-line" />}
+                  <div className="timeline-content">
+                    <div className="timeline-header">
+                      <span className="timeline-icon">{STEP_ICONS[step.step] || '📌'}</span>
+                      <span className="timeline-detail">{step.detail}</span>
+                    </div>
+                    <div className="timeline-meta">
+                      <span className="timeline-time">{formatTimestamp(step.timestamp)}</span>
+                      {step.modelName && (
+                        <span className="timeline-model">{step.modelName}</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* 后台生成提示 */}
-      {!firstChapterReady && (
+      {!firstChapterReady && !isCompleted && (
         <div className="background-generation-hint" style={{ marginBottom: '0.75rem' }}>
           <span className="hint-icon">💡</span>
           生成任务在后台运行，离开此页面不会中断生成
@@ -329,7 +421,7 @@ export default function GenerationProgress() {
         ))}
       </div>
 
-      {chapters.length === 0 && (
+      {chapters.length === 0 && progressSteps.length === 0 && (
         <div className="empty-state">
           <div className="spinner" />
           <p>正在初始化生成任务...</p>

@@ -464,6 +464,11 @@ impl IAssetProvider for SkyMusicProvider {
                 test_prompt: None,
                 media_url: None,
                 media_type: None,
+                request_endpoint: None,
+                request_model: None,
+                request_headers: None,
+                request_body: None,
+                response_status: None,
                     })
                 } else if status.as_u16() == 401 || status.as_u16() == 403 {
                     Ok(ConnectivityCheck {
@@ -480,6 +485,11 @@ impl IAssetProvider for SkyMusicProvider {
                 test_prompt: None,
                 media_url: None,
                 media_type: None,
+                request_endpoint: None,
+                request_model: None,
+                request_headers: None,
+                request_body: None,
+                response_status: None,
                     })
                 } else if status.as_u16() == 429 {
                     Ok(ConnectivityCheck {
@@ -496,6 +506,11 @@ impl IAssetProvider for SkyMusicProvider {
                 test_prompt: None,
                 media_url: None,
                 media_type: None,
+                request_endpoint: None,
+                request_model: None,
+                request_headers: None,
+                request_body: None,
+                response_status: None,
                     })
                 } else {
                     Ok(ConnectivityCheck {
@@ -512,6 +527,11 @@ impl IAssetProvider for SkyMusicProvider {
                 test_prompt: None,
                 media_url: None,
                 media_type: None,
+                request_endpoint: None,
+                request_model: None,
+                request_headers: None,
+                request_body: None,
+                response_status: None,
                     })
                 }
             }
@@ -530,6 +550,11 @@ impl IAssetProvider for SkyMusicProvider {
                 test_prompt: None,
                 media_url: None,
                 media_type: None,
+                request_endpoint: None,
+                request_model: None,
+                request_headers: None,
+                request_body: None,
+                response_status: None,
                 })
             }
         }

@@ -4,10 +4,107 @@ use crate::types::game_state::GameState;
 use crate::engine::pipeline::GenerationPipeline;
 use crate::engine::asset_manager::AssetManager;
 use crate::providers::ProviderError;
+use crate::config::manager::ConfigManager;
 use serde::{Serialize, Deserialize};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
+
+const MAX_HISTORY_ENTRIES: usize = 50;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreationHistoryEntry {
+    pub outline: String,
+    pub game_type: String,
+    pub timestamp: u64,
+}
+
+fn history_file_path(config_dir: &std::path::Path) -> std::path::PathBuf {
+    config_dir.join("creation_history.json")
+}
+
+fn read_history(config_dir: &std::path::Path) -> Vec<CreationHistoryEntry> {
+    let path = history_file_path(config_dir);
+    if !path.exists() {
+        return Vec::new();
+    }
+    match std::fs::read_to_string(&path) {
+        Ok(data) => match serde_json::from_str(&data) {
+            Ok(entries) => entries,
+            Err(_) => Vec::new(),
+        },
+        Err(_) => Vec::new(),
+    }
+}
+
+fn write_history(config_dir: &std::path::Path, entries: &[CreationHistoryEntry]) -> Result<(), String> {
+    let path = history_file_path(config_dir);
+    let data = serde_json::to_string_pretty(entries)
+        .map_err(|e| format!("序列化历史记录失败: {}", e))?;
+    std::fs::create_dir_all(config_dir)
+        .map_err(|e| format!("创建配置目录失败: {}", e))?;
+    std::fs::write(&path, data)
+        .map_err(|e| format!("写入历史记录失败: {}", e))
+}
+
+#[command]
+pub async fn save_creation_history(
+    outline: String,
+    game_type: String,
+    config_manager: tauri::State<'_, Arc<RwLock<ConfigManager>>>,
+) -> Result<(), String> {
+    let cm = config_manager.read().await;
+    let config_dir = cm.config_dir().to_path_buf();
+    let mut entries = read_history(&config_dir);
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+
+    // 去重：如果已存在相同 outline，移除旧的
+    entries.retain(|e| e.outline != outline);
+
+    entries.insert(0, CreationHistoryEntry {
+        outline,
+        game_type,
+        timestamp: now,
+    });
+
+    entries.truncate(MAX_HISTORY_ENTRIES);
+    write_history(&config_dir, &entries)
+}
+
+#[command]
+pub async fn get_creation_history(
+    config_manager: tauri::State<'_, Arc<RwLock<ConfigManager>>>,
+) -> Result<Vec<CreationHistoryEntry>, String> {
+    let cm = config_manager.read().await;
+    let config_dir = cm.config_dir().to_path_buf();
+    Ok(read_history(&config_dir))
+}
+
+#[command]
+pub async fn delete_creation_history(
+    timestamp: u64,
+    config_manager: tauri::State<'_, Arc<RwLock<ConfigManager>>>,
+) -> Result<(), String> {
+    let cm = config_manager.read().await;
+    let config_dir = cm.config_dir().to_path_buf();
+    let mut entries = read_history(&config_dir);
+    entries.retain(|e| e.timestamp != timestamp);
+    write_history(&config_dir, &entries)
+}
+
+#[command]
+pub async fn clear_creation_history(
+    config_manager: tauri::State<'_, Arc<RwLock<ConfigManager>>>,
+) -> Result<(), String> {
+    let cm = config_manager.read().await;
+    let config_dir = cm.config_dir().to_path_buf();
+    write_history(&config_dir, &[])
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -46,13 +143,15 @@ pub async fn create_game(
     input: String,
     game_type: Option<String>,
     use_local_fallback: Option<bool>,
+    high_quality: Option<bool>,
     pipeline: tauri::State<'_, Arc<RwLock<GenerationPipeline>>>,
 ) -> Result<GameInfo, String> {
     let gt = game_type.as_deref().and_then(|s| parse_game_type(s).ok());
     let fallback = use_local_fallback.unwrap_or(true);
-    log::info!("创建游戏: input_len={}, game_type={:?}, use_local_fallback={}", input.len(), gt, fallback);
+    let hq = high_quality.unwrap_or(false);
+    log::info!("创建游戏: input_len={}, game_type={:?}, use_local_fallback={}, high_quality={}", input.len(), gt, fallback, hq);
     let p = pipeline.read().await;
-    let (game_id, script) = p.create_game(&input, gt, fallback).await
+    let (game_id, script) = p.create_game(&input, gt, fallback, hq).await
         .map_err(|e| {
             let msg = match e {
                 ProviderError::InvalidConfig(msg) => format!("配置错误：{}。请在设置中配置 AI 服务后重试。", msg),

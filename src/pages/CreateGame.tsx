@@ -1,29 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGame } from '../hooks/useGame';
 import { useConfig } from '../hooks/useConfig';
 import ModalitySelectModal from '../components/Config/ModalitySelectModal';
 import type { ModalityAvailability } from '../hooks/useConfig';
-
-interface HistoryItem {
-  outline: string;
-  gameType: string;
-  timestamp: number;
-}
-
-const HISTORY_KEY = 'autofree_create_history';
-const MAX_HISTORY = 20;
-
-function loadHistory(): HistoryItem[] {
-  try {
-    const data = localStorage.getItem(HISTORY_KEY);
-    return data ? JSON.parse(data) : [];
-  } catch { return []; }
-}
-
-function saveHistory(items: HistoryItem[]) {
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(items.slice(0, MAX_HISTORY)));
-}
+import type { CreationHistoryEntry } from '../hooks/useGame';
 
 const GAME_TYPES = [
   { value: '', label: '自动推断' },
@@ -42,12 +23,14 @@ const EXAMPLE_OUTLINES = [
 
 export default function CreateGame() {
   const navigate = useNavigate();
-  const { createGame, createGameFromScript, getRandomOutline } = useGame();
+  const { createGame, createGameFromScript, getRandomOutline, saveCreationHistory, getCreationHistory, deleteCreationHistory, clearCreationHistory } = useGame();
   const { checkAvailableModalities } = useConfig();
 
   const [outline, setOutline] = useState('');
   const [gameType, setGameType] = useState('');
+  const [highQuality, setHighQuality] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loadingPhase, setLoadingPhase] = useState<'checking' | 'submitting' | null>(null);
   const [randomLoading, setRandomLoading] = useState(false);
   const [error, setError] = useState('');
   const [showModalityModal, setShowModalityModal] = useState(false);
@@ -56,8 +39,21 @@ export default function CreateGame() {
   const [scriptJson, setScriptJson] = useState('');
   const [scriptLoading, setScriptLoading] = useState(false);
   const [scriptError, setScriptError] = useState('');
-  const [history, setHistory] = useState<HistoryItem[]>(loadHistory);
+  const [history, setHistory] = useState<CreationHistoryEntry[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+
+  const loadHistory = useCallback(async () => {
+    try {
+      const entries = await getCreationHistory();
+      setHistory(entries);
+    } catch {
+      // 静默失败
+    }
+  }, [getCreationHistory]);
+
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory]);
 
   const handleSubmit = async () => {
     if (!outline.trim()) {
@@ -65,6 +61,7 @@ export default function CreateGame() {
       return;
     }
     setLoading(true);
+    setLoadingPhase('checking');
     setError('');
     try {
       const availability = await checkAvailableModalities();
@@ -74,6 +71,7 @@ export default function CreateGame() {
         setModalityAvailability(availability);
         setShowModalityModal(true);
         setLoading(false);
+        setLoadingPhase(null);
         return;
       }
 
@@ -83,24 +81,30 @@ export default function CreateGame() {
       const msg = typeof e === 'string' ? e : (e?.message || '检测服务失败，请重试');
       setError(msg);
       setLoading(false);
+      setLoadingPhase(null);
     }
   };
 
   const doCreateGame = async (useLocalFallback: boolean) => {
     setLoading(true);
+    setLoadingPhase('submitting');
     setError('');
-    // Save to history before creating
-    const newHistory = [{ outline, gameType, timestamp: Date.now() }, ...history.filter(h => h.outline !== outline)];
-    setHistory(newHistory);
-    saveHistory(newHistory);
+    // Save to backend history before creating
     try {
-      const gameInfo = await createGame(outline, gameType || undefined, useLocalFallback);
+      await saveCreationHistory(outline, gameType || '');
+      await loadHistory();
+    } catch {
+      // 保存历史失败不影响创建流程
+    }
+    try {
+      const gameInfo = await createGame(outline, gameType || undefined, useLocalFallback, highQuality);
       navigate(`/generate/${gameInfo.id}`);
     } catch (e: any) {
       const msg = typeof e === 'string' ? e : (e?.message || '创建失败，请重试');
       setError(msg);
     } finally {
       setLoading(false);
+      setLoadingPhase(null);
     }
   };
 
@@ -154,10 +158,23 @@ export default function CreateGame() {
     }
   };
 
-  const deleteHistoryItem = (timestamp: number) => {
-    const newHistory = history.filter(h => h.timestamp !== timestamp);
-    setHistory(newHistory);
-    saveHistory(newHistory);
+  const handleDeleteHistoryItem = async (timestamp: number) => {
+    try {
+      await deleteCreationHistory(timestamp);
+      await loadHistory();
+    } catch {
+      // 静默失败
+    }
+  };
+
+  const handleClearHistory = async () => {
+    if (!window.confirm('确定要清空全部历史记录吗？')) return;
+    try {
+      await clearCreationHistory();
+      await loadHistory();
+    } catch {
+      // 静默失败
+    }
   };
 
   const gameTypeLabel = (value: string) => {
@@ -185,28 +202,50 @@ export default function CreateGame() {
       </div>
 
       <div style={{ marginBottom: '1.25rem' }}>
-        <button
-          type="button"
-          onClick={() => setShowHistory(!showHistory)}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: '#8888aa',
-            fontSize: '0.85rem',
-            cursor: 'pointer',
-            padding: '0.3rem 0',
-            fontFamily: 'inherit',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.4rem',
-            transition: 'color 0.2s ease',
-          }}
-          onMouseEnter={e => (e.currentTarget.style.color = '#4a90d9')}
-          onMouseLeave={e => (e.currentTarget.style.color = '#8888aa')}
-        >
-          <span style={{ fontSize: '0.7rem', transition: 'transform 0.2s', transform: showHistory ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block' }}>▶</span>
-          输入历史 {history.length > 0 && `(${history.length})`}
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <button
+            type="button"
+            onClick={() => setShowHistory(!showHistory)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#8888aa',
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+              padding: '0.3rem 0',
+              fontFamily: 'inherit',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              transition: 'color 0.2s ease',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.color = '#4a90d9')}
+            onMouseLeave={e => (e.currentTarget.style.color = '#8888aa')}
+          >
+            <span style={{ fontSize: '0.7rem', transition: 'transform 0.2s', transform: showHistory ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block' }}>▶</span>
+            输入历史 {history.length > 0 && `(${history.length})`}
+          </button>
+          {showHistory && history.length > 0 && (
+            <button
+              type="button"
+              onClick={handleClearHistory}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#555570',
+                fontSize: '0.8rem',
+                cursor: 'pointer',
+                padding: '0.2rem 0.5rem',
+                fontFamily: 'inherit',
+                transition: 'color 0.15s ease',
+              }}
+              onMouseEnter={e => (e.currentTarget.style.color = '#f87171')}
+              onMouseLeave={e => (e.currentTarget.style.color = '#555570')}
+            >
+              清空全部
+            </button>
+          )}
+        </div>
 
         {showHistory && (
           <div style={{
@@ -241,9 +280,10 @@ export default function CreateGame() {
                       fontSize: '0.85rem',
                       color: '#c0c0d0',
                       lineHeight: '1.5',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
+                      maxHeight: '120px',
+                      overflowY: 'auto',
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
                     }}>
                       {item.outline}
                     </div>
@@ -256,7 +296,7 @@ export default function CreateGame() {
                   </div>
                   <button
                     type="button"
-                    onClick={(e) => { e.stopPropagation(); deleteHistoryItem(item.timestamp); }}
+                    onClick={(e) => { e.stopPropagation(); handleDeleteHistoryItem(item.timestamp); }}
                     style={{
                       background: 'none',
                       border: 'none',
@@ -301,6 +341,63 @@ export default function CreateGame() {
         </button>
       </div>
 
+      <div style={{
+        marginBottom: '1.25rem',
+        padding: '0.85rem 1rem',
+        backgroundColor: highQuality ? 'rgba(123, 104, 238, 0.08)' : 'rgba(255, 255, 255, 0.02)',
+        border: `1px solid ${highQuality ? 'rgba(123, 104, 238, 0.3)' : 'rgba(255, 255, 255, 0.06)'}`,
+        borderRadius: '10px',
+        transition: 'all 0.2s ease',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <span style={{ fontSize: '0.9rem', color: '#c0c0d0' }}>✨ 高质量模式</span>
+            <button
+              type="button"
+              onClick={() => setHighQuality(!highQuality)}
+              style={{
+                position: 'relative',
+                width: '44px',
+                height: '24px',
+                borderRadius: '12px',
+                border: 'none',
+                cursor: 'pointer',
+                backgroundColor: highQuality ? '#7b68ee' : '#3a3a50',
+                transition: 'background-color 0.2s ease',
+                padding: 0,
+                outline: 'none',
+              }}
+            >
+              <span style={{
+                position: 'absolute',
+                top: '2px',
+                left: highQuality ? '22px' : '2px',
+                width: '20px',
+                height: '20px',
+                borderRadius: '50%',
+                backgroundColor: '#fff',
+                transition: 'left 0.2s ease',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+              }} />
+            </button>
+          </div>
+        </div>
+        {highQuality && (
+          <div style={{
+            marginTop: '0.6rem',
+            padding: '0.5rem 0.7rem',
+            backgroundColor: 'rgba(251, 191, 36, 0.1)',
+            border: '1px solid rgba(251, 191, 36, 0.25)',
+            borderRadius: '6px',
+            fontSize: '0.8rem',
+            color: '#fbbf24',
+            lineHeight: '1.5',
+          }}>
+            ⚠️ 高质量模式会进行多轮AI交互，消耗更多Token，产生更高费用
+          </div>
+        )}
+      </div>
+
       <div className="example-section">
         <p className="form-hint">示例大纲：</p>
         <div className="example-chips">
@@ -322,8 +419,20 @@ export default function CreateGame() {
       {loading && (
         <div className="create-loading">
           <div className="create-loading-spinner"></div>
-          <div className="create-loading-text">正在生成游戏世界...</div>
-          <div className="create-loading-hint">AI 正在解析大纲并构建游戏，通常需要 10-30 秒</div>
+          <div className="create-loading-text">
+            {loadingPhase === 'checking'
+              ? '正在检测可用服务...'
+              : highQuality
+                ? '正在生成游戏世界（高质量模式）...'
+                : '正在提交生成任务...'}
+          </div>
+          <div className="create-loading-hint">
+            {loadingPhase === 'checking'
+              ? '正在检查 AI 服务配置状态'
+              : highQuality
+                ? '高质量模式进行多轮AI交互，通常需要 30-60 秒'
+                : 'AI 正在解析大纲并构建游戏，通常需要 10-30 秒'}
+          </div>
         </div>
       )}
 

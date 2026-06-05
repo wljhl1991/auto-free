@@ -359,6 +359,11 @@ impl IAssetProvider for EdgeTTSProvider {
                     test_prompt: Some("测试".to_string()),
                     media_url,
                     media_type: Some("audio".to_string()),
+                    request_endpoint: None,
+                    request_model: None,
+                    request_headers: None,
+                    request_body: None,
+                    response_status: None,
                 })
             }
             Err(e) => Ok(ConnectivityCheck {
@@ -375,6 +380,11 @@ impl IAssetProvider for EdgeTTSProvider {
                 test_prompt: Some("测试".to_string()),
                 media_url: None,
                 media_type: None,
+                request_endpoint: None,
+                request_model: None,
+                request_headers: None,
+                request_body: None,
+                response_status: None,
             }),
         }
     }

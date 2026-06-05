@@ -450,6 +450,26 @@ impl IAssetProvider for XfyunSparkProvider {
             },
         ];
 
+        let request_body = serde_json::to_string(&SparkRequest {
+            header: SparkHeader {
+                app_id: self.app_id.clone(),
+                uid: "autofree_user".to_string(),
+            },
+            parameter: SparkParameter {
+                chat: SparkChatParam {
+                    domain: self.default_domain.clone(),
+                    temperature: 0.5,
+                    max_tokens: 2048,
+                },
+            },
+            payload: SparkPayload {
+                message: SparkMessagePayload {
+                    text: messages.clone(),
+                },
+            },
+        }).unwrap_or_default();
+        let request_headers = r#"{"Authorization":"Bearer ***"}"#.to_string();
+
         let result = self.chat(messages).await;
         let latency = SystemTime::now()
             .duration_since(start)
@@ -471,6 +491,11 @@ impl IAssetProvider for XfyunSparkProvider {
                 test_prompt: Some(prompt.to_string()),
                 media_url: None,
                 media_type: None,
+                request_endpoint: Some(self.ws_url.clone()),
+                request_model: Some(self.default_domain.clone()),
+                request_headers: Some(request_headers.clone()),
+                request_body: Some(truncate_str(&request_body, 2000).to_string()),
+                response_status: Some(200),
             }),
             Err(ProviderError::AuthFailed(msg)) => Ok(ConnectivityCheck {
                 provider_id: self.config.id.clone(),
@@ -486,6 +511,11 @@ impl IAssetProvider for XfyunSparkProvider {
                 test_prompt: Some(prompt.to_string()),
                 media_url: None,
                 media_type: None,
+                request_endpoint: Some(self.ws_url.clone()),
+                request_model: Some(self.default_domain.clone()),
+                request_headers: Some(request_headers.clone()),
+                request_body: Some(truncate_str(&request_body, 2000).to_string()),
+                response_status: Some(401),
             }),
             Err(ProviderError::QuotaExceeded(msg)) => Ok(ConnectivityCheck {
                 provider_id: self.config.id.clone(),
@@ -501,6 +531,11 @@ impl IAssetProvider for XfyunSparkProvider {
                 test_prompt: Some(prompt.to_string()),
                 media_url: None,
                 media_type: None,
+                request_endpoint: Some(self.ws_url.clone()),
+                request_model: Some(self.default_domain.clone()),
+                request_headers: Some(request_headers.clone()),
+                request_body: Some(truncate_str(&request_body, 2000).to_string()),
+                response_status: Some(429),
             }),
             Err(e) => Ok(ConnectivityCheck {
                 provider_id: self.config.id.clone(),
@@ -516,6 +551,11 @@ impl IAssetProvider for XfyunSparkProvider {
                 test_prompt: Some(prompt.to_string()),
                 media_url: None,
                 media_type: None,
+                request_endpoint: Some(self.ws_url.clone()),
+                request_model: Some(self.default_domain.clone()),
+                request_headers: Some(request_headers),
+                request_body: Some(truncate_str(&request_body, 2000).to_string()),
+                response_status: None,
             }),
         }
     }

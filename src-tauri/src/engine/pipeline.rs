@@ -7,18 +7,21 @@ use crate::providers::builtin::BuiltinAssetProvider;
 use crate::providers::deepseek::DeepSeekProvider;
 use crate::types::game_script::{
     GameScript, GameType, AssetRef, AssetType as ScriptAssetType,
-    AssetSource as ScriptAssetSource, AssetStatus, SceneNode,
+    AssetSource as ScriptAssetSource, AssetStatus, SceneNode, SceneAssets,
 };
 use crate::types::asset::{LocalAsset, AIModality};
 use crate::types::ai_provider::ProviderStatus;
 use rand::Rng;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
 use tauri::AppHandle;
 use tauri::Emitter;
 use uuid::Uuid;
+
+// 内嵌 Prompt 模板，供高质量模式使用
+const PROMPT_COMBINED: &str = include_str!("../../../prompts/outline-parser/combined.md");
 
 /// 生成状态
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -69,6 +72,63 @@ impl GenerationPipeline {
 
     pub fn set_app_handle(&mut self, handle: AppHandle) {
         self.app_handle = Some(handle);
+    }
+
+    /// 发送生成进度事件到前端
+    fn emit_progress(&self, game_id: &str, step: &str, detail: &str, model_name: &str) {
+        if let Some(ref handle) = self.app_handle {
+            let timestamp = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let _ = handle.emit(
+                "generation-step",
+                serde_json::json!({
+                    "gameId": game_id,
+                    "step": step,
+                    "detail": detail,
+                    "modelName": model_name,
+                    "timestamp": timestamp,
+                }),
+            );
+        }
+    }
+
+    /// 获取当前文本 AI 模型的显示名称
+    async fn get_text_model_display_name(&self) -> String {
+        let config_manager = self.config_manager.read().await;
+        let config = config_manager.get_config();
+        if let Some(pc) = config.providers.iter().find(|p| {
+            p.id == "deepseek" && p.status == ProviderStatus::Connected
+        }).or_else(|| config.providers.iter().find(|p| p.id == "deepseek"))
+        .or_else(|| config.providers.iter().find(|p| {
+            p.modality.contains(&AIModality::Text) && p.status == ProviderStatus::Connected
+        })) {
+            let model = pc.models.iter()
+                .find(|m| m.is_default)
+                .map(|m| m.id.clone())
+                .unwrap_or_default();
+            format!("{}/{}", pc.id, model)
+        } else {
+            "本地模板".to_string()
+        }
+    }
+
+    /// 获取指定模态的 AI 模型显示名称
+    async fn get_model_display_name_for_modality(&self, modality: &AIModality) -> String {
+        let config_manager = self.config_manager.read().await;
+        let config = config_manager.get_config();
+        if let Some(pc) = config.providers.iter().find(|p| {
+            p.modality.contains(modality) && p.status == ProviderStatus::Connected
+        }) {
+            let model = pc.models.iter()
+                .find(|m| m.is_default)
+                .map(|m| m.id.clone())
+                .unwrap_or_default();
+            format!("{}/{}", pc.id, model)
+        } else {
+            "内置资源".to_string()
+        }
     }
 
     /// 按游戏类型随机生成游戏大纲
@@ -249,11 +309,15 @@ impl GenerationPipeline {
         input: &str,
         game_type: Option<GameType>,
         use_local_fallback: bool,
+        high_quality: bool,
     ) -> Result<(String, GameScript), ProviderError> {
-        log::info!("开始创建游戏: input_len={}, game_type={:?}", input.len(), game_type);
+        log::info!("开始创建游戏: input_len={}, game_type={:?}, high_quality={}", input.len(), game_type, high_quality);
 
         // 1. 生成 game_id
         let game_id = Uuid::new_v4().to_string();
+
+        // 发送初始进度事件
+        self.emit_progress(&game_id, "starting", "正在初始化生成任务", "");
 
         // 2. 创建游戏目录
         self.asset_manager
@@ -262,9 +326,16 @@ impl GenerationPipeline {
 
         // 3. 调用 OutlineParser 解析大纲为 GameScript
         log::info!("解析大纲: game_id={}", game_id);
-        let mut game_script = self.parse_outline(input, game_type.clone()).await?;
+        let model_name = self.get_text_model_display_name().await;
+        if high_quality {
+            self.emit_progress(&game_id, "generating_outline", "正在生成故事大纲", &model_name);
+        } else {
+            self.emit_progress(&game_id, "generating_script", "正在生成游戏脚本", &model_name);
+        }
+        let mut game_script = self.parse_outline(input, game_type.clone(), high_quality, &game_id).await?;
 
         // 4. 提取所有 AssetRef
+        self.emit_progress(&game_id, "parsing_script", "正在解析游戏脚本", "");
         let mut asset_refs = self.extract_asset_refs(&game_script);
 
         // 5. 为每个 AssetRef 确定来源
@@ -329,6 +400,7 @@ impl GenerationPipeline {
         );
 
         // 12. 优先生成第一章资源
+        self.emit_progress(&game_id, "generating_assets", &format!("正在生成第一章资源（共{}项）", first_chapter_refs.len()), "");
         let first_results = self.fetch_assets(&game_id, &first_chapter_refs).await;
 
         // 13. 处理第一章结果
@@ -386,6 +458,7 @@ impl GenerationPipeline {
         }
 
         // 15. 第一章就绪后立即发送 generation-complete 事件
+        self.emit_progress(&game_id, "first_chapter_ready", "第一章生成完成", "");
         if let Some(ref handle) = self.app_handle {
             let _ = handle.emit(
                 "generation-complete",
@@ -704,6 +777,20 @@ impl GenerationPipeline {
 
             // 全部完成后发送最终事件
             if let Some(ref handle) = app_handle {
+                let timestamp = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+                let _ = handle.emit(
+                    "generation-step",
+                    serde_json::json!({
+                        "gameId": game_id,
+                        "step": "completed",
+                        "detail": "游戏生成完成",
+                        "modelName": "",
+                        "timestamp": timestamp,
+                    }),
+                );
                 let _ = handle.emit(
                     "generation-complete",
                     serde_json::json!({ "gameId": game_id, "allChapters": true }),
@@ -1031,8 +1118,10 @@ impl GenerationPipeline {
         &self,
         input: &str,
         game_type: Option<GameType>,
+        high_quality: bool,
+        game_id: &str,
     ) -> Result<GameScript, ProviderError> {
-        log::info!("解析大纲: input_len={}, game_type={:?}", input.len(), game_type);
+        log::info!("解析大纲: input_len={}, game_type={:?}, high_quality={}", input.len(), game_type, high_quality);
         let config_manager = self.config_manager.read().await;
         let config = config_manager.get_config();
 
@@ -1050,41 +1139,370 @@ impl GenerationPipeline {
         drop(config_manager);
 
         if let Some(provider_config) = text_config {
-            // 使用 AI Provider 解析大纲
             let deepseek = DeepSeekProvider::new(&provider_config, self.asset_manager.base_path())?;
-            let parser = OutlineParser::new(deepseek);
-            let start = Instant::now();
-            let result = parser.parse(input, game_type).await;
-            let duration = start.elapsed().as_millis() as u64;
 
-            // 记录大纲解析调用历史
-            let model = provider_config.models.iter()
-                .find(|m| m.is_default)
-                .map(|m| m.id.clone())
-                .unwrap_or_default();
-            let endpoint = provider_config.models.iter()
-                .find(|m| m.is_default)
-                .map(|m| m.endpoint.clone())
-                .unwrap_or_default();
-            let record = match &result {
-                Ok(script) => build_record(
-                    &provider_config.id, "text", &model, &endpoint,
-                    input, duration, "success", None,
-                    Some(format!("chapters: {}", script.chapters.len())), None,
-                ),
-                Err(e) => build_record(
-                    &provider_config.id, "text", &model, &endpoint,
-                    input, duration, "error", Some(format!("{:?}", e)),
-                    None, None,
-                ),
-            };
-            self.call_history.record(record);
+            if high_quality {
+                // 高质量模式：多轮生成
+                let start = Instant::now();
+                let result = self.parse_outline_high_quality(&deepseek, input, game_type.clone(), game_id).await;
+                let duration = start.elapsed().as_millis() as u64;
 
-            result
+                let model = provider_config.models.iter()
+                    .find(|m| m.is_default)
+                    .map(|m| m.id.clone())
+                    .unwrap_or_default();
+                let endpoint = provider_config.models.iter()
+                    .find(|m| m.is_default)
+                    .map(|m| m.endpoint.clone())
+                    .unwrap_or_default();
+                let record = match &result {
+                    Ok(script) => build_record(
+                        &provider_config.id, "text", &model, &endpoint,
+                        input, duration, "success", None,
+                        Some(format!("chapters: {} (high_quality)", script.chapters.len())), None,
+                    ),
+                    Err(e) => build_record(
+                        &provider_config.id, "text", &model, &endpoint,
+                        input, duration, "error", Some(format!("{:?}", e)),
+                        None, None,
+                    ),
+                };
+                self.call_history.record(record);
+                result
+            } else {
+                // 普通模式：使用 OutlineParser 单轮/双轮生成
+                let parser = OutlineParser::new(deepseek);
+                let start = Instant::now();
+                let result = parser.parse(input, game_type).await;
+                let duration = start.elapsed().as_millis() as u64;
+
+                // 记录大纲解析调用历史
+                let model = provider_config.models.iter()
+                    .find(|m| m.is_default)
+                    .map(|m| m.id.clone())
+                    .unwrap_or_default();
+                let endpoint = provider_config.models.iter()
+                    .find(|m| m.is_default)
+                    .map(|m| m.endpoint.clone())
+                    .unwrap_or_default();
+                let record = match &result {
+                    Ok(script) => build_record(
+                        &provider_config.id, "text", &model, &endpoint,
+                        input, duration, "success", None,
+                        Some(format!("chapters: {}", script.chapters.len())), None,
+                    ),
+                    Err(e) => build_record(
+                        &provider_config.id, "text", &model, &endpoint,
+                        input, duration, "error", Some(format!("{:?}", e)),
+                        None, None,
+                    ),
+                };
+                self.call_history.record(record);
+
+                result
+            }
         } else {
             // 无文本 AI 配置，使用本地模板生成
             eprintln!("No text AI provider configured, using local template fallback");
             Ok(Self::fallback_game_script(input, game_type))
+        }
+    }
+
+    /// 高质量模式：多轮生成游戏脚本
+    /// Round 1: 生成详细故事大纲
+    /// Round 2: 基于大纲生成完整 GameScript JSON
+    async fn parse_outline_high_quality(
+        &self,
+        deepseek: &DeepSeekProvider,
+        input: &str,
+        game_type: Option<GameType>,
+        game_id: &str,
+    ) -> Result<GameScript, ProviderError> {
+        let game_type_str = game_type.as_ref().map(|gt| Self::game_type_display_str(gt)).unwrap_or("互动叙事");
+        let game_type_prompt = Self::get_game_type_prompt(game_type_str);
+
+        // Round 1: 生成详细故事大纲
+        let outline_system = format!(
+            "你是一位专业的互动叙事游戏设计师。请按照以下要求设计游戏：\n\n\
+             1. 故事结构：设计引人入胜的开场、层层递进的冲突、出人意料的转折、令人满意的结局\n\
+             2. 角色塑造：每个角色有独特的性格、动机和成长弧线\n\
+             3. 选择设计：每个选择都有意义和后果，避免无意义的选项\n\
+             4. 场景描写：使用丰富的感官描写（视觉、听觉、触觉）\n\
+             5. 节奏控制：紧张与舒缓交替，避免持续高压或持续平淡\n\
+             6. 伏笔与回收：在早期埋下伏笔，在后期巧妙回收\n\n\
+             游戏类型要求：{}",
+            game_type_prompt
+        );
+
+        let outline_user = format!(
+            "请根据以下玩家构想，设计一个详细的游戏故事大纲。\n\n\
+             游戏类型：{}\n\n\
+             玩家构想：{}\n\n\
+             请按以下结构输出大纲：\n\
+             1. 世界观设定（时间、地点、社会背景）\n\
+             2. 主要角色（姓名、性格、动机、关系）\n\
+             3. 故事结构（起承转合，每章核心事件）\n\
+             4. 关键选择点（至少5个重大选择及其后果）\n\
+             5. 伏笔与反转（至少3个伏笔和对应的回收）\n\
+             6. 结局设计（至少2个不同结局）\n\n\
+             {}\n\n\
+             请确保大纲详细、逻辑自洽、引人入胜。",
+            game_type_str,
+            input,
+            game_type_prompt
+        );
+
+        let outline_messages = vec![
+            crate::providers::deepseek::ChatMessage {
+                role: "system".to_string(),
+                content: outline_system,
+            },
+            crate::providers::deepseek::ChatMessage {
+                role: "user".to_string(),
+                content: outline_user,
+            },
+        ];
+
+        log::info!("高质量模式 Round 1: 生成详细故事大纲");
+        let model_name = self.get_text_model_display_name().await;
+        self.emit_progress(game_id, "generating_outline", "正在生成故事大纲", &model_name);
+        let story_outline = deepseek.chat(outline_messages, None).await?;
+        let story_outline = OutlineParser::strip_think_tags(&story_outline);
+        log::info!("高质量模式 Round 1 完成: 大纲长度={}", story_outline.len());
+
+        // Round 2: 基于详细大纲生成完整 GameScript JSON
+        let script_system = PROMPT_COMBINED.to_string();
+
+        let script_user = format!(
+            "根据以下详细故事大纲，生成完整的游戏脚本。\n\n\
+             故事大纲：\n{}\n\n\
+             要求：\n\
+             - 每个场景至少3-5个对话/旁白节点\n\
+             - 选择节点至少2-3个选项\n\
+             - 场景描写要细腻，注重氛围\n\
+             - 角色对话要符合其性格\n\
+             {}\n\n\
+             玩家描述：{}",
+            story_outline,
+            game_type_prompt,
+            input
+        );
+
+        let script_messages = vec![
+            crate::providers::deepseek::ChatMessage {
+                role: "system".to_string(),
+                content: script_system,
+            },
+            crate::providers::deepseek::ChatMessage {
+                role: "user".to_string(),
+                content: script_user,
+            },
+        ];
+
+        log::info!("高质量模式 Round 2: 生成 GameScript JSON");
+        self.emit_progress(game_id, "generating_script", "正在根据大纲生成游戏脚本", &model_name);
+        let response = deepseek.chat(script_messages, None).await?;
+        let response = OutlineParser::strip_think_tags(&response);
+
+        // 保存 AI 原始响应
+        OutlineParser::save_raw_ai_response_sync("high_quality", &response);
+
+        // 提取 JSON
+        let json_str = Self::extract_json_from_response(&response).map_err(|e| {
+            OutlineParser::save_raw_ai_response_sync("high_quality_error", &response);
+            e
+        })?;
+        let json_str = OutlineParser::normalize_json(&json_str);
+        let mut script: GameScript = serde_json::from_str(&json_str).map_err(|e| {
+            OutlineParser::save_raw_ai_response_sync("high_quality_json_error", &response);
+            ProviderError::GenerationFailed(format!("Failed to parse GameScript JSON: {}", e))
+        })?;
+
+        // 校验并修复
+        Self::validate_and_fix_script(&mut script)?;
+        log::info!("高质量模式 Round 2 完成: chapters={}", script.chapters.len());
+        Ok(script)
+    }
+
+    /// 从 AI 响应中提取 JSON（与 OutlineParser::extract_json 逻辑一致）
+    fn extract_json_from_response(response: &str) -> Result<String, ProviderError> {
+        let trimmed = response.trim();
+
+        // 尝试提取 ```json ... ``` 代码块
+        if let Some(start) = trimmed.find("```json") {
+            let json_start = start + 7;
+            if let Some(end) = trimmed[json_start..].find("```") {
+                let json_str = trimmed[json_start..json_start + end].trim();
+                return Ok(json_str.to_string());
+            }
+        }
+
+        // 尝试提取 ``` ... ``` 代码块（无语言标记）
+        if let Some(start) = trimmed.find("```") {
+            let json_start = start + 3;
+            let after_ticks = &trimmed[json_start..];
+            let first_newline = after_ticks.find('\n').unwrap_or(0);
+            let content_start = json_start + first_newline + 1;
+            if let Some(end) = trimmed[content_start..].find("```") {
+                let json_str = trimmed[content_start..content_start + end].trim();
+                if json_str.starts_with('{') {
+                    return Ok(json_str.to_string());
+                }
+            }
+        }
+
+        // 尝试直接提取 JSON 对象
+        if let Some(start) = trimmed.find('{') {
+            let mut depth = 0;
+            let mut end = start;
+            for (i, c) in trimmed[start..].char_indices() {
+                match c {
+                    '{' => depth += 1,
+                    '}' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            end = start + i + 1;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if depth == 0 {
+                return Ok(trimmed[start..end].to_string());
+            }
+        }
+
+        Err(ProviderError::GenerationFailed(
+            "No valid JSON found in AI response".to_string(),
+        ))
+    }
+
+    /// 获取游戏类型对应的增强提示词
+    fn get_game_type_prompt(game_type: &str) -> &'static str {
+        match game_type {
+            "视觉小说" => "这是一个视觉小说游戏。注重角色对话和情感发展，每个场景应有丰富的对话选项影响剧情走向。场景描述要细腻，注重氛围营造。",
+            "RPG" => "这是一个RPG游戏。注重角色成长系统（属性、技能、装备），战斗场景，任务系统。设计多条支线任务和隐藏内容。每个选择应有明确的属性影响。",
+            "悬疑解谜" => "这是一个悬疑解谜游戏。注重线索收集和逻辑推理，设计多层谜题和反转。每个场景应隐藏关键线索，选择影响推理方向。确保谜题有逻辑自洽的解答。",
+            "恐怖生存" => "这是一个恐怖生存游戏。注重恐怖氛围营造，资源管理，生死抉择。场景描述要有压迫感，音效提示要充分。设计多个jump scare时机和逃生路线。",
+            "模拟经营" => "这是一个模拟经营游戏。注重资源管理系统，经营决策，时间推进。设计经济系统和随机事件。每个选择影响经营状况。",
+            _ => "",
+        }
+    }
+
+    /// 获取游戏类型的显示名称（字符串版本）
+    fn game_type_display_str(game_type: &GameType) -> &'static str {
+        match game_type {
+            GameType::VisualNovel => "视觉小说",
+            GameType::Rpg => "RPG",
+            GameType::Mystery => "悬疑解谜",
+            GameType::Horror => "恐怖生存",
+            GameType::Simulation => "模拟经营",
+        }
+    }
+
+    /// 校验并修复 GameScript（用于高质量模式的独立调用）
+    fn validate_and_fix_script(script: &mut GameScript) -> Result<(), ProviderError> {
+        use crate::engine::validator::GameScriptValidator;
+
+        // 修复缺失的 id
+        for (ch_idx, chapter) in script.chapters.iter_mut().enumerate() {
+            if chapter.id.is_empty() {
+                chapter.id = format!("chapter_{}", ch_idx + 1);
+            }
+            for (sc_idx, scene) in chapter.scenes.iter_mut().enumerate() {
+                if scene.id.is_empty() {
+                    scene.id = format!("scene_{}_{}", ch_idx + 1, sc_idx + 1);
+                }
+                for (node_idx, node) in scene.sequence.iter_mut().enumerate() {
+                    let node_id = format!("node_{}_{}_{}", ch_idx + 1, sc_idx + 1, node_idx + 1);
+                    if let SceneNode::Narration(n) = node {
+                        if n.id.is_empty() { n.id = node_id; }
+                    } else if let SceneNode::Dialogue(d) = node {
+                        if d.id.is_empty() { d.id = node_id; }
+                    } else if let SceneNode::Choice(c) = node {
+                        if c.id.is_empty() { c.id = node_id; }
+                    } else if let SceneNode::Condition(c) = node {
+                        if c.id.is_empty() { c.id = node_id; }
+                    } else if let SceneNode::Action(a) = node {
+                        if a.id.is_empty() { a.id = node_id; }
+                    } else if let SceneNode::Cg(c) = node {
+                        if c.id.is_empty() { c.id = node_id; }
+                    } else if let SceneNode::SceneTransition(t) = node {
+                        if t.id.is_empty() { t.id = node_id; }
+                    }
+                }
+            }
+        }
+
+        // 修复 AssetRef status
+        for chapter in &mut script.chapters {
+            for scene in &mut chapter.scenes {
+                Self::fix_scene_assets_inline(&mut scene.assets);
+                for node in &mut scene.sequence {
+                    match node {
+                        SceneNode::Narration(n) => {
+                            if let Some(ref mut voice) = n.voice_asset {
+                                Self::fix_asset_ref_inline(voice);
+                            }
+                        }
+                        SceneNode::Dialogue(d) => {
+                            if let Some(ref mut avatar) = d.speaker_avatar {
+                                Self::fix_asset_ref_inline(avatar);
+                            }
+                            if let Some(ref mut voice) = d.voice_asset {
+                                Self::fix_asset_ref_inline(voice);
+                            }
+                        }
+                        SceneNode::Cg(c) => {
+                            Self::fix_asset_ref_inline(&mut c.video_asset);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        let validator = GameScriptValidator::new();
+        let result = validator.validate_and_fix(script);
+        if !result.is_valid {
+            eprintln!(
+                "GameScript validation warnings: {:?}",
+                result.warnings
+            );
+        }
+        Ok(())
+    }
+
+    fn fix_scene_assets_inline(assets: &mut SceneAssets) {
+        if let Some(ref mut bg) = assets.background_image {
+            Self::fix_asset_ref_inline(bg);
+        }
+        if let Some(ref mut video) = assets.background_video {
+            Self::fix_asset_ref_inline(video);
+        }
+        if let Some(ref mut bgm) = assets.bgm {
+            Self::fix_asset_ref_inline(bgm);
+        }
+        if let Some(ref mut ambient) = assets.ambient_sound {
+            Self::fix_asset_ref_inline(ambient);
+        }
+        if let Some(ref mut cg) = assets.cg_animation {
+            Self::fix_asset_ref_inline(cg);
+        }
+    }
+
+    fn fix_asset_ref_inline(asset: &mut AssetRef) {
+        if asset.id.is_empty() {
+            asset.id = uuid::Uuid::new_v4().to_string();
+        }
+        match asset.status {
+            AssetStatus::Ready | AssetStatus::Fallback => {
+                if asset.url.is_none() && asset.builtin_asset_id.is_none() {
+                    asset.status = AssetStatus::Pending;
+                }
+            }
+            _ => {}
         }
     }
 
@@ -1484,6 +1902,14 @@ impl GenerationPipeline {
 
     /// 资源就绪回调 → Tauri 事件通知前端
     fn on_asset_ready(&self, game_id: &str, asset_ref: &AssetRef, local_asset: &LocalAsset) {
+        let asset_type_label = Self::asset_type_label(&asset_ref.asset_type);
+        let desc = if asset_ref.prompt.is_empty() {
+            format!("{}生成完成", asset_type_label)
+        } else {
+            let short_desc: String = asset_ref.prompt.chars().take(30).collect();
+            format!("{}: {}", asset_type_label, short_desc)
+        };
+        self.emit_progress(game_id, "asset_ready", &desc, "");
         if let Some(ref handle) = self.app_handle {
             let _ = handle.emit(
                 "asset-ready",
@@ -1556,6 +1982,16 @@ impl GenerationPipeline {
             ScriptAssetType::Video => AIModality::Video,
             ScriptAssetType::Audio => AIModality::Music,
             ScriptAssetType::Voice => AIModality::Voice,
+        }
+    }
+
+    /// 资源类型的中文标签
+    fn asset_type_label(asset_type: &ScriptAssetType) -> &'static str {
+        match asset_type {
+            ScriptAssetType::Image => "图片",
+            ScriptAssetType::Video => "视频",
+            ScriptAssetType::Audio => "音频",
+            ScriptAssetType::Voice => "语音",
         }
     }
 

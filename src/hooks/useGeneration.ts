@@ -1,6 +1,14 @@
 import { useMemo } from 'react';
 import { invoke, listen } from '../adapters/tauri';
 
+export interface GenerationStepEvent {
+  gameId: string;
+  step: string;
+  detail: string;
+  modelName: string;
+  timestamp: number;
+}
+
 export function useGeneration() {
   return useMemo(() => ({
     getGenerationStatus: (gameId: string) => invoke<any>('get_generation_status', { gameId }),
@@ -11,5 +19,6 @@ export function useGeneration() {
     onAssetFailed: (callback: (event: any) => void) => listen('asset-failed', callback),
     onGenerationProgress: (callback: (event: any) => void) => listen('generation-progress', callback),
     onGenerationComplete: (callback: (event: any) => void) => listen('generation-complete', callback),
+    onGenerationStep: (callback: (event: any) => void) => listen('generation-step', callback),
   }), []);
 }

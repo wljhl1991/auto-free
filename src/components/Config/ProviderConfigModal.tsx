@@ -37,6 +37,7 @@ export default function ProviderConfigModal({
   const [saveResult, setSaveResult] = useState<'success' | 'error' | null>(null);
   const [selectedModelId, setSelectedModelId] = useState<string>('');
   const [customModelInput, setCustomModelInput] = useState('');
+  const [customModelModality, setCustomModelModality] = useState<AIModality>('text');
   const [isCustomModel, setIsCustomModel] = useState(false);
   const [testPrompt, setTestPrompt] = useState('hi');
 
@@ -136,6 +137,9 @@ export default function ProviderConfigModal({
       setIsCustomModel(true);
       setSelectedModelId(CUSTOM_MODEL_ID);
       setCustomModelInput('');
+      // 智能设置默认模态：优先选择非 text 的模态（用户更可能添加图片/视频等模型）
+      const nonTextModality = editedProvider.modality.find(m => m !== 'text');
+      setCustomModelModality(nonTextModality || editedProvider.modality[0] || 'text');
     } else {
       setIsCustomModel(false);
       setSelectedModelId(value);
@@ -158,7 +162,7 @@ export default function ProviderConfigModal({
     const newModel: AIModelConfig = {
       id: customModelInput.trim(),
       name: customModelInput.trim(),
-      modality: editedProvider.modality[0] || 'text',
+      modality: customModelModality,
       isDefault: true,
       endpoint: currentEndpoint,
       quality: 'standard',
@@ -505,32 +509,51 @@ export default function ProviderConfigModal({
                 </select>
               </div>
             ) : (
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <input
-                  type="text"
-                  value={customModelInput}
-                  onChange={e => setCustomModelInput(e.target.value)}
-                  placeholder="输入自定义模型 ID"
-                  style={{ ...inputStyle, flex: 1 }}
-                  onKeyDown={e => { if (e.key === 'Enter') handleCustomModelConfirm(); }}
-                />
-                <button
-                  className="btn btn-secondary"
-                  style={{ padding: '0.6rem 0.8rem', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
-                  onClick={handleCustomModelConfirm}
-                  disabled={!customModelInput.trim()}
-                >
-                  确认
-                </button>
-                {editedProvider.models.length > 0 && (
+              <div>
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                  <input
+                    type="text"
+                    value={customModelInput}
+                    onChange={e => setCustomModelInput(e.target.value)}
+                    placeholder="输入自定义模型 ID"
+                    style={{ ...inputStyle, flex: 1 }}
+                    onKeyDown={e => { if (e.key === 'Enter') handleCustomModelConfirm(); }}
+                  />
                   <button
                     className="btn btn-secondary"
                     style={{ padding: '0.6rem 0.8rem', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
-                    onClick={() => { setIsCustomModel(false); setSelectedModelId(defaultModel?.id || ''); }}
+                    onClick={handleCustomModelConfirm}
+                    disabled={!customModelInput.trim()}
                   >
-                    取消
+                    确认
                   </button>
-                )}
+                  {editedProvider.models.length > 0 && (
+                    <button
+                      className="btn btn-secondary"
+                      style={{ padding: '0.6rem 0.8rem', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+                      onClick={() => { setIsCustomModel(false); setSelectedModelId(defaultModel?.id || ''); }}
+                    >
+                      取消
+                    </button>
+                  )}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <label style={{ fontSize: '0.85rem', color: '#9999bb', whiteSpace: 'nowrap' }}>模态类型:</label>
+                  <select
+                    value={customModelModality}
+                    onChange={e => setCustomModelModality(e.target.value as AIModality)}
+                    style={{ ...selectStyle, flex: 1 }}
+                  >
+                    {editedProvider.modality.map(mod => {
+                      const opt = MODALITY_OPTIONS.find(o => o.value === mod);
+                      return (
+                        <option key={mod} value={mod}>
+                          {opt?.label || mod}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
               </div>
             )}
             {/* 模型说明信息 */}

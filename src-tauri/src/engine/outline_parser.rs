@@ -232,7 +232,7 @@ impl OutlineParser {
     }
 
     /// 保存 AI 原始响应到文件
-    fn save_raw_ai_response(&self, stage: &str, response: &str) {
+    pub fn save_raw_ai_response(&self, stage: &str, response: &str) {
         let dir = std::env::current_dir()
             .unwrap_or_else(|_| std::path::PathBuf::from("."))
             .join("gen")
@@ -247,7 +247,7 @@ impl OutlineParser {
         log::info!("AI 原始响应已保存: {}", path.display());
     }
 
-    fn save_raw_ai_response_sync(stage: &str, response: &str) {
+    pub fn save_raw_ai_response_sync(stage: &str, response: &str) {
         let dir = std::env::current_dir()
             .unwrap_or_else(|_| std::path::PathBuf::from("."))
             .join("gen")
@@ -285,7 +285,7 @@ impl OutlineParser {
     }
 
     /// 从 AI 响应中提取 JSON
-    fn extract_json(&self, response: &str) -> Result<String, ProviderError> {
+    pub fn extract_json(&self, response: &str) -> Result<String, ProviderError> {
         let trimmed = response.trim();
 
         // 尝试提取 ```json ... ``` 代码块
@@ -340,7 +340,7 @@ impl OutlineParser {
         ))
     }
 
-    fn normalize_json(json_str: &str) -> String {
+    pub fn normalize_json(json_str: &str) -> String {
         let mut value: serde_json::Value = match serde_json::from_str(json_str) {
             Ok(v) => v,
             Err(_) => return json_str.to_string(),

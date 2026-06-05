@@ -27,6 +27,11 @@ impl ConnectivityChecker {
                 test_prompt: test_prompt.map(|s| s.to_string()),
                 media_url: None,
                 media_type: None,
+                request_endpoint: None,
+                request_model: None,
+                request_headers: None,
+                request_body: None,
+                response_status: None,
             };
         }
 
@@ -58,6 +63,11 @@ impl ConnectivityChecker {
                 test_prompt: test_prompt.map(|s| s.to_string()),
                 media_url: None,
                 media_type: None,
+                request_endpoint: None,
+                request_model: None,
+                request_headers: None,
+                request_body: None,
+                response_status: None,
             };
         }
 
@@ -90,6 +100,11 @@ impl ConnectivityChecker {
                             test_prompt: Some(prompt.to_string()),
                             media_url: None,
                             media_type: None,
+                            request_endpoint: None,
+                            request_model: None,
+                            request_headers: None,
+                            request_body: None,
+                            response_status: None,
                         }
                     }
                     Err(_) => {
@@ -107,6 +122,11 @@ impl ConnectivityChecker {
                             test_prompt: Some(prompt.to_string()),
                             media_url: None,
                             media_type: None,
+                            request_endpoint: None,
+                            request_model: None,
+                            request_headers: None,
+                            request_body: None,
+                            response_status: None,
                         }
                     }
                 }
@@ -126,6 +146,11 @@ impl ConnectivityChecker {
                     test_prompt: test_prompt.map(|s| s.to_string()),
                     media_url: None,
                     media_type: None,
+                    request_endpoint: None,
+                    request_model: None,
+                    request_headers: None,
+                    request_body: None,
+                    response_status: None,
                 }
             }
         }
@@ -159,6 +184,11 @@ impl ConnectivityChecker {
                     test_prompt: None,
                     media_url: None,
                     media_type: None,
+                    request_endpoint: None,
+                    request_model: None,
+                    request_headers: None,
+                    request_body: None,
+                    response_status: None,
                 }),
             }
         }
