@@ -76,7 +76,7 @@ impl OutlineParser {
             },
         ];
 
-        self.text_provider.chat(messages, None).await
+        self.text_provider.chat(messages, None).await.map(|r| Self::strip_think_tags(&r))
     }
 
     /// 解析大纲为 GameScript JSON
@@ -108,6 +108,7 @@ impl OutlineParser {
         ];
 
         let response = self.text_provider.chat(messages, None).await?;
+        let response = Self::strip_think_tags(&response);
         self.save_raw_ai_response("parse", &response);
         let json_str = self.extract_json(&response).map_err(|e| {
             Self::save_raw_ai_response_sync("parse_error", &response);
@@ -152,6 +153,7 @@ impl OutlineParser {
         ];
 
         let response = self.text_provider.chat(messages, None).await?;
+        let response = Self::strip_think_tags(&response);
         self.save_raw_ai_response("combined", &response);
         let json_str = self.extract_json(&response).map_err(|e| {
             Self::save_raw_ai_response_sync("combined_error", &response);
@@ -257,6 +259,29 @@ impl OutlineParser {
             .as_secs();
         let path = dir.join(format!("outline_{}_{}.txt", stage, ts));
         std::fs::write(&path, response).ok();
+    }
+
+    /// 从 AI 响应中去除 <think>...</think> 标签及其内容
+    /// DeepSeek R1 等推理模型会在 content 中返回 <think>推理过程</think>实际回答
+    pub fn strip_think_tags(response: &str) -> String {
+        let mut result = response.to_string();
+        // 循环移除所有 <think>...</think> 块（支持多行内容）
+        loop {
+            if let Some(start) = result.find("<think>") {
+                let think_start = start;
+                if let Some(end) = result[think_start..].find("</think>") {
+                    let think_end = think_start + end + "</think>".len();
+                    result = format!("{}{}", &result[..think_start], &result[think_end..]);
+                } else {
+                    // 没有闭合标签，移除从 <think> 到末尾的所有内容
+                    result = result[..think_start].to_string();
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        result.trim().to_string()
     }
 
     /// 从 AI 响应中提取 JSON

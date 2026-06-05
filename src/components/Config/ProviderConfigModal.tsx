@@ -54,7 +54,8 @@ export default function ProviderConfigModal({
   if (!isOpen || !editedProvider) return null;
 
   const defaultModel = editedProvider.models.find(m => m.isDefault) || editedProvider.models[0];
-  const currentEndpoint = defaultModel?.endpoint || '';
+  const selectedModel = editedProvider.models.find(m => m.id === selectedModelId);
+  const currentEndpoint = selectedModel?.endpoint || defaultModel?.endpoint || '';
   const isMultimodal = editedProvider.modality.length > 1;
 
   // --- Handlers ---
@@ -111,6 +112,16 @@ export default function ProviderConfigModal({
   const handleEndpointChange = (value: string) => {
     setEditedProvider(prev => {
       if (!prev) return prev;
+      // 如果是多模态且选中了特定模型，只修改该模型的 endpoint
+      if (isMultimodal && selectedModelId && selectedModelId !== CUSTOM_MODEL_ID) {
+        return {
+          ...prev,
+          models: prev.models.map(m =>
+            m.id === selectedModelId ? { ...m, endpoint: value } : m
+          ),
+        };
+      }
+      // 单模态或未选中特定模型，修改所有模型的 endpoint
       return {
         ...prev,
         models: prev.models.map(m => ({ ...m, endpoint: value })),
@@ -443,6 +454,11 @@ export default function ProviderConfigModal({
                 ? '当前为完整 URL，调用时将直接使用此地址'
                 : '当前为基础 URL，调用时将自动追加 /chat/completions'}
             </span>
+            {isMultimodal && selectedModelId && selectedModelId !== CUSTOM_MODEL_ID && (
+              <span style={{ fontSize: '0.75rem', color: '#e0a040', marginTop: '0.25rem', display: 'block' }}>
+                多模态模式下，切换模型 ID 会显示该模型的独立接口地址
+              </span>
+            )}
           </div>
 
           {/* 模型ID */}
@@ -457,7 +473,7 @@ export default function ProviderConfigModal({
                 >
                   {editedProvider.models.map(model => (
                     <option key={model.id} value={model.id}>
-                      {model.name}{model.freeQuota ? ` — ${model.freeQuota}` : ''}
+                      {model.id}
                     </option>
                   ))}
                   <option value={CUSTOM_MODEL_ID}>自定义...</option>
@@ -492,11 +508,33 @@ export default function ProviderConfigModal({
                 )}
               </div>
             )}
-            {selectedModelId && !isCustomModel && selectedModelId !== CUSTOM_MODEL_ID && (
-              <span style={{ fontSize: '0.75rem', color: '#666680', marginTop: '0.25rem', display: 'block' }}>
-                当前模型 ID: {selectedModelId}
-              </span>
-            )}
+            {/* 模型说明信息 */}
+            {selectedModelId && !isCustomModel && selectedModelId !== CUSTOM_MODEL_ID && (() => {
+              const selectedModel = editedProvider.models.find(m => m.id === selectedModelId);
+              if (!selectedModel) return null;
+              return (
+                <div style={{
+                  marginTop: '0.5rem', padding: '0.6rem 0.8rem',
+                  backgroundColor: '#0a0a1a', borderRadius: '6px',
+                  fontSize: '0.8rem', color: '#8888aa',
+                  border: '1px solid #1e1e30',
+                }}>
+                  {selectedModel.name !== selectedModel.id && (
+                    <div>名称: {selectedModel.name}</div>
+                  )}
+                  <div>模态: {selectedModel.modality === 'text' ? '文本' : selectedModel.modality === 'image' ? '图片' : selectedModel.modality === 'video' ? '视频' : selectedModel.modality === 'music' ? '音乐' : '语音'}</div>
+                  {selectedModel.quality && <div>质量: {selectedModel.quality === 'fast' ? '快速' : selectedModel.quality === 'standard' ? '标准' : '高质量'}</div>}
+                  {selectedModel.freeQuota && <div style={{ color: '#a5d6a7' }}>免费额度: {selectedModel.freeQuota}</div>}
+                  {selectedModel.maxTokens && <div>最大 Token: {selectedModel.maxTokens}</div>}
+                  {selectedModel.endpoint && selectedModel.endpoint !== currentEndpoint && (
+                    <div style={{ color: '#e0a040' }}>独立接口: {selectedModel.endpoint}</div>
+                  )}
+                  <div style={{ marginTop: '0.3rem', fontSize: '0.75rem', color: '#555570', fontStyle: 'italic' }}>
+                    * 优化信息仅供参考，以服务商官方文档为准
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
 

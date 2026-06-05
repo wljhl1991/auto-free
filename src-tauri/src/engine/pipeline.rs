@@ -127,7 +127,7 @@ impl GenerationPipeline {
                 },
             ];
             let outline = deepseek.chat(messages, None).await?;
-            Ok(outline)
+            Ok(OutlineParser::strip_think_tags(&outline))
         } else if let Some(provider_config) = text_config {
             // 对于非 DeepSeek 的文本 provider，也使用 DeepSeek 的 chat 接口
             // 因为其他文本 provider 可能也兼容 OpenAI API 格式
@@ -143,7 +143,7 @@ impl GenerationPipeline {
                 },
             ];
             let outline = deepseek.chat(messages, None).await?;
-            Ok(outline)
+            Ok(OutlineParser::strip_think_tags(&outline))
         } else {
             // 4. 文本 AI 未配置，使用预设的示例大纲
             Ok(self.fallback_random_outline(&game_type))
