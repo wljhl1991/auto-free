@@ -83,9 +83,9 @@ impl DeepSeekProvider {
             .unwrap_or_else(|| DEFAULT_ENDPOINT.to_string());
 
         let client = Client::builder()
-            .connect_timeout(Duration::from_secs(10))
-            .read_timeout(Duration::from_secs(90))
-            .timeout(Duration::from_secs(180))
+            .connect_timeout(Duration::from_secs(15))
+            .read_timeout(Duration::from_secs(120))
+            .timeout(Duration::from_secs(300))
             .build()
             .map_err(|e| ProviderError::NetworkError(format!("Failed to create HTTP client: {}", e)))?;
 

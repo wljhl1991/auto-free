@@ -129,10 +129,16 @@ impl SiliconFlowProvider {
 
         let endpoint = config.models
             .iter()
-            .find(|m| m.is_default)
+            .find(|m| m.is_default && m.modality == AIModality::Image)
             .and_then(|m| {
                 let ep = m.endpoint.trim().to_string();
                 if ep.is_empty() { None } else { Some(ep) }
+            })
+            .or_else(|| {
+                config.models.iter().find(|m| m.modality == AIModality::Image).and_then(|m| {
+                    let ep = m.endpoint.trim().to_string();
+                    if ep.is_empty() { None } else { Some(ep) }
+                })
             })
             .unwrap_or_else(|| DEFAULT_ENDPOINT.to_string());
 

@@ -309,6 +309,13 @@ export default function GenerationProgress() {
       setGenStatus(prev => ({ ...prev, backgroundGenerationActive: false }));
     }).then(unlisten => unlisteners.push(unlisten));
 
+    // 监听 generation-error 事件
+    generation.onGenerationError((event: any) => {
+      const payload = event.payload;
+      if (!payload || payload.gameId !== gameId) return;
+      setError(payload.message || payload.error || '生成失败');
+    }).then(unlisten => unlisteners.push(unlisten));
+
     return () => unlisteners.forEach(fn => fn());
   }, [updateChapterProgress, chapters]);
 

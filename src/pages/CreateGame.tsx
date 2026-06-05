@@ -99,14 +99,16 @@ export default function CreateGame() {
     }
     try {
       const gameInfo = await createGame(outline, gameType || undefined, useLocalFallback, highQuality, chapterCount);
+      // 后端现在立即返回 game_id，直接跳转到进度页
       navigate(`/generate/${gameInfo.id}`);
     } catch (e: any) {
       const msg = typeof e === 'string' ? e : (e?.message || '创建失败，请重试');
       setError(msg);
-    } finally {
       setLoading(false);
       setLoadingPhase(null);
     }
+    // 注意：不再在 finally 中 setLoading(false)，
+    // 因为 navigate 后组件会卸载，如果创建成功无需重置状态
   };
 
   const handleModalityConfirm = (useLocalFallback: boolean) => {
@@ -436,16 +438,12 @@ export default function CreateGame() {
           <div className="create-loading-text">
             {loadingPhase === 'checking'
               ? '正在检测可用服务...'
-              : highQuality
-                ? '正在生成游戏世界（高质量模式）...'
-                : '正在提交生成任务...'}
+              : '正在提交生成任务...'}
           </div>
           <div className="create-loading-hint">
             {loadingPhase === 'checking'
               ? '正在检查 AI 服务配置状态'
-              : highQuality
-                ? '高质量模式进行多轮AI交互，通常需要 30-60 秒'
-                : 'AI 正在解析大纲并构建游戏，通常需要 10-30 秒'}
+              : '正在初始化生成任务，即将跳转到进度页面...'}
           </div>
         </div>
       )}

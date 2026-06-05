@@ -32,5 +32,6 @@ export function useGeneration() {
     onGenerationStep: (callback: (event: any) => void) => listen('generation-step', callback),
     onChapterReady: (callback: (event: any) => void) => listen('chapter-ready', callback),
     onAllChaptersReady: (callback: (event: any) => void) => listen('all-chapters-ready', callback),
+    onGenerationError: (callback: (event: any) => void) => listen('generation-error', callback),
   }), []);
 }

@@ -150,6 +150,37 @@ impl BuiltinAssetProvider {
         find_user_asset(&self.autofree_base_path, asset_type_str, &tags)
     }
 
+    /// 根据 asset_type 返回对应的默认资源（降级策略）
+    fn find_fallback_asset(&self, asset_type: &ScriptAssetType) -> Option<crate::engine::asset_manager::BuiltinAssetEntry> {
+        match asset_type {
+            ScriptAssetType::Image | ScriptAssetType::Video => {
+                // Image: 返回第一个可用的图片；Video: 没有内置视频，用图片代替
+                let game_types = [
+                    crate::types::game_script::GameType::VisualNovel,
+                    crate::types::game_script::GameType::Mystery,
+                    crate::types::game_script::GameType::Horror,
+                    crate::types::game_script::GameType::Rpg,
+                    crate::types::game_script::GameType::Simulation,
+                ];
+                for game_type in &game_types {
+                    if let Some(entry) = self.registry.find_image(game_type, None) {
+                        return Some(entry.clone());
+                    }
+                }
+                None
+            }
+            ScriptAssetType::Audio | ScriptAssetType::Voice => {
+                // Audio: 返回第一个可用的音频；Voice: 没有内置语音，用音频代替
+                for mood in &["calm", "happy", "tense", "dark", "battle"] {
+                    if let Some(entry) = self.registry.find_music(mood) {
+                        return Some(entry.clone());
+                    }
+                }
+                None
+            }
+        }
+    }
+
     /// 生成 cacheKey
     fn generate_cache_key(asset_ref: &AssetRef) -> String {
         use sha2::{Sha256, Digest};
@@ -212,11 +243,19 @@ impl IAssetProvider for BuiltinAssetProvider {
         }
 
         // 回退到内置资源
-        let entry = self.find_builtin_asset(asset_ref)
-            .ok_or_else(|| ProviderError::NotFound(format!(
-                "No builtin asset found for asset_ref: {} (type: {:?}, prompt: {})",
-                asset_ref.id, asset_ref.asset_type, asset_ref.prompt
-            )))?;
+        let entry = match self.find_builtin_asset(asset_ref) {
+            Some(e) => e,
+            None => {
+                // 降级：找不到匹配的内置资源时，使用默认占位资源
+                log::warn!("[BuiltinAsset] No builtin asset found for asset_ref: {} (type: {:?}, prompt: {}), using fallback",
+                    asset_ref.id, asset_ref.asset_type, asset_ref.prompt);
+                self.find_fallback_asset(&asset_ref.asset_type)
+                    .ok_or_else(|| ProviderError::NotFound(format!(
+                        "No builtin asset found for asset_ref: {} (type: {:?}, prompt: {}), and no fallback available",
+                        asset_ref.id, asset_ref.asset_type, asset_ref.prompt
+                    )))?
+            }
+        };
 
         let source_path = self.registry.get_full_path(&entry);
         if !source_path.exists() {

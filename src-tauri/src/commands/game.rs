@@ -152,7 +152,7 @@ pub async fn create_game(
     let hq = high_quality.unwrap_or(false);
     log::info!("创建游戏: input_len={}, game_type={:?}, use_local_fallback={}, high_quality={}, chapter_count={:?}", input.len(), gt, fallback, hq, chapter_count);
     let p = pipeline.read().await;
-    let (game_id, script) = p.create_game(&input, gt, fallback, hq, chapter_count).await
+    let game_id = p.create_game_async(&input, gt, fallback, hq, chapter_count).await
         .map_err(|e| {
             let msg = match e {
                 ProviderError::InvalidConfig(msg) => format!("配置错误：{}。请在设置中配置 AI 服务后重试。", msg),
@@ -165,18 +165,19 @@ pub async fn create_game(
             msg
         })?;
 
-    log::info!("创建游戏成功: game_id={}, title={}", game_id, script.meta.title);
+    log::info!("创建游戏已启动（后台生成）: game_id={}", game_id);
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
 
+    // 立即返回 GameInfo，title 使用临时值，后续通过事件更新
     Ok(GameInfo {
         id: game_id,
-        title: script.meta.title,
-        game_type: script.meta.game_type,
-        total_chapters: script.meta.total_chapters as usize,
+        title: "生成中...".to_string(),
+        game_type: GameType::VisualNovel,
+        total_chapters: 0,
         created_at: now,
         updated_at: now,
     })

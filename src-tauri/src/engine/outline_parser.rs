@@ -367,12 +367,21 @@ impl OutlineParser {
     fn normalize_value(value: &mut serde_json::Value, fixed: &mut bool) {
         match value {
             serde_json::Value::Object(map) => {
-                // type: 修正 AI 常见的节点类型拼写错误
-                if let Some(v) = map.get_mut("type") {
-                    if let Some(s) = v.as_str() {
-                        if let Some(corrected) = normalize_node_type(s) {
-                            *v = serde_json::Value::String(corrected);
-                            *fixed = true;
+                // 判断当前对象是否为 SceneNode（在 sequence 数组中的对象）
+                // AssetRef 有 source/prompt 字段，globalVariables 有 name/defaultValue 字段
+                // 这些对象的 type 字段不应被 normalize_node_type 处理
+                let is_asset_ref = map.contains_key("source") && map.contains_key("prompt");
+                let is_global_var = map.contains_key("name") && map.contains_key("defaultValue");
+                let is_scene_node = !is_asset_ref && !is_global_var;
+
+                // type: 仅对 SceneNode 的 type 字段做修正
+                if is_scene_node {
+                    if let Some(v) = map.get_mut("type") {
+                        if let Some(s) = v.as_str() {
+                            if let Some(corrected) = normalize_node_type(s) {
+                                *v = serde_json::Value::String(corrected);
+                                *fixed = true;
+                            }
                         }
                     }
                 }
