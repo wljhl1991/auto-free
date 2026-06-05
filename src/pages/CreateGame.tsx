@@ -5,6 +5,26 @@ import { useConfig } from '../hooks/useConfig';
 import ModalitySelectModal from '../components/Config/ModalitySelectModal';
 import type { ModalityAvailability } from '../hooks/useConfig';
 
+interface HistoryItem {
+  outline: string;
+  gameType: string;
+  timestamp: number;
+}
+
+const HISTORY_KEY = 'autofree_create_history';
+const MAX_HISTORY = 20;
+
+function loadHistory(): HistoryItem[] {
+  try {
+    const data = localStorage.getItem(HISTORY_KEY);
+    return data ? JSON.parse(data) : [];
+  } catch { return []; }
+}
+
+function saveHistory(items: HistoryItem[]) {
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(items.slice(0, MAX_HISTORY)));
+}
+
 const GAME_TYPES = [
   { value: '', label: '自动推断' },
   { value: 'visual_novel', label: '视觉小说' },
@@ -36,6 +56,8 @@ export default function CreateGame() {
   const [scriptJson, setScriptJson] = useState('');
   const [scriptLoading, setScriptLoading] = useState(false);
   const [scriptError, setScriptError] = useState('');
+  const [history, setHistory] = useState<HistoryItem[]>(loadHistory);
+  const [showHistory, setShowHistory] = useState(false);
 
   const handleSubmit = async () => {
     if (!outline.trim()) {
@@ -67,6 +89,10 @@ export default function CreateGame() {
   const doCreateGame = async (useLocalFallback: boolean) => {
     setLoading(true);
     setError('');
+    // Save to history before creating
+    const newHistory = [{ outline, gameType, timestamp: Date.now() }, ...history.filter(h => h.outline !== outline)];
+    setHistory(newHistory);
+    saveHistory(newHistory);
     try {
       const gameInfo = await createGame(outline, gameType || undefined, useLocalFallback);
       navigate(`/generate/${gameInfo.id}`);
@@ -128,6 +154,17 @@ export default function CreateGame() {
     }
   };
 
+  const deleteHistoryItem = (timestamp: number) => {
+    const newHistory = history.filter(h => h.timestamp !== timestamp);
+    setHistory(newHistory);
+    saveHistory(newHistory);
+  };
+
+  const gameTypeLabel = (value: string) => {
+    const found = GAME_TYPES.find(t => t.value === value);
+    return found ? found.label : value || '自动推断';
+  };
+
   return (
     <div className="page create-game">
       <button className="btn btn-back" onClick={() => navigate('/')}>
@@ -145,6 +182,104 @@ export default function CreateGame() {
           placeholder="输入一句话、几句话、或完整大纲，AI 将为你生成游戏..."
           rows={10}
         />
+      </div>
+
+      <div style={{ marginBottom: '1.25rem' }}>
+        <button
+          type="button"
+          onClick={() => setShowHistory(!showHistory)}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#8888aa',
+            fontSize: '0.85rem',
+            cursor: 'pointer',
+            padding: '0.3rem 0',
+            fontFamily: 'inherit',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.4rem',
+            transition: 'color 0.2s ease',
+          }}
+          onMouseEnter={e => (e.currentTarget.style.color = '#4a90d9')}
+          onMouseLeave={e => (e.currentTarget.style.color = '#8888aa')}
+        >
+          <span style={{ fontSize: '0.7rem', transition: 'transform 0.2s', transform: showHistory ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block' }}>▶</span>
+          输入历史 {history.length > 0 && `(${history.length})`}
+        </button>
+
+        {showHistory && (
+          <div style={{
+            marginTop: '0.5rem',
+            maxHeight: '320px',
+            overflowY: 'auto',
+            backgroundColor: '#12121f',
+            border: '1px solid #1e1e30',
+            borderRadius: '8px',
+          }}>
+            {history.length === 0 ? (
+              <p style={{ color: '#555570', fontSize: '0.85rem', padding: '1rem', textAlign: 'center', margin: 0 }}>暂无历史记录</p>
+            ) : (
+              history.map((item) => (
+                <div
+                  key={item.timestamp}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '0.6rem',
+                    padding: '0.7rem 0.85rem',
+                    borderBottom: '1px solid #1e1e30',
+                    cursor: 'pointer',
+                    transition: 'background-color 0.15s ease',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#1a1a2e')}
+                  onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+                  onClick={() => { setOutline(item.outline); setGameType(item.gameType); setError(''); }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      fontSize: '0.85rem',
+                      color: '#c0c0d0',
+                      lineHeight: '1.5',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {item.outline}
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.3rem', fontSize: '0.75rem', color: '#666680' }}>
+                      <span style={{ color: '#7b68ee', backgroundColor: 'rgba(123, 104, 238, 0.12)', border: '1px solid rgba(123, 104, 238, 0.25)', borderRadius: '8px', padding: '0 6px' }}>
+                        {gameTypeLabel(item.gameType)}
+                      </span>
+                      <span>{new Date(item.timestamp).toLocaleString('zh-CN')}</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); deleteHistoryItem(item.timestamp); }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#555570',
+                      fontSize: '1rem',
+                      cursor: 'pointer',
+                      padding: '0.15rem 0.3rem',
+                      lineHeight: 1,
+                      borderRadius: '4px',
+                      transition: 'color 0.15s ease, background-color 0.15s ease',
+                      flexShrink: 0,
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.color = '#f87171'; e.currentTarget.style.backgroundColor = 'rgba(248, 113, 113, 0.1)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.color = '#555570'; e.currentTarget.style.backgroundColor = 'transparent'; }}
+                    title="删除"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        )}
       </div>
 
       <div className="form-row">

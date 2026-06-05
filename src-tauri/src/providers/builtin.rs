@@ -281,6 +281,8 @@ impl IAssetProvider for BuiltinAssetProvider {
             quota_info: None,
                 response_preview: None,
                 test_prompt: None,
+                media_url: None,
+                media_type: None,
         })
     }
 

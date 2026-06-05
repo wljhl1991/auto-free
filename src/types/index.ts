@@ -135,4 +135,8 @@ export interface ConnectivityCheck {
   latency?: number;
   errorMessage?: string;
   quotaInfo?: QuotaInfo;
+  responsePreview?: string;
+  testPrompt?: string;
+  mediaUrl?: string;
+  mediaType?: string;
 }

@@ -349,10 +349,11 @@ impl IAssetProvider for HailuoProvider {
 
     async fn check_connectivity(&self) -> Result<ConnectivityCheck, ProviderError> {
         let start = SystemTime::now();
+        let test_prompt = "a beautiful sunset over mountains, digital art";
 
         let request = ImageGenerationRequest {
             model: self.default_model.clone(),
-            prompt: "a single pixel".to_string(),
+            prompt: test_prompt.to_string(),
             negative_prompt: None,
             image_size: Some("256x256".to_string()),
         };
@@ -364,19 +365,25 @@ impl IAssetProvider for HailuoProvider {
             .as_millis() as u64;
 
         match result {
-            Ok(_) => Ok(ConnectivityCheck {
-                provider_id: self.config.id.clone(),
-                timestamp: SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs(),
-                status: ConnectivityStatus::Ok,
-                latency: Some(latency),
-                error_message: None,
-                quota_info: None,
-                response_preview: None,
-                test_prompt: None,
-            }),
+            Ok(image_url) => {
+                // 下载并保存测试图片
+                let media_url = self.download_and_save_test_image(&image_url, "hailuo").await.ok();
+                Ok(ConnectivityCheck {
+                    provider_id: self.config.id.clone(),
+                    timestamp: SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs(),
+                    status: ConnectivityStatus::Ok,
+                    latency: Some(latency),
+                    error_message: None,
+                    quota_info: None,
+                    response_preview: None,
+                    test_prompt: Some(test_prompt.to_string()),
+                    media_url,
+                    media_type: Some("image".to_string()),
+                })
+            }
             Err(ProviderError::AuthFailed(msg)) => Ok(ConnectivityCheck {
                 provider_id: self.config.id.clone(),
                 timestamp: SystemTime::now()
@@ -388,7 +395,9 @@ impl IAssetProvider for HailuoProvider {
                 error_message: Some(msg),
                 quota_info: None,
                 response_preview: None,
-                test_prompt: None,
+                test_prompt: Some(test_prompt.to_string()),
+                media_url: None,
+                media_type: None,
             }),
             Err(ProviderError::QuotaExceeded(msg)) => Ok(ConnectivityCheck {
                 provider_id: self.config.id.clone(),
@@ -401,7 +410,9 @@ impl IAssetProvider for HailuoProvider {
                 error_message: Some(msg),
                 quota_info: None,
                 response_preview: None,
-                test_prompt: None,
+                test_prompt: Some(test_prompt.to_string()),
+                media_url: None,
+                media_type: None,
             }),
             Err(e) => Ok(ConnectivityCheck {
                 provider_id: self.config.id.clone(),
@@ -414,7 +425,9 @@ impl IAssetProvider for HailuoProvider {
                 error_message: Some(format!("{:?}", e)),
                 quota_info: None,
                 response_preview: None,
-                test_prompt: None,
+                test_prompt: Some(test_prompt.to_string()),
+                media_url: None,
+                media_type: None,
             }),
         }
     }
@@ -425,5 +438,24 @@ impl IAssetProvider for HailuoProvider {
 
     fn provider_id(&self) -> &str {
         &self.config.id
+    }
+}
+
+impl HailuoProvider {
+    /// 下载测试图片并保存到 gen/cache/ 目录，返回本地文件路径
+    async fn download_and_save_test_image(&self, url: &str, provider_name: &str) -> Result<String, ProviderError> {
+        let image_data = self.download_image(url).await?;
+
+        let cache_dir = self.asset_base_path.join("cache");
+        std::fs::create_dir_all(&cache_dir)
+            .map_err(|e| ProviderError::GenerationFailed(format!("创建缓存目录失败: {}", e)))?;
+
+        let filename = format!("{}_test_{}.png", provider_name,
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs());
+        let dest_path = cache_dir.join(&filename);
+        std::fs::write(&dest_path, &image_data)
+            .map_err(|e| ProviderError::GenerationFailed(format!("写入测试图片失败: {}", e)))?;
+
+        Ok(dest_path.to_string_lossy().to_string())
     }
 }

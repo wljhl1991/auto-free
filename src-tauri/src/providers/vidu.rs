@@ -405,6 +405,7 @@ impl IAssetProvider for ViduProvider {
     async fn check_connectivity(&self) -> Result<ConnectivityCheck, ProviderError> {
         let start = SystemTime::now();
 
+        // 视频生成耗时较长，仅验证 API 密钥有效性
         let request = VideoGenerationRequest {
             model: self.default_model.clone(),
             prompt: "a single frame".to_string(),
@@ -430,8 +431,10 @@ impl IAssetProvider for ViduProvider {
                 latency: Some(latency),
                 error_message: None,
                 quota_info: None,
-                response_preview: None,
+                response_preview: Some("视频生成服务可用（完整生成需要较长时间，未执行测试生成）".to_string()),
                 test_prompt: None,
+                media_url: None,
+                media_type: None,
             }),
             Err(ProviderError::AuthFailed(msg)) => Ok(ConnectivityCheck {
                 provider_id: self.config.id.clone(),
@@ -445,6 +448,8 @@ impl IAssetProvider for ViduProvider {
                 quota_info: None,
                 response_preview: None,
                 test_prompt: None,
+                media_url: None,
+                media_type: None,
             }),
             Err(ProviderError::QuotaExceeded(msg)) => Ok(ConnectivityCheck {
                 provider_id: self.config.id.clone(),
@@ -458,6 +463,8 @@ impl IAssetProvider for ViduProvider {
                 quota_info: None,
                 response_preview: None,
                 test_prompt: None,
+                media_url: None,
+                media_type: None,
             }),
             Err(e) => Ok(ConnectivityCheck {
                 provider_id: self.config.id.clone(),
@@ -471,6 +478,8 @@ impl IAssetProvider for ViduProvider {
                 quota_info: None,
                 response_preview: None,
                 test_prompt: None,
+                media_url: None,
+                media_type: None,
             }),
         }
     }

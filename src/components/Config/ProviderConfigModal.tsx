@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import type { AIProviderConfig, AIModelConfig, ProviderStatus, AIModality } from '@/types';
+import { convertFileSrc } from '@/adapters/tauri';
 
 interface ProviderConfigModalProps {
   provider: AIProviderConfig | null;
   isOpen: boolean;
   onClose: () => void;
   onSave: (provider: AIProviderConfig) => Promise<void>;
-  onCheck: (providerId: string, testPrompt?: string) => Promise<any>;
+  onCheck: (providerId: string, testPrompt?: string, modelId?: string) => Promise<any>;
   isNew?: boolean;
 }
 
@@ -31,7 +32,7 @@ export default function ProviderConfigModal({
   const [editedProvider, setEditedProvider] = useState<AIProviderConfig | null>(null);
   const [showApiKey, setShowApiKey] = useState(false);
   const [checking, setChecking] = useState(false);
-  const [checkResult, setCheckResult] = useState<{ status: string; message?: string; latency?: number; responsePreview?: string; testPrompt?: string } | null>(null);
+  const [checkResult, setCheckResult] = useState<{ status: string; message?: string; latency?: number; responsePreview?: string; testPrompt?: string; mediaUrl?: string; mediaType?: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveResult, setSaveResult] = useState<'success' | 'error' | null>(null);
   const [selectedModelId, setSelectedModelId] = useState<string>('');
@@ -178,6 +179,29 @@ export default function ProviderConfigModal({
     setCheckResult(null);
   };
 
+  const handleDeleteModel = (modelId: string) => {
+    setEditedProvider(prev => {
+      if (!prev) return prev;
+      const remaining = prev.models.filter(m => m.id !== modelId);
+      if (remaining.length === 0) return prev; // 至少保留一个模型
+      // 如果删除的是当前选中的模型，切换到第一个
+      const wasSelected = selectedModelId === modelId;
+      const wasDefault = remaining.every(m => !m.isDefault);
+      const updated = {
+        ...prev,
+        models: wasDefault
+          ? remaining.map((m, i) => ({ ...m, isDefault: i === 0 }))
+          : remaining,
+      };
+      if (wasSelected) {
+        const newDefault = updated.models.find(m => m.isDefault) || updated.models[0];
+        setSelectedModelId(newDefault?.id || '');
+      }
+      return updated;
+    });
+    setCheckResult(null);
+  };
+
   const handleExtraParamChange = (key: string, value: string) => {
     setEditedProvider(prev => {
       if (!prev) return prev;
@@ -205,7 +229,6 @@ export default function ProviderConfigModal({
     try {
       await onSave(editedProvider);
       setSaveResult('success');
-      setTimeout(() => setSaveResult(null), 3000);
     } catch (err) {
       setSaveResult('error');
     } finally {
@@ -225,13 +248,15 @@ export default function ProviderConfigModal({
     setChecking(true);
     setCheckResult(null);
     try {
-      const result = await onCheck(editedProvider.id, testPrompt || undefined);
+      const result = await onCheck(editedProvider.id, testPrompt || undefined, selectedModelId !== CUSTOM_MODEL_ID ? selectedModelId : undefined);
       setCheckResult({
         status: result?.status || 'ok',
         message: result?.errorMessage,
         latency: result?.latency,
         responsePreview: result?.responsePreview,
         testPrompt: result?.testPrompt,
+        mediaUrl: result?.mediaUrl,
+        mediaType: result?.mediaType,
       });
       if (result) {
         setEditedProvider(prev => prev ? {
@@ -512,6 +537,7 @@ export default function ProviderConfigModal({
             {selectedModelId && !isCustomModel && selectedModelId !== CUSTOM_MODEL_ID && (() => {
               const selectedModel = editedProvider.models.find(m => m.id === selectedModelId);
               if (!selectedModel) return null;
+              const isBuiltinModel = provider?.models.some(m => m.id === selectedModelId);
               return (
                 <div style={{
                   marginTop: '0.5rem', padding: '0.6rem 0.8rem',
@@ -532,6 +558,20 @@ export default function ProviderConfigModal({
                   <div style={{ marginTop: '0.3rem', fontSize: '0.75rem', color: '#555570', fontStyle: 'italic' }}>
                     * 优化信息仅供参考，以服务商官方文档为准
                   </div>
+                  {!isBuiltinModel && editedProvider.models.length > 1 && (
+                    <button
+                      onClick={() => handleDeleteModel(selectedModelId)}
+                      style={{
+                        marginTop: '0.5rem', padding: '0.3rem 0.6rem',
+                        fontSize: '0.75rem', color: '#e06060',
+                        backgroundColor: 'rgba(224,96,96,0.1)',
+                        border: '1px solid rgba(224,96,96,0.3)',
+                        borderRadius: '4px', cursor: 'pointer',
+                      }}
+                    >
+                      删除此模型
+                    </button>
+                  )}
                 </div>
               );
             })()}
@@ -600,38 +640,6 @@ export default function ProviderConfigModal({
           </div>
         </div>
 
-        {/* ===== Check Result ===== */}
-        {checkResult && (
-          <div style={{
-            marginBottom: '1.25rem', padding: '0.75rem',
-            backgroundColor: checkResult.status === 'ok' ? 'rgba(46,125,50,0.1)' : 'rgba(224,96,96,0.1)',
-            border: `1px solid ${checkResult.status === 'ok' ? 'rgba(46,125,50,0.3)' : 'rgba(224,96,96,0.3)'}`,
-            borderRadius: '8px', fontSize: '0.85rem',
-            color: checkResult.status === 'ok' ? '#a5d6a7' : '#e06060',
-          }}>
-            <div>
-              {checkResult.status === 'ok' ? '连接成功！' : `连接失败：${checkResult.message || '未知错误'}`}
-              {checkResult.latency != null && (
-                <span style={{ marginLeft: '0.5rem', color: '#9999bb', fontSize: '0.8rem' }}>
-                  延迟: {checkResult.latency}ms
-                </span>
-              )}
-            </div>
-            {checkResult.responsePreview && (
-              <div style={{
-                marginTop: '0.5rem', padding: '0.5rem',
-                backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '4px',
-                fontSize: '0.8rem', color: '#c0c0d0',
-                maxHeight: '120px', overflowY: 'auto',
-                whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-              }}>
-                <div style={{ color: '#6a6a8a', marginBottom: '0.25rem' }}>AI 响应:</div>
-                {checkResult.responsePreview}
-              </div>
-            )}
-          </div>
-        )}
-
         {/* ===== Free Quota Info ===== */}
         {defaultModel?.freeQuota && (
           <div style={{
@@ -667,16 +675,84 @@ export default function ProviderConfigModal({
           </div>
         )}
 
-        {/* ===== Save Result ===== */}
+        {/* ===== Check Result (紧贴按钮上方) ===== */}
+        {checkResult && (
+          <div style={{
+            marginBottom: '0.75rem', padding: '1rem',
+            backgroundColor: checkResult.status === 'ok' ? 'rgba(46,125,50,0.15)' : 'rgba(224,96,96,0.15)',
+            border: `2px solid ${checkResult.status === 'ok' ? 'rgba(46,125,50,0.5)' : 'rgba(224,96,96,0.5)'}`,
+            borderRadius: '10px', fontSize: '0.9rem',
+            color: checkResult.status === 'ok' ? '#a5d6a7' : '#e06060',
+          }}>
+            <div style={{ fontWeight: 600, fontSize: '1rem', marginBottom: '0.3rem' }}>
+              {checkResult.status === 'ok' ? '✓ 连接成功' : `✗ 连接失败`}
+            </div>
+            {checkResult.status === 'ok' && checkResult.latency != null && (
+              <div style={{ color: '#9999bb', fontSize: '0.85rem' }}>
+                延迟: {checkResult.latency}ms
+                {checkResult.latency < 500 ? ' (很快)' : checkResult.latency < 2000 ? ' (正常)' : ' (较慢)'}
+              </div>
+            )}
+            {checkResult.status !== 'ok' && checkResult.message && (
+              <div style={{ color: '#e08080', fontSize: '0.85rem', marginTop: '0.25rem' }}>
+                {checkResult.message}
+              </div>
+            )}
+            {checkResult.responsePreview && (
+              <div style={{
+                marginTop: '0.5rem', padding: '0.6rem',
+                backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: '6px',
+                fontSize: '0.8rem', color: '#c0c0d0',
+                maxHeight: '150px', overflowY: 'auto',
+                whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+              }}>
+                <div style={{ color: '#6a6a8a', marginBottom: '0.25rem' }}>AI 响应:</div>
+                {checkResult.responsePreview}
+              </div>
+            )}
+            {checkResult.mediaUrl && checkResult.mediaType === 'image' && (
+              <div style={{ marginTop: '0.5rem' }}>
+                <div style={{ color: '#6a6a8a', marginBottom: '0.25rem', fontSize: '0.8rem' }}>测试图片:</div>
+                <img
+                  src={convertFileSrc(checkResult.mediaUrl)}
+                  alt="Test result"
+                  style={{ maxWidth: '100%', maxHeight: '200px', borderRadius: '8px', border: '1px solid #2a2a3a' }}
+                />
+              </div>
+            )}
+            {checkResult.mediaUrl && checkResult.mediaType === 'audio' && (
+              <div style={{ marginTop: '0.5rem' }}>
+                <div style={{ color: '#6a6a8a', marginBottom: '0.25rem', fontSize: '0.8rem' }}>测试音频:</div>
+                <audio controls src={convertFileSrc(checkResult.mediaUrl)} style={{ width: '100%' }} />
+              </div>
+            )}
+            {checkResult.mediaUrl && checkResult.mediaType === 'video' && (
+              <div style={{ marginTop: '0.5rem' }}>
+                <div style={{ color: '#6a6a8a', marginBottom: '0.25rem', fontSize: '0.8rem' }}>测试视频:</div>
+                <video controls src={convertFileSrc(checkResult.mediaUrl)} style={{ maxWidth: '100%', maxHeight: '200px', borderRadius: '8px' }} />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ===== Save Result (紧贴按钮上方) ===== */}
         {saveResult && (
           <div style={{
-            marginBottom: '1rem', padding: '0.6rem 0.8rem',
-            backgroundColor: saveResult === 'success' ? 'rgba(46,125,50,0.1)' : 'rgba(224,96,96,0.1)',
-            border: `1px solid ${saveResult === 'success' ? 'rgba(46,125,50,0.3)' : 'rgba(224,96,96,0.3)'}`,
-            borderRadius: '8px', fontSize: '0.85rem',
+            marginBottom: '0.75rem', padding: '0.7rem 1rem',
+            backgroundColor: saveResult === 'success' ? 'rgba(46,125,50,0.15)' : 'rgba(224,96,96,0.15)',
+            border: `2px solid ${saveResult === 'success' ? 'rgba(46,125,50,0.5)' : 'rgba(224,96,96,0.5)'}`,
+            borderRadius: '10px', fontSize: '0.9rem',
             color: saveResult === 'success' ? '#a5d6a7' : '#e06060',
+            fontWeight: 600,
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           }}>
-            {saveResult === 'success' ? '保存成功！' : '保存失败，请重试'}
+            <span>{saveResult === 'success' ? '✓ 保存成功' : '✗ 保存失败，请重试'}</span>
+            <button
+              onClick={() => setSaveResult(null)}
+              style={{ background: 'none', border: 'none', color: '#8888aa', cursor: 'pointer', fontSize: '0.8rem', padding: '0.2rem' }}
+            >
+              ✕
+            </button>
           </div>
         )}
 

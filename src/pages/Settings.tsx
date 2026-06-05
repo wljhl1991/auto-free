@@ -62,6 +62,16 @@ export default function Settings() {
   // Log viewer state
   const [logViewerOpen, setLogViewerOpen] = useState(false);
 
+  // Tab state
+  const [activeTab, setActiveTab] = useState<string>('providers');
+
+  const tabs = [
+    { id: 'providers', label: '服务商配置' },
+    { id: 'assets', label: '资源管理' },
+    { id: 'system', label: '系统设置' },
+    { id: 'logs', label: '日志' },
+  ];
+
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
@@ -114,26 +124,22 @@ export default function Settings() {
   const handleSaveProvider = async (updatedProvider: AIProviderConfig) => {
     try {
       if (modalIsNew) {
-        // For new custom providers, add to the list and save via updateProviderModels
-        const newProviders = [...providers, updatedProvider];
-        await config.updateProviderModels(JSON.stringify(newProviders));
-        setProviders(newProviders);
+        await config.updateProvider(updatedProvider);
       } else {
         await config.updateProvider(updatedProvider);
-        setProviders((prev) =>
-          prev.map((p) => (p.id === updatedProvider.id ? updatedProvider : p))
-        );
-        // 保存后自动检测连通性
-        handleCheckProvider(updatedProvider.id);
       }
+      // 重新加载 providers 列表（获取脱敏版本）
+      const providersData = await config.getProviders();
+      setProviders(providersData || []);
     } catch (err) {
       console.error('Failed to save provider:', err);
+      throw err;
     }
   };
 
-  const handleCheckProvider = async (providerId: string, testPrompt?: string) => {
+  const handleCheckProvider = async (providerId: string, testPrompt?: string, modelId?: string) => {
     try {
-      const result = await config.checkProvider(providerId, testPrompt);
+      const result = await config.checkProvider(providerId, testPrompt, modelId);
       const newStatus = result.status === 'ok' ? 'connected' :
                         result.status === 'auth_failed' ? 'auth_failed' :
                         result.status === 'network_error' ? 'network_error' :
@@ -256,7 +262,7 @@ export default function Settings() {
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: '2rem',
+        marginBottom: '1rem',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <button className="btn btn-back" onClick={() => navigate('/')}>
@@ -266,112 +272,145 @@ export default function Settings() {
             AI 配置管理
           </h2>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+      </div>
+
+      {/* Tab Bar */}
+      <div className="settings-tabs">
+        {tabs.map(tab => (
           <button
-            className="btn btn-secondary"
-            style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}
-            onClick={() => setLogViewerOpen(true)}
+            key={tab.id}
+            className={`settings-tab ${activeTab === tab.id ? 'active' : ''}`}
+            onClick={() => setActiveTab(tab.id)}
           >
-            查看日志
+            {tab.label}
           </button>
+        ))}
+      </div>
+
+      {/* Tab Content: 服务商配置 */}
+      {activeTab === 'providers' && (
+        <>
+          <PresetSelector
+            presets={presets}
+            activePresetId={activePresetId}
+            onSelect={handleSelectPreset}
+          />
+
+          {MODALITY_SECTIONS.map(({ modality, title }) => (
+            <ModalitySection
+              key={modality}
+              modality={modality}
+              title={title}
+              providers={getProvidersByModality(modality)}
+              onConfigure={handleConfigure}
+              onCheck={handleCheckProvider}
+            />
+          ))}
+
+          <div style={{
+            display: 'flex',
+            justifyContent: 'center',
+            marginTop: '1.5rem',
+          }}>
+            <button
+              className="btn btn-secondary"
+              onClick={handleAddCustomProvider}
+              style={{
+                padding: '0.75rem 2rem',
+                fontSize: '0.9rem',
+                border: '1px dashed #3a3a5a',
+                color: '#8888aa',
+              }}
+            >
+              + 添加自定义模型
+            </button>
+          </div>
+
+          <div style={{
+            display: 'flex',
+            gap: '0.75rem',
+            justifyContent: 'center',
+            marginTop: '2rem',
+            paddingTop: '1.5rem',
+            borderTop: '1px solid #2a2a3a',
+          }}>
+            <button
+              className="btn btn-primary"
+              onClick={handleCheckAll}
+              disabled={checking}
+              style={{ padding: '0.75rem 2rem' }}
+            >
+              {checking ? '检测中...' : '全部检测'}
+            </button>
+            <button
+              className="btn btn-secondary"
+              onClick={handleReset}
+              style={{ padding: '0.75rem 2rem' }}
+            >
+              恢复默认
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Tab Content: 资源管理 */}
+      {activeTab === 'assets' && (
+        <UserAssetManager />
+      )}
+
+      {/* Tab Content: 系统设置 */}
+      {activeTab === 'system' && (
+        <div style={{
+          display: 'flex',
+          gap: '0.75rem',
+          justifyContent: 'center',
+          marginTop: '1rem',
+          flexWrap: 'wrap',
+        }}>
           <button
             className="btn btn-secondary"
-            style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}
             onClick={handleExport}
+            style={{ padding: '0.75rem 2rem' }}
           >
             导出配置
           </button>
           <button
             className="btn btn-secondary"
-            style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}
             onClick={handleImport}
+            style={{ padding: '0.75rem 2rem' }}
           >
             导入配置
           </button>
+          <button
+            className="btn btn-secondary"
+            onClick={handleSaveDevConfig}
+            style={{ padding: '0.75rem 2rem', fontSize: '0.85rem' }}
+            title="将当前配置保存到项目目录下的 dev-config.json，开发模式下自动加载"
+          >
+            保存开发配置
+          </button>
+          <button
+            className="btn btn-secondary"
+            onClick={handleReset}
+            style={{ padding: '0.75rem 2rem' }}
+          >
+            恢复默认
+          </button>
         </div>
-      </div>
+      )}
 
-      {/* Preset Selector */}
-      <PresetSelector
-        presets={presets}
-        activePresetId={activePresetId}
-        onSelect={handleSelectPreset}
-      />
-
-      {/* Modality Sections */}
-      {MODALITY_SECTIONS.map(({ modality, title }) => (
-        <ModalitySection
-          key={modality}
-          modality={modality}
-          title={title}
-          providers={getProvidersByModality(modality)}
-          onConfigure={handleConfigure}
-          onCheck={handleCheckProvider}
-        />
-      ))}
-
-      {/* Add Custom Provider Button */}
-      <div style={{
-        display: 'flex',
-        justifyContent: 'center',
-        marginTop: '1.5rem',
-      }}>
-        <button
-          className="btn btn-secondary"
-          onClick={handleAddCustomProvider}
-          style={{
-            padding: '0.75rem 2rem',
-            fontSize: '0.9rem',
-            border: '1px dashed #3a3a5a',
-            color: '#8888aa',
-          }}
-        >
-          + 添加自定义模型
-        </button>
-      </div>
-
-      {/* User Asset Manager */}
-      <div style={{
-        marginTop: '2rem',
-        paddingTop: '1.5rem',
-        borderTop: '1px solid #2a2a3a',
-      }}>
-        <UserAssetManager />
-      </div>
-
-      {/* Bottom Actions */}
-      <div style={{
-        display: 'flex',
-        gap: '0.75rem',
-        justifyContent: 'center',
-        marginTop: '2rem',
-        paddingTop: '1.5rem',
-        borderTop: '1px solid #2a2a3a',
-      }}>
-        <button
-          className="btn btn-primary"
-          onClick={handleCheckAll}
-          disabled={checking}
-          style={{ padding: '0.75rem 2rem' }}
-        >
-          {checking ? '检测中...' : '全部检测'}
-        </button>
-        <button
-          className="btn btn-secondary"
-          onClick={handleReset}
-          style={{ padding: '0.75rem 2rem' }}
-        >
-          恢复默认
-        </button>
-        <button
-          className="btn btn-secondary"
-          onClick={handleSaveDevConfig}
-          style={{ padding: '0.75rem 2rem', fontSize: '0.85rem' }}
-          title="将当前配置保存到项目目录下的 dev-config.json，开发模式下自动加载"
-        >
-          保存开发配置
-        </button>
-      </div>
+      {/* Tab Content: 日志 */}
+      {activeTab === 'logs' && (
+        <div style={{ marginTop: '0.5rem' }}>
+          <button
+            className="btn btn-secondary"
+            onClick={() => setLogViewerOpen(true)}
+            style={{ marginBottom: '1rem' }}
+          >
+            查看日志
+          </button>
+        </div>
+      )}
 
       {/* Provider Config Modal */}
       <ProviderConfigModal
@@ -387,7 +426,7 @@ export default function Settings() {
         onCheck={handleCheckProvider}
       />
 
-      {/* Log Viewer */}
+      {/* Log Viewer Modal */}
       <LogViewer
         isOpen={logViewerOpen}
         onClose={() => setLogViewerOpen(false)}

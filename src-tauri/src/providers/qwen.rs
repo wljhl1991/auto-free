@@ -370,6 +370,8 @@ impl IAssetProvider for QwenProvider {
                 quota_info: None,
                 response_preview: Some(truncate_str(&response_text, 500).to_string()),
                 test_prompt: Some(prompt.to_string()),
+                media_url: None,
+                media_type: None,
             }),
             Err(ProviderError::AuthFailed(msg)) => Ok(ConnectivityCheck {
                 provider_id: self.config.id.clone(),
@@ -383,6 +385,8 @@ impl IAssetProvider for QwenProvider {
                 quota_info: None,
                 response_preview: None,
                 test_prompt: Some(prompt.to_string()),
+                media_url: None,
+                media_type: None,
             }),
             Err(ProviderError::QuotaExceeded(msg)) => Ok(ConnectivityCheck {
                 provider_id: self.config.id.clone(),
@@ -396,6 +400,8 @@ impl IAssetProvider for QwenProvider {
                 quota_info: None,
                 response_preview: None,
                 test_prompt: Some(prompt.to_string()),
+                media_url: None,
+                media_type: None,
             }),
             Err(e) => Ok(ConnectivityCheck {
                 provider_id: self.config.id.clone(),
@@ -409,6 +415,8 @@ impl IAssetProvider for QwenProvider {
                 quota_info: None,
                 response_preview: None,
                 test_prompt: Some(prompt.to_string()),
+                media_url: None,
+                media_type: None,
             }),
         }
     }

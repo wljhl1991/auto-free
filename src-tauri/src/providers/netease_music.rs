@@ -414,8 +414,10 @@ impl IAssetProvider for NeteaseMusicProvider {
                         latency: Some(latency),
                         error_message: None,
                         quota_info: None,
-                response_preview: None,
+                response_preview: Some("音乐生成服务可用".to_string()),
                 test_prompt: None,
+                media_url: None,
+                media_type: None,
                     })
                 } else if status.as_u16() == 401 || status.as_u16() == 403 {
                     Ok(ConnectivityCheck {
@@ -430,6 +432,8 @@ impl IAssetProvider for NeteaseMusicProvider {
                         quota_info: None,
                 response_preview: None,
                 test_prompt: None,
+                media_url: None,
+                media_type: None,
                     })
                 } else if status.as_u16() == 429 {
                     Ok(ConnectivityCheck {
@@ -444,6 +448,8 @@ impl IAssetProvider for NeteaseMusicProvider {
                         quota_info: None,
                 response_preview: None,
                 test_prompt: None,
+                media_url: None,
+                media_type: None,
                     })
                 } else {
                     Ok(ConnectivityCheck {
@@ -458,6 +464,8 @@ impl IAssetProvider for NeteaseMusicProvider {
                         quota_info: None,
                 response_preview: None,
                 test_prompt: None,
+                media_url: None,
+                media_type: None,
                     })
                 }
             }
@@ -474,6 +482,8 @@ impl IAssetProvider for NeteaseMusicProvider {
                     quota_info: None,
                 response_preview: None,
                 test_prompt: None,
+                media_url: None,
+                media_type: None,
                 })
             }
         }

@@ -208,6 +208,8 @@ pub struct ConnectivityCheck {
     pub quota_info: Option<QuotaInfo>,
     pub response_preview: Option<String>,
     pub test_prompt: Option<String>,
+    pub media_url: Option<String>,
+    pub media_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

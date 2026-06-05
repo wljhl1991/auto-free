@@ -307,19 +307,25 @@ impl IAssetProvider for VolcengineTTSProvider {
             .as_millis() as u64;
 
         match result {
-            Ok(_) => Ok(ConnectivityCheck {
-                provider_id: self.config.id.clone(),
-                timestamp: SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs(),
-                status: ConnectivityStatus::Ok,
-                latency: Some(latency),
-                error_message: None,
-                quota_info: None,
-                response_preview: None,
-                test_prompt: None,
-            }),
+            Ok(audio_data) => {
+                // 保存测试音频到 gen/cache/ 目录
+                let media_url = self.save_test_audio(&audio_data, "volcengine_tts").ok();
+                Ok(ConnectivityCheck {
+                    provider_id: self.config.id.clone(),
+                    timestamp: SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs(),
+                    status: ConnectivityStatus::Ok,
+                    latency: Some(latency),
+                    error_message: None,
+                    quota_info: None,
+                    response_preview: None,
+                    test_prompt: Some("测试".to_string()),
+                    media_url,
+                    media_type: Some("audio".to_string()),
+                })
+            }
             Err(ProviderError::AuthFailed(msg)) => Ok(ConnectivityCheck {
                 provider_id: self.config.id.clone(),
                 timestamp: SystemTime::now()
@@ -331,7 +337,9 @@ impl IAssetProvider for VolcengineTTSProvider {
                 error_message: Some(msg),
                 quota_info: None,
                 response_preview: None,
-                test_prompt: None,
+                test_prompt: Some("测试".to_string()),
+                media_url: None,
+                media_type: None,
             }),
             Err(ProviderError::QuotaExceeded(msg)) => Ok(ConnectivityCheck {
                 provider_id: self.config.id.clone(),
@@ -344,7 +352,9 @@ impl IAssetProvider for VolcengineTTSProvider {
                 error_message: Some(msg),
                 quota_info: None,
                 response_preview: None,
-                test_prompt: None,
+                test_prompt: Some("测试".to_string()),
+                media_url: None,
+                media_type: None,
             }),
             Err(e) => Ok(ConnectivityCheck {
                 provider_id: self.config.id.clone(),
@@ -357,7 +367,9 @@ impl IAssetProvider for VolcengineTTSProvider {
                 error_message: Some(format!("{:?}", e)),
                 quota_info: None,
                 response_preview: None,
-                test_prompt: None,
+                test_prompt: Some("测试".to_string()),
+                media_url: None,
+                media_type: None,
             }),
         }
     }
@@ -368,5 +380,22 @@ impl IAssetProvider for VolcengineTTSProvider {
 
     fn provider_id(&self) -> &str {
         &self.config.id
+    }
+}
+
+impl VolcengineTTSProvider {
+    /// 保存测试音频到 gen/cache/ 目录，返回本地文件路径
+    fn save_test_audio(&self, audio_data: &[u8], provider_name: &str) -> Result<String, ProviderError> {
+        let cache_dir = self.asset_base_path.join("cache");
+        std::fs::create_dir_all(&cache_dir)
+            .map_err(|e| ProviderError::GenerationFailed(format!("创建缓存目录失败: {}", e)))?;
+
+        let filename = format!("{}_test_{}.mp3", provider_name,
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs());
+        let dest_path = cache_dir.join(&filename);
+        std::fs::write(&dest_path, audio_data)
+            .map_err(|e| ProviderError::GenerationFailed(format!("写入测试音频失败: {}", e)))?;
+
+        Ok(dest_path.to_string_lossy().to_string())
     }
 }

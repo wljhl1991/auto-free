@@ -25,6 +25,8 @@ impl ConnectivityChecker {
                 quota_info: None,
                 response_preview: None,
                 test_prompt: test_prompt.map(|s| s.to_string()),
+                media_url: None,
+                media_type: None,
             };
         }
 
@@ -54,6 +56,8 @@ impl ConnectivityChecker {
                 quota_info: None,
                 response_preview: None,
                 test_prompt: test_prompt.map(|s| s.to_string()),
+                media_url: None,
+                media_type: None,
             };
         }
 
@@ -84,6 +88,8 @@ impl ConnectivityChecker {
                             quota_info: None,
                             response_preview: None,
                             test_prompt: Some(prompt.to_string()),
+                            media_url: None,
+                            media_type: None,
                         }
                     }
                     Err(_) => {
@@ -99,6 +105,8 @@ impl ConnectivityChecker {
                             quota_info: None,
                             response_preview: None,
                             test_prompt: Some(prompt.to_string()),
+                            media_url: None,
+                            media_type: None,
                         }
                     }
                 }
@@ -116,6 +124,8 @@ impl ConnectivityChecker {
                     quota_info: None,
                     response_preview: None,
                     test_prompt: test_prompt.map(|s| s.to_string()),
+                    media_url: None,
+                    media_type: None,
                 }
             }
         }
@@ -147,6 +157,8 @@ impl ConnectivityChecker {
                     quota_info: None,
                     response_preview: None,
                     test_prompt: None,
+                    media_url: None,
+                    media_type: None,
                 }),
             }
         }

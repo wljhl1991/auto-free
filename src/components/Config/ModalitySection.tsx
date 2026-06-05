@@ -6,7 +6,7 @@ interface ModalitySectionProps {
   title: string;
   providers: AIProviderConfig[];
   onConfigure: (id: string) => void;
-  onCheck: (id: string, testPrompt?: string) => void;
+  onCheck: (id: string, testPrompt?: string, modelId?: string) => void;
 }
 
 const modalityIcons: Record<string, string> = {

@@ -118,12 +118,13 @@ pub async fn update_provider(
 pub async fn check_provider(
     provider_id: String,
     test_prompt: Option<String>,
+    model_id: Option<String>,
     config_manager: tauri::State<'_, Arc<RwLock<ConfigManager>>>,
 ) -> Result<ConnectivityCheck, String> {
-    log::info!("检测服务商连通性: id={}, test_prompt={:?}", provider_id, test_prompt);
+    log::info!("检测服务商连通性: id={}, model_id={:?}, test_prompt={:?}", provider_id, model_id, test_prompt);
 
     // 1. 读取配置获取 provider
-    let provider = {
+    let mut provider = {
         let cm = config_manager.read().await;
         let config = cm.get_config();
         config.providers.iter()
@@ -131,6 +132,19 @@ pub async fn check_provider(
             .cloned()
             .ok_or_else(|| format!("Provider '{}' not found", provider_id))?
     };
+
+    // 如果指定了 model_id，临时将该模型设为默认
+    if let Some(ref mid) = model_id {
+        if let Some(target_model) = provider.models.iter().find(|m| &m.id == mid) {
+            // 临时修改：将指定模型设为默认
+            for m in provider.models.iter_mut() {
+                m.is_default = m.id == *mid;
+            }
+            log::info!("测试使用指定模型: {}", mid);
+        } else {
+            log::warn!("指定模型 '{}' 不存在，使用默认模型", mid);
+        }
+    }
 
     // 2. 执行连通性检测
     let check = ConnectivityChecker::check_provider(&provider, test_prompt.as_deref()).await;
