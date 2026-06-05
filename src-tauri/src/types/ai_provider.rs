@@ -206,6 +206,8 @@ pub struct ConnectivityCheck {
     pub latency: Option<u64>,
     pub error_message: Option<String>,
     pub quota_info: Option<QuotaInfo>,
+    pub response_preview: Option<String>,
+    pub test_prompt: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

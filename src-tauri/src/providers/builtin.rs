@@ -279,6 +279,8 @@ impl IAssetProvider for BuiltinAssetProvider {
             latency: Some(0),
             error_message: None,
             quota_info: None,
+                response_preview: None,
+                test_prompt: None,
         })
     }
 

@@ -6,7 +6,7 @@ interface ProviderConfigModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (provider: AIProviderConfig) => Promise<void>;
-  onCheck: (providerId: string) => Promise<any>;
+  onCheck: (providerId: string, testPrompt?: string) => Promise<any>;
   isNew?: boolean;
 }
 
@@ -31,12 +31,13 @@ export default function ProviderConfigModal({
   const [editedProvider, setEditedProvider] = useState<AIProviderConfig | null>(null);
   const [showApiKey, setShowApiKey] = useState(false);
   const [checking, setChecking] = useState(false);
-  const [checkResult, setCheckResult] = useState<{ status: string; message?: string } | null>(null);
+  const [checkResult, setCheckResult] = useState<{ status: string; message?: string; latency?: number; responsePreview?: string; testPrompt?: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveResult, setSaveResult] = useState<'success' | 'error' | null>(null);
   const [selectedModelId, setSelectedModelId] = useState<string>('');
   const [customModelInput, setCustomModelInput] = useState('');
   const [isCustomModel, setIsCustomModel] = useState(false);
+  const [testPrompt, setTestPrompt] = useState('hi');
 
   useEffect(() => {
     if (provider) {
@@ -213,10 +214,13 @@ export default function ProviderConfigModal({
     setChecking(true);
     setCheckResult(null);
     try {
-      const result = await onCheck(editedProvider.id);
+      const result = await onCheck(editedProvider.id, testPrompt || undefined);
       setCheckResult({
         status: result?.status || 'ok',
         message: result?.errorMessage,
+        latency: result?.latency,
+        responsePreview: result?.responsePreview,
+        testPrompt: result?.testPrompt,
       });
       if (result) {
         setEditedProvider(prev => prev ? {
@@ -541,6 +545,21 @@ export default function ProviderConfigModal({
               />
             </div>
           ))}
+
+          {/* Test Prompt */}
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={labelStyle}>测试提示词</label>
+            <input
+              type="text"
+              value={testPrompt}
+              onChange={e => setTestPrompt(e.target.value)}
+              placeholder="输入测试提示词（默认: hi）"
+              style={inputStyle}
+            />
+            <span style={{ fontSize: '0.75rem', color: '#666680', marginTop: '0.25rem', display: 'block' }}>
+              连接测试时发送给 AI 的提示词，仅对文本类服务商有效
+            </span>
+          </div>
         </div>
 
         {/* ===== Check Result ===== */}
@@ -552,7 +571,26 @@ export default function ProviderConfigModal({
             borderRadius: '8px', fontSize: '0.85rem',
             color: checkResult.status === 'ok' ? '#a5d6a7' : '#e06060',
           }}>
-            {checkResult.status === 'ok' ? '连接成功！' : `连接失败：${checkResult.message || '未知错误'}`}
+            <div>
+              {checkResult.status === 'ok' ? '连接成功！' : `连接失败：${checkResult.message || '未知错误'}`}
+              {checkResult.latency != null && (
+                <span style={{ marginLeft: '0.5rem', color: '#9999bb', fontSize: '0.8rem' }}>
+                  延迟: {checkResult.latency}ms
+                </span>
+              )}
+            </div>
+            {checkResult.responsePreview && (
+              <div style={{
+                marginTop: '0.5rem', padding: '0.5rem',
+                backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '4px',
+                fontSize: '0.8rem', color: '#c0c0d0',
+                maxHeight: '120px', overflowY: 'auto',
+                whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+              }}>
+                <div style={{ color: '#6a6a8a', marginBottom: '0.25rem' }}>AI 响应:</div>
+                {checkResult.responsePreview}
+              </div>
+            )}
           </div>
         )}
 

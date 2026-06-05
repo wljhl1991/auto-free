@@ -131,9 +131,9 @@ export default function Settings() {
     }
   };
 
-  const handleCheckProvider = async (providerId: string) => {
+  const handleCheckProvider = async (providerId: string, testPrompt?: string) => {
     try {
-      const result = await config.checkProvider(providerId);
+      const result = await config.checkProvider(providerId, testPrompt);
       const newStatus = result.status === 'ok' ? 'connected' :
                         result.status === 'auth_failed' ? 'auth_failed' :
                         result.status === 'network_error' ? 'network_error' :

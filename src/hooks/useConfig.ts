@@ -17,7 +17,7 @@ export function useConfig() {
     applyPreset: (presetId: string) => invoke<void>('apply_preset', { presetId }),
     getProviders: () => invoke<any[]>('get_providers'),
     updateProvider: (provider: any) => invoke<void>('update_provider', { provider }),
-    checkProvider: (providerId: string) => invoke<any>('check_provider', { providerId }),
+    checkProvider: (providerId: string, testPrompt?: string) => invoke<any>('check_provider', { providerId, testPrompt: testPrompt || null }),
     checkAllProviders: () => invoke<any[]>('check_all_providers'),
     checkAvailableModalities: () => invoke<ModalityAvailability>('check_available_modalities'),
     exportConfig: () => invoke<string>('export_config'),

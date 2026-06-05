@@ -60,12 +60,22 @@ function GamePlay() {
   const [sceneBackground, setSceneBackground] = useState<string | undefined>();
   const [sceneVideo, setSceneVideo] = useState<string | undefined>();
   const [currentBgAssetRefId] = useState<string | undefined>();
-  const [chapterTitle] = useState('');
+  const [chapterTitle, setChapterTitle] = useState('');
   const [showMenu, setShowMenu] = useState(false);
   const [showInventory, setShowInventory] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [showGallery, setShowGallery] = useState(false);
+  const [showProgress, setShowProgress] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+
+  // 章节过渡状态
+  const [chapterTransition, setChapterTransition] = useState<{
+    show: boolean;
+    chapterTitle: string;
+    nextChapterTitle?: string;
+  } | null>(null);
+  // 游戏结束状态
+  const [gameEnded, setGameEnded] = useState(false);
 
   // 资源状态追踪：assetRefId -> { source, status }
   const [assetStates, setAssetStates] = useState<Record<string, { source: string; status: 'generating' | 'ready' | 'fallback' }>>({});
@@ -168,11 +178,28 @@ function GamePlay() {
           setSceneVideo(event.backgroundVideo);
         }
         if (event.type === 'scene_transition') {
-          // 场景转场由 SceneRenderer 处理
+          // 场景转场由 SceneExecutor 自动处理（延迟后 enterScene）
+        }
+        if (event.type === 'chapter_end') {
+          // 章节结束，显示过渡UI
+          setChapterTransition({
+            show: true,
+            chapterTitle: event.chapterTitle,
+            nextChapterTitle: event.nextChapterTitle,
+          });
+        }
+        if (event.type === 'game_end') {
+          // 游戏结束
+          setGameEnded(true);
         }
       });
 
       executorRef.current = executor;
+      // 设置初始章节标题
+      const firstChapter = script.chapters[0];
+      if (firstChapter) {
+        setChapterTitle(firstChapter.title);
+      }
       executor.start();
       setIsLoading(false);
     }).catch(err => {
@@ -206,11 +233,26 @@ function GamePlay() {
   }, []);
 
   const handleClick = useCallback(() => {
-    if (showMenu || showInventory || showStats || showGallery) return;
+    if (showMenu || showInventory || showStats || showGallery || showProgress || chapterTransition || gameEnded) return;
     if (currentEvent?.type === 'narration' || currentEvent?.type === 'dialogue') {
       executorRef.current?.advance();
     }
-  }, [currentEvent, showMenu, showInventory, showStats]);
+  }, [currentEvent, showMenu, showInventory, showStats, showProgress, chapterTransition, gameEnded]);
+
+  // 进入下一章
+  const handleEnterNextChapter = useCallback(() => {
+    if (!chapterTransition?.nextChapterTitle) return;
+    executorRef.current?.enterNextChapter();
+    setChapterTitle(chapterTransition.nextChapterTitle);
+    setChapterTransition(null);
+    setCurrentEvent(null);
+  }, [chapterTransition]);
+
+  // 游戏结束 - 返回主菜单
+  const handleGameEndBackToMenu = useCallback(() => {
+    audioEngineRef.current.stopBgm();
+    navigate('/');
+  }, []);
 
   const handleSave = useCallback(async () => {
     if (!gameId) return;
@@ -382,6 +424,7 @@ function GamePlay() {
           <div className="gameplay-hud">
             <span className="gameplay-chapter-title">{chapterTitle}</span>
             <div className="gameplay-hud-buttons">
+              <button onClick={(e) => { e.stopPropagation(); setShowProgress(true); }}>进度</button>
               <button onClick={(e) => { e.stopPropagation(); setShowGallery(true); }}>CG回廊</button>
               <button onClick={(e) => { e.stopPropagation(); setShowInventory(true); }}>物品栏</button>
               <button onClick={(e) => { e.stopPropagation(); setShowStats(true); }}>状态</button>
@@ -581,6 +624,96 @@ function GamePlay() {
           cgList={getUnlockedCGList()}
           onClose={() => setShowGallery(false)}
         />
+      )}
+
+      {/* 章节过渡 */}
+      {chapterTransition?.show && (
+        <div className="overlay chapter-transition-overlay" onClick={(e) => e.stopPropagation()}>
+          <div className="chapter-transition-card">
+            <div className="chapter-transition-complete">章节完成</div>
+            <h2 className="chapter-transition-title">{chapterTransition.chapterTitle}</h2>
+            {chapterTransition.nextChapterTitle ? (
+              <>
+                <div className="chapter-transition-divider" />
+                <p className="chapter-transition-next">下一章</p>
+                <h3 className="chapter-transition-next-title">{chapterTransition.nextChapterTitle}</h3>
+                <button className="btn btn-primary chapter-transition-btn" onClick={handleEnterNextChapter}>
+                  继续旅程
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="chapter-transition-divider" />
+                <p className="chapter-transition-next">已是最后一章</p>
+                <button className="btn btn-primary chapter-transition-btn" onClick={handleGameEndBackToMenu}>
+                  返回主菜单
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 游戏结束 */}
+      {gameEnded && (
+        <div className="overlay game-end-overlay" onClick={(e) => e.stopPropagation()}>
+          <div className="game-end-card">
+            <h2 className="game-end-title">故事结束</h2>
+            <p className="game-end-chapter">最终章: {chapterTitle}</p>
+            <div className="game-end-divider" />
+            <p className="game-end-thanks">感谢游玩</p>
+            <div className="game-end-buttons">
+              <button className="btn btn-primary" onClick={handleGameEndBackToMenu}>
+                返回主菜单
+              </button>
+              <button className="btn btn-secondary" onClick={() => { setGameEnded(false); }}>
+                继续探索
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 游戏进度面板 */}
+      {showProgress && executorRef.current && (
+        <div className="overlay" onClick={(e) => e.stopPropagation()}>
+          <div className="progress-panel">
+            <div className="progress-panel-header">
+              <h3>游戏进度</h3>
+              <button className="close-btn" onClick={() => setShowProgress(false)}>✕</button>
+            </div>
+            {(() => {
+              const progress = executorRef.current!.getProgress();
+              const chapterPercent = Math.round((progress.currentChapterIndex / progress.totalChapters) * 100);
+              const scenePercent = progress.totalScenesInChapter > 0
+                ? Math.round((progress.visitedScenesInChapter / progress.totalScenesInChapter) * 100)
+                : 0;
+              return (
+                <div className="progress-panel-body">
+                  <div className="progress-section">
+                    <div className="progress-label">当前章节</div>
+                    <div className="progress-value">{progress.currentChapterTitle}</div>
+                    <div className="progress-bar-container">
+                      <div className="progress-bar" style={{ width: `${chapterPercent}%` }} />
+                    </div>
+                    <div className="progress-detail">第 {progress.currentChapterIndex} / {progress.totalChapters} 章 ({chapterPercent}%)</div>
+                  </div>
+                  <div className="progress-section">
+                    <div className="progress-label">章节进度</div>
+                    <div className="progress-bar-container">
+                      <div className="progress-bar progress-bar-secondary" style={{ width: `${scenePercent}%` }} />
+                    </div>
+                    <div className="progress-detail">已探索 {progress.visitedScenesInChapter} / {progress.totalScenesInChapter} 个场景 ({scenePercent}%)</div>
+                  </div>
+                  <div className="progress-section">
+                    <div className="progress-label">总场景数</div>
+                    <div className="progress-detail">{progress.visitedScenes.length} / {progress.totalScenes} 个场景已探索</div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
       )}
     </div>
   );

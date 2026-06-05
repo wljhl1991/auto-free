@@ -414,6 +414,8 @@ impl IAssetProvider for NeteaseMusicProvider {
                         latency: Some(latency),
                         error_message: None,
                         quota_info: None,
+                response_preview: None,
+                test_prompt: None,
                     })
                 } else if status.as_u16() == 401 || status.as_u16() == 403 {
                     Ok(ConnectivityCheck {
@@ -426,6 +428,8 @@ impl IAssetProvider for NeteaseMusicProvider {
                         latency: Some(latency),
                         error_message: Some("认证失败".to_string()),
                         quota_info: None,
+                response_preview: None,
+                test_prompt: None,
                     })
                 } else if status.as_u16() == 429 {
                     Ok(ConnectivityCheck {
@@ -438,6 +442,8 @@ impl IAssetProvider for NeteaseMusicProvider {
                         latency: Some(latency),
                         error_message: Some("请求频率超限".to_string()),
                         quota_info: None,
+                response_preview: None,
+                test_prompt: None,
                     })
                 } else {
                     Ok(ConnectivityCheck {
@@ -450,6 +456,8 @@ impl IAssetProvider for NeteaseMusicProvider {
                         latency: Some(latency),
                         error_message: Some(format!("未知状态: {}", status)),
                         quota_info: None,
+                response_preview: None,
+                test_prompt: None,
                     })
                 }
             }
@@ -464,6 +472,8 @@ impl IAssetProvider for NeteaseMusicProvider {
                     latency: Some(latency),
                     error_message: Some(format!("网络错误: {}", e)),
                     quota_info: None,
+                response_preview: None,
+                test_prompt: None,
                 })
             }
         }

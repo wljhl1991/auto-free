@@ -550,6 +550,8 @@ impl IAssetProvider for KlingProvider {
                 latency: Some(latency),
                 error_message: None,
                 quota_info: None,
+                response_preview: None,
+                test_prompt: None,
             }),
             Err(ProviderError::AuthFailed(msg)) => Ok(ConnectivityCheck {
                 provider_id: self.config.id.clone(),
@@ -561,6 +563,8 @@ impl IAssetProvider for KlingProvider {
                 latency: Some(latency),
                 error_message: Some(msg),
                 quota_info: None,
+                response_preview: None,
+                test_prompt: None,
             }),
             Err(ProviderError::QuotaExceeded(msg)) => Ok(ConnectivityCheck {
                 provider_id: self.config.id.clone(),
@@ -572,6 +576,8 @@ impl IAssetProvider for KlingProvider {
                 latency: Some(latency),
                 error_message: Some(msg),
                 quota_info: None,
+                response_preview: None,
+                test_prompt: None,
             }),
             Err(e) => Ok(ConnectivityCheck {
                 provider_id: self.config.id.clone(),
@@ -583,6 +589,8 @@ impl IAssetProvider for KlingProvider {
                 latency: Some(latency),
                 error_message: Some(format!("{:?}", e)),
                 quota_info: None,
+                response_preview: None,
+                test_prompt: None,
             }),
         }
     }

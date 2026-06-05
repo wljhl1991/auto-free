@@ -1045,3 +1045,217 @@ body {
   border-color: #7b68ee;
   color: #c8a8ff;
 }
+
+/* ===== Overlay (通用) ===== */
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+/* ===== Chapter Transition ===== */
+.chapter-transition-overlay {
+  z-index: 300;
+  background-color: rgba(0, 0, 0, 0.85);
+}
+
+.chapter-transition-card {
+  text-align: center;
+  padding: 3rem 2.5rem;
+  max-width: 480px;
+  width: 90%;
+  animation: fadeIn 0.6s ease-in-out;
+}
+
+.chapter-transition-complete {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #4a90d9;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  margin-bottom: 0.75rem;
+}
+
+.chapter-transition-title {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: #e0e0f0;
+  margin: 0 0 1.5rem;
+}
+
+.chapter-transition-divider {
+  width: 60px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #4a90d9, transparent);
+  margin: 0 auto 1.5rem;
+}
+
+.chapter-transition-next {
+  font-size: 0.85rem;
+  color: #8888aa;
+  margin-bottom: 0.5rem;
+}
+
+.chapter-transition-next-title {
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: #c0c0e0;
+  margin: 0 0 2rem;
+}
+
+.chapter-transition-btn {
+  min-width: 180px;
+  padding: 0.85rem 2rem;
+  font-size: 1.05rem;
+}
+
+/* ===== Game End ===== */
+.game-end-overlay {
+  z-index: 300;
+  background-color: rgba(0, 0, 0, 0.88);
+}
+
+.game-end-card {
+  text-align: center;
+  padding: 3rem 2.5rem;
+  max-width: 480px;
+  width: 90%;
+  animation: fadeIn 0.6s ease-in-out;
+}
+
+.game-end-title {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #e0e0f0;
+  margin: 0 0 0.75rem;
+}
+
+.game-end-chapter {
+  font-size: 0.95rem;
+  color: #8888aa;
+  margin-bottom: 1.5rem;
+}
+
+.game-end-divider {
+  width: 80px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #7b68ee, transparent);
+  margin: 0 auto 1.5rem;
+}
+
+.game-end-thanks {
+  font-size: 1.1rem;
+  color: #c0c0e0;
+  margin-bottom: 2rem;
+}
+
+.game-end-buttons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+}
+
+/* ===== Progress Panel ===== */
+.progress-panel {
+  background-color: #14142a;
+  border: 1px solid #2a2a4a;
+  border-radius: 12px;
+  min-width: 340px;
+  max-width: 440px;
+  width: 90%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.progress-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid #2a2a4a;
+}
+
+.progress-panel-header h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #e0e0f0;
+  margin: 0;
+}
+
+.progress-panel-header .close-btn {
+  background: none;
+  border: none;
+  color: #8888aa;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  line-height: 1;
+}
+
+.progress-panel-header .close-btn:hover {
+  color: #e0e0f0;
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.progress-panel-body {
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.progress-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.progress-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #8888aa;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.progress-value {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #e0e0f0;
+}
+
+.progress-bar-container {
+  width: 100%;
+  height: 8px;
+  background-color: #1a1a2e;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-top: 0.3rem;
+}
+
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #4a90d9, #7b68ee);
+  border-radius: 4px;
+  transition: width 0.5s ease;
+  min-width: 2px;
+}
+
+.progress-bar-secondary {
+  background: linear-gradient(90deg, #7b68ee, #b088ee);
+}
+
+.progress-detail {
+  font-size: 0.8rem;
+  color: #666680;
+  margin-top: 0.15rem;
+}

@@ -117,9 +117,10 @@ pub async fn update_provider(
 #[command]
 pub async fn check_provider(
     provider_id: String,
+    test_prompt: Option<String>,
     config_manager: tauri::State<'_, Arc<RwLock<ConfigManager>>>,
 ) -> Result<ConnectivityCheck, String> {
-    log::info!("检测服务商连通性: id={}", provider_id);
+    log::info!("检测服务商连通性: id={}, test_prompt={:?}", provider_id, test_prompt);
 
     // 1. 读取配置获取 provider
     let provider = {
@@ -132,7 +133,7 @@ pub async fn check_provider(
     };
 
     // 2. 执行连通性检测
-    let check = ConnectivityChecker::check_provider(&provider).await;
+    let check = ConnectivityChecker::check_provider(&provider, test_prompt.as_deref()).await;
 
     // 3. 更新 Provider 状态并保存
     let new_status = ConnectivityChecker::check_to_status(&check);

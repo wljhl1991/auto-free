@@ -338,12 +338,16 @@ impl IAssetProvider for ZhipuProvider {
     }
 
     async fn check_connectivity(&self) -> Result<ConnectivityCheck, ProviderError> {
+        self.check_connectivity_with_prompt("hi").await
+    }
+
+    async fn check_connectivity_with_prompt(&self, prompt: &str) -> Result<ConnectivityCheck, ProviderError> {
         let start = SystemTime::now();
 
         let messages = vec![
             ChatMessage {
                 role: "user".to_string(),
-                content: "hi".to_string(),
+                content: prompt.to_string(),
             },
         ];
 
@@ -354,7 +358,7 @@ impl IAssetProvider for ZhipuProvider {
             .as_millis() as u64;
 
         match result {
-            Ok(_) => Ok(ConnectivityCheck {
+            Ok(response_text) => Ok(ConnectivityCheck {
                 provider_id: self.config.id.clone(),
                 timestamp: SystemTime::now()
                     .duration_since(UNIX_EPOCH)
@@ -364,6 +368,8 @@ impl IAssetProvider for ZhipuProvider {
                 latency: Some(latency),
                 error_message: None,
                 quota_info: None,
+                response_preview: Some(truncate_str(&response_text, 500).to_string()),
+                test_prompt: Some(prompt.to_string()),
             }),
             Err(ProviderError::AuthFailed(msg)) => Ok(ConnectivityCheck {
                 provider_id: self.config.id.clone(),
@@ -375,6 +381,8 @@ impl IAssetProvider for ZhipuProvider {
                 latency: Some(latency),
                 error_message: Some(msg),
                 quota_info: None,
+                response_preview: None,
+                test_prompt: Some(prompt.to_string()),
             }),
             Err(ProviderError::QuotaExceeded(msg)) => Ok(ConnectivityCheck {
                 provider_id: self.config.id.clone(),
@@ -386,6 +394,8 @@ impl IAssetProvider for ZhipuProvider {
                 latency: Some(latency),
                 error_message: Some(msg),
                 quota_info: None,
+                response_preview: None,
+                test_prompt: Some(prompt.to_string()),
             }),
             Err(e) => Ok(ConnectivityCheck {
                 provider_id: self.config.id.clone(),
@@ -397,6 +407,8 @@ impl IAssetProvider for ZhipuProvider {
                 latency: Some(latency),
                 error_message: Some(format!("{:?}", e)),
                 quota_info: None,
+                response_preview: None,
+                test_prompt: Some(prompt.to_string()),
             }),
         }
     }

@@ -8,7 +8,7 @@ pub struct ConnectivityChecker;
 
 impl ConnectivityChecker {
     /// 检测单个服务商连通性：真正调用 Provider 的 check_connectivity
-    pub async fn check_provider(provider: &AIProviderConfig) -> ConnectivityCheck {
+    pub async fn check_provider(provider: &AIProviderConfig, test_prompt: Option<&str>) -> ConnectivityCheck {
         let start = SystemTime::now();
 
         // Edge TTS 无需 API Key，始终 Connected
@@ -23,6 +23,8 @@ impl ConnectivityChecker {
                 latency: Some(0),
                 error_message: None,
                 quota_info: None,
+                response_preview: None,
+                test_prompt: test_prompt.map(|s| s.to_string()),
             };
         }
 
@@ -50,6 +52,8 @@ impl ConnectivityChecker {
                 latency: None,
                 error_message: Some("未配置 API Key".to_string()),
                 quota_info: None,
+                response_preview: None,
+                test_prompt: test_prompt.map(|s| s.to_string()),
             };
         }
 
@@ -60,7 +64,8 @@ impl ConnectivityChecker {
 
         match ProviderFactory::create(provider, &base_path) {
             Ok(provider_instance) => {
-                match tokio::time::timeout(Duration::from_secs(30), provider_instance.check_connectivity()).await {
+                let prompt = test_prompt.unwrap_or("hi");
+                match tokio::time::timeout(Duration::from_secs(30), provider_instance.check_connectivity_with_prompt(prompt)).await {
                     Ok(Ok(check)) => check,
                     Ok(Err(e)) => {
                         let latency = SystemTime::now()
@@ -77,6 +82,8 @@ impl ConnectivityChecker {
                             latency: Some(latency),
                             error_message: Some(format!("{:?}", e)),
                             quota_info: None,
+                            response_preview: None,
+                            test_prompt: Some(prompt.to_string()),
                         }
                     }
                     Err(_) => {
@@ -90,6 +97,8 @@ impl ConnectivityChecker {
                             latency: Some(30000),
                             error_message: Some("连接超时（30秒）".to_string()),
                             quota_info: None,
+                            response_preview: None,
+                            test_prompt: Some(prompt.to_string()),
                         }
                     }
                 }
@@ -105,6 +114,8 @@ impl ConnectivityChecker {
                     latency: None,
                     error_message: Some(format!("Provider 创建失败: {:?}", e)),
                     quota_info: None,
+                    response_preview: None,
+                    test_prompt: test_prompt.map(|s| s.to_string()),
                 }
             }
         }
@@ -116,7 +127,7 @@ impl ConnectivityChecker {
         for provider in providers {
             let provider = provider.clone();
             handles.push(tokio::spawn(async move {
-                Self::check_provider(&provider).await
+                Self::check_provider(&provider, None).await
             }));
         }
 
@@ -134,6 +145,8 @@ impl ConnectivityChecker {
                     latency: None,
                     error_message: Some(format!("检测任务失败: {}", e)),
                     quota_info: None,
+                    response_preview: None,
+                    test_prompt: None,
                 }),
             }
         }

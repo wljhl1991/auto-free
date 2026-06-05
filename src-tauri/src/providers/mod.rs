@@ -25,6 +25,11 @@ pub trait IAssetProvider: Send + Sync {
     async fn get_asset(&self, asset_ref: &AssetRef) -> Result<LocalAsset, ProviderError>;
     /// 检测连通性
     async fn check_connectivity(&self) -> Result<ConnectivityCheck, ProviderError>;
+    /// 使用自定义提示词检测连通性（默认实现调用 check_connectivity）
+    async fn check_connectivity_with_prompt(&self, prompt: &str) -> Result<ConnectivityCheck, ProviderError> {
+        let _ = prompt;
+        self.check_connectivity().await
+    }
     /// 获取支持的模态
     fn supported_modalities(&self) -> Vec<AIModality>;
     /// 获取 Provider ID

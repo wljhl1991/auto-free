@@ -11,7 +11,8 @@ export type SceneEventType =
   | { type: 'scene_transition'; targetSceneId: string; transitionType: string; duration?: number }
   | { type: 'scene_change'; backgroundImage?: string; backgroundVideo?: string; bgmUrl?: string }
   | { type: 'action'; actionType: string; params: Record<string, any> }
-  | { type: 'chapter_end' };
+  | { type: 'chapter_end'; chapterId: string; chapterTitle: string; nextChapterId?: string; nextChapterTitle?: string }
+  | { type: 'game_end'; finalChapterTitle: string };
 
 export class SceneExecutor {
   private script: GameScript;
@@ -90,6 +91,9 @@ export class SceneExecutor {
     // 开始执行场景序列
     if (scene.sequence.length > 0) {
       this.executeNode(scene.sequence[0].id);
+    } else {
+      // 空场景，直接尝试进入下一个场景
+      this.advanceToNextSceneOrChapter();
     }
   }
 
@@ -131,7 +135,13 @@ export class SceneExecutor {
         this.emitEvent({ type: 'cg', videoUrl: node.videoAsset.url ?? '', duration: node.duration, skipAllowed: node.skipAllowed });
         break;
       case 'scene_transition':
+        // 场景转场：先发出事件（用于视觉转场效果），然后自动进入目标场景
         this.emitEvent({ type: 'scene_transition', targetSceneId: node.targetSceneId, transitionType: node.transitionType, duration: node.duration });
+        // 延迟进入目标场景，让转场动画有时间播放
+        const delay = node.duration ? node.duration * 1000 : 500;
+        setTimeout(() => {
+          this.enterScene(node.targetSceneId);
+        }, delay);
         break;
     }
   }
@@ -279,9 +289,97 @@ export class SceneExecutor {
     if (nextNode) {
       this.executeNode(nextNode.id);
     } else {
-      // 场景序列结束，检查是否是章节末尾
-      this.emitEvent({ type: 'chapter_end' });
+      // 场景序列结束，尝试进入下一个场景或章节
+      this.advanceToNextSceneOrChapter();
     }
+  }
+
+  // 场景序列结束后，尝试进入同章节的下一个场景，或触发章节结束
+  private advanceToNextSceneOrChapter() {
+    const chapter = this.findChapterBySceneId(this.currentSceneId!);
+    if (chapter) {
+      const sceneIndex = chapter.scenes.findIndex(s => s.id === this.currentSceneId);
+      const nextScene = chapter.scenes[sceneIndex + 1];
+      if (nextScene) {
+        // 同章节还有下一个场景，自动进入
+        this.enterScene(nextScene.id);
+        return;
+      }
+    }
+    // 章节结束
+    this.handleChapterEnd();
+  }
+
+  // 处理章节结束
+  private handleChapterEnd() {
+    const currentChapterIndex = this.script.chapters.findIndex(c => c.id === this.currentChapterId);
+    const currentChapter = this.script.chapters[currentChapterIndex];
+    if (!currentChapter) return;
+
+    const nextChapter = this.script.chapters[currentChapterIndex + 1];
+
+    if (nextChapter) {
+      // 有下一章，发送章节结束事件（包含下一章信息）
+      this.emitEvent({
+        type: 'chapter_end',
+        chapterId: currentChapter.id,
+        chapterTitle: currentChapter.title,
+        nextChapterId: nextChapter.id,
+        nextChapterTitle: nextChapter.title,
+      });
+    } else {
+      // 没有下一章，游戏结束
+      this.emitEvent({
+        type: 'game_end',
+        finalChapterTitle: currentChapter.title,
+      });
+    }
+  }
+
+  // 根据场景ID查找所属章节
+  private findChapterBySceneId(sceneId: string) {
+    return this.script.chapters.find(c => c.scenes.some(s => s.id === sceneId));
+  }
+
+  // 进入下一章（由前端确认后调用）
+  enterNextChapter() {
+    const currentChapterIndex = this.script.chapters.findIndex(c => c.id === this.currentChapterId);
+    const nextChapter = this.script.chapters[currentChapterIndex + 1];
+    if (nextChapter) {
+      this.enterChapter(nextChapter.id);
+    }
+  }
+
+  // 获取游戏进度信息
+  getProgress() {
+    const totalChapters = this.script.chapters.length;
+    const currentChapterIndex = this.script.chapters.findIndex(c => c.id === this.currentChapterId);
+    const currentChapter = this.script.chapters[currentChapterIndex];
+
+    let totalScenes = 0;
+    let visitedScenesInChapter = 0;
+    let totalScenesInChapter = 0;
+
+    for (const chapter of this.script.chapters) {
+      totalScenes += chapter.scenes.length;
+    }
+
+    if (currentChapter) {
+      totalScenesInChapter = currentChapter.scenes.length;
+      const visited = this.stateManager.serialize().visitedScenes;
+      visitedScenesInChapter = currentChapter.scenes.filter(s => visited.includes(s.id)).length;
+    }
+
+    return {
+      currentChapterIndex: currentChapterIndex + 1,
+      totalChapters,
+      currentChapterTitle: currentChapter?.title ?? '',
+      currentSceneId: this.currentSceneId,
+      totalScenes,
+      totalScenesInChapter,
+      visitedScenesInChapter,
+      visitedScenes: this.stateManager.serialize().visitedScenes,
+    };
   }
 
   // 查找场景
