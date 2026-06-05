@@ -31,7 +31,7 @@ export default function ModalitySection({
       <h3 style={{
         fontSize: '1.1rem',
         fontWeight: 600,
-        color: '#c0c0d0',
+        color: '#1a1a2e',
         marginBottom: '1rem',
         display: 'flex',
         alignItems: 'center',
@@ -42,7 +42,7 @@ export default function ModalitySection({
         <span style={{
           fontSize: '0.75rem',
           fontWeight: 400,
-          color: '#666680',
+          color: '#9ca3af',
           marginLeft: '0.25rem',
         }}>
           ({providers.length})
@@ -50,7 +50,7 @@ export default function ModalitySection({
       </h3>
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
         gap: '1rem',
       }}>
         {providers.map((provider) => (

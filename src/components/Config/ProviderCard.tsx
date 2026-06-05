@@ -13,16 +13,21 @@ export default function ProviderCard({ provider, onConfigure, onCheck }: Provide
   return (
     <div style={{
       padding: '1.2rem',
-      borderRadius: '10px',
-      border: '1px solid #2a2a3a',
-      backgroundColor: '#12121f',
-      transition: 'border-color 0.2s ease',
+      borderRadius: '14px',
+      border: '1px solid rgba(99, 102, 241, 0.12)',
+      backgroundColor: 'rgba(255, 255, 255, 0.7)',
+      transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
+      backdropFilter: 'blur(12px)',
+      WebkitBackdropFilter: 'blur(12px)',
+      boxShadow: '0 4px 16px rgba(99, 102, 241, 0.08)',
     }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = '#3a3a5a';
+        e.currentTarget.style.borderColor = '#6366f1';
+        e.currentTarget.style.boxShadow = '0 6px 20px rgba(99, 102, 241, 0.15)';
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = '#2a2a3a';
+        e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.12)';
+        e.currentTarget.style.boxShadow = '0 4px 16px rgba(99, 102, 241, 0.08)';
       }}
     >
       <div style={{
@@ -35,14 +40,14 @@ export default function ProviderCard({ provider, onConfigure, onCheck }: Provide
           <h4 style={{
             fontSize: '1rem',
             fontWeight: 600,
-            color: '#e0e0f0',
+            color: '#1a1a2e',
             marginBottom: '0.25rem',
           }}>
             {provider.name}
           </h4>
           <p style={{
             fontSize: '0.8rem',
-            color: '#8888aa',
+            color: '#6b7280',
             lineHeight: 1.4,
           }}>
             {provider.description}
@@ -54,21 +59,21 @@ export default function ProviderCard({ provider, onConfigure, onCheck }: Provide
       {defaultModel && (
         <div style={{
           fontSize: '0.8rem',
-          color: '#666680',
+          color: '#9ca3af',
           marginBottom: '0.75rem',
         }}>
-          当前模型：<span style={{ color: '#9999bb' }}>{defaultModel.name}</span>
+          当前模型：<span style={{ color: '#4a4a6a' }}>{defaultModel.name}</span>
         </div>
       )}
 
       {provider.errorMessage && (
         <div style={{
           fontSize: '0.75rem',
-          color: '#e06060',
+          color: '#ef4444',
           marginBottom: '0.75rem',
           padding: '0.4rem 0.6rem',
-          backgroundColor: 'rgba(224, 96, 96, 0.1)',
-          borderRadius: '6px',
+          backgroundColor: 'rgba(239, 68, 68, 0.08)',
+          borderRadius: '8px',
         }}>
           {provider.errorMessage}
         </div>

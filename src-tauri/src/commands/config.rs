@@ -135,7 +135,7 @@ pub async fn check_provider(
 
     // 如果指定了 model_id，临时将该模型设为默认
     if let Some(ref mid) = model_id {
-        if let Some(target_model) = provider.models.iter().find(|m| &m.id == mid) {
+        if let Some(_target_model) = provider.models.iter().find(|m| &m.id == mid) {
             // 临时修改：将指定模型设为默认
             for m in provider.models.iter_mut() {
                 m.is_default = m.id == *mid;

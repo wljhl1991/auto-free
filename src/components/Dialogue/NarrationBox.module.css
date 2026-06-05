@@ -7,17 +7,20 @@
   max-height: 60%;
   overflow-y: auto;
   padding: 1.5rem 2.5rem;
-  background: rgba(10, 10, 26, 0.85);
-  border-radius: 12px;
-  border: 1px solid rgba(74, 144, 217, 0.2);
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: 16px;
+  border: 1px solid rgba(99, 102, 241, 0.2);
   cursor: pointer;
   user-select: none;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 8px 32px rgba(99, 102, 241, 0.12);
 }
 
 .text {
   font-size: 1.05rem;
   line-height: 1.8;
-  color: #c8c8e0;
+  color: #2d2d44;
   font-style: italic;
   text-align: center;
 }
@@ -26,7 +29,7 @@
   display: inline-block;
   width: 2px;
   height: 1.1em;
-  background-color: #7b68ee;
+  background-color: #8b5cf6;
   margin-left: 2px;
   vertical-align: text-bottom;
   animation: blink 0.8s step-end infinite;

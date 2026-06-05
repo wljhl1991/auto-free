@@ -8,12 +8,14 @@
   flex-direction: column;
   align-items: center;
   gap: 0.75rem;
-  background: linear-gradient(to top, rgba(10, 10, 26, 0.9) 0%, rgba(10, 10, 26, 0.6) 60%, transparent 100%);
+  background: linear-gradient(to top, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.7) 60%, transparent 100%);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .prompt {
   font-size: 1rem;
-  color: #9999bb;
+  color: #6b7280;
   margin-bottom: 0.5rem;
   text-align: center;
 }
@@ -32,21 +34,24 @@
   font-size: 1rem;
   font-family: inherit;
   line-height: 1.4;
-  color: #e0e0f0;
-  background-color: rgba(30, 30, 46, 0.9);
-  border: 1px solid #2a2a3a;
-  border-radius: 8px;
+  color: #1a1a2e;
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  border-radius: 12px;
   cursor: pointer;
   transition: all 0.2s ease;
   text-align: left;
   outline: none;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .optionBtn:hover:not(:disabled) {
-  background-color: rgba(42, 42, 62, 0.95);
-  border-color: #4a90d9;
-  color: #fff;
+  background: rgba(255, 255, 255, 0.95);
+  border-color: #6366f1;
+  color: #6366f1;
   transform: translateX(4px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15);
 }
 
 .optionBtn:active:not(:disabled) {
@@ -54,13 +59,13 @@
 }
 
 .optionBtn:disabled {
-  color: #555570;
+  color: #9ca3af;
   cursor: not-allowed;
   opacity: 0.6;
 }
 
 .optionBtn.selected {
-  background-color: rgba(74, 144, 217, 0.2);
-  border-color: #4a90d9;
-  color: #fff;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(236, 72, 153, 0.1));
+  border-color: #6366f1;
+  color: #6366f1;
 }

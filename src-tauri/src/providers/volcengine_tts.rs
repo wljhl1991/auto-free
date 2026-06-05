@@ -5,6 +5,7 @@ use crate::types::asset::{LocalAsset, AIModality, AssetType, AssetSource};
 use crate::types::ai_provider::{AIProviderConfig, ConnectivityCheck, ConnectivityStatus};
 use reqwest::Client;
 use serde::{Serialize, Deserialize};
+use base64::Engine;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -209,7 +210,7 @@ impl VolcengineTTSProvider {
                     ProviderError::GenerationFailed("响应中没有音频数据".to_string())
                 })?;
 
-            let audio_data = base64::decode(&audio_base64)
+            let audio_data = base64::engine::general_purpose::STANDARD.decode(&audio_base64)
                 .map_err(|e| {
                     log::error!("[VolcengineTTS] 解码音频数据失败: {}", e);
                     ProviderError::GenerationFailed(format!("解码音频数据失败: {}", e))

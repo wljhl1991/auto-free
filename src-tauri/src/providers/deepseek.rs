@@ -140,6 +140,7 @@ impl DeepSeekProvider {
     }
 
     /// 发送聊天请求（流式）- 返回原始 Response 供调用方处理 SSE
+    #[allow(dead_code)]
     pub async fn chat_stream(&self, messages: Vec<ChatMessage>, model: Option<&str>) -> Result<reqwest::Response, ProviderError> {
         let model = model.unwrap_or(&self.default_model);
         let max_tokens = self.config.models
@@ -247,6 +248,7 @@ impl DeepSeekProvider {
         }
     }
 
+    #[allow(dead_code)]
     async fn send_stream_request(&self, request: &ChatRequest) -> Result<reqwest::Response, ProviderError> {
         log::info!("[DeepSeek] 流式请求: endpoint={}, model={}", self.endpoint, request.model);
 

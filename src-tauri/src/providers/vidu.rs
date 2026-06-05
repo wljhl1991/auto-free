@@ -27,15 +27,22 @@ struct VideoGenerationRequest {
 
 #[derive(Debug, Deserialize)]
 struct VideoGenerationResponse {
+    #[allow(dead_code)]
     task_id: String,
+    #[serde(default)]
+    #[allow(dead_code)]
     status: String,
     #[serde(default)]
+    #[allow(dead_code)]
     url: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 struct VideoTaskStatusResponse {
+    #[allow(dead_code)]
     task_id: String,
+    #[serde(default)]
+    #[allow(dead_code)]
     status: String,
     #[serde(default)]
     url: Option<String>,

@@ -26,15 +26,22 @@ struct MusicGenerationRequest {
 
 #[derive(Debug, Deserialize)]
 struct MusicGenerationResponse {
+    #[allow(dead_code)]
     task_id: String,
+    #[serde(default)]
+    #[allow(dead_code)]
     status: String,
     #[serde(default)]
+    #[allow(dead_code)]
     url: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 struct MusicTaskStatusResponse {
+    #[allow(dead_code)]
     task_id: String,
+    #[serde(default)]
+    #[allow(dead_code)]
     status: String,
     #[serde(default)]
     url: Option<String>,

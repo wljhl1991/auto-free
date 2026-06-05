@@ -12,7 +12,7 @@ export default function PresetSelector({ presets, activePresetId, onSelect }: Pr
       <h3 style={{
         fontSize: '1.1rem',
         fontWeight: 600,
-        color: '#c0c0d0',
+        color: '#1a1a2e',
         marginBottom: '1rem',
       }}>
         预设方案
@@ -34,22 +34,22 @@ export default function PresetSelector({ presets, activePresetId, onSelect }: Pr
               style={{
                 padding: '1.2rem',
                 borderRadius: '10px',
-                border: isActive ? '2px solid #4a90d9' : '1px solid #2a2a3a',
-                backgroundColor: isActive ? '#1a1a3a' : '#12121f',
+                border: isActive ? '2px solid #6366f1' : '1px solid rgba(99, 102, 241, 0.12)',
+                backgroundColor: isActive ? 'rgba(99, 102, 241, 0.08)' : 'rgba(255, 255, 255, 0.7)',
                 cursor: 'pointer',
                 transition: 'all 0.2s ease',
                 position: 'relative',
               }}
               onMouseEnter={(e) => {
                 if (!isActive) {
-                  e.currentTarget.style.borderColor = '#3a3a5a';
-                  e.currentTarget.style.backgroundColor = '#16162a';
+                  e.currentTarget.style.borderColor = '#6366f1';
+                  e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.85)';
                 }
               }}
               onMouseLeave={(e) => {
                 if (!isActive) {
-                  e.currentTarget.style.borderColor = '#2a2a3a';
-                  e.currentTarget.style.backgroundColor = '#12121f';
+                  e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.12)';
+                  e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.7)';
                 }
               }}
             >
@@ -62,7 +62,7 @@ export default function PresetSelector({ presets, activePresetId, onSelect }: Pr
                 <span style={{
                   fontSize: '1rem',
                   fontWeight: 600,
-                  color: isActive ? '#4a90d9' : '#e0e0f0',
+                  color: isActive ? '#6366f1' : '#1a1a2e',
                 }}>
                   {preset.name}
                 </span>
@@ -71,8 +71,8 @@ export default function PresetSelector({ presets, activePresetId, onSelect }: Pr
                     fontSize: '0.7rem',
                     padding: '2px 8px',
                     borderRadius: '10px',
-                    backgroundColor: '#2e7d32',
-                    color: '#a5d6a7',
+                    backgroundColor: '#16a34a',
+                    color: '#fff',
                     fontWeight: 500,
                   }}>
                     推荐体验
@@ -83,8 +83,8 @@ export default function PresetSelector({ presets, activePresetId, onSelect }: Pr
                     fontSize: '0.7rem',
                     padding: '2px 8px',
                     borderRadius: '10px',
-                    backgroundColor: '#1565c0',
-                    color: '#90caf9',
+                    backgroundColor: '#3b82f6',
+                    color: '#fff',
                     fontWeight: 500,
                   }}>
                     推荐入门
@@ -93,7 +93,7 @@ export default function PresetSelector({ presets, activePresetId, onSelect }: Pr
               </div>
               <p style={{
                 fontSize: '0.8rem',
-                color: '#8888aa',
+                color: '#6b7280',
                 marginBottom: '0.75rem',
                 lineHeight: 1.5,
               }}>
@@ -104,10 +104,10 @@ export default function PresetSelector({ presets, activePresetId, onSelect }: Pr
                 alignItems: 'center',
                 gap: '0.75rem',
                 fontSize: '0.75rem',
-                color: '#666680',
+                color: '#9ca3af',
               }}>
                 <span>{preset.vendorCount} 个服务商</span>
-                <span style={{ color: '#555570' }}>|</span>
+                <span style={{ color: '#d1d5db' }}>|</span>
                 <span>
                   {preset.providers.map((p) => p.providerId).join('、')}
                 </span>

@@ -4,8 +4,8 @@ import { AssetLoader } from './AssetLoader';
 import { AudioEngine } from './AudioEngine';
 
 export type SceneEventType =
-  | { type: 'narration'; text: string; voiceUrl?: string }
-  | { type: 'dialogue'; speaker: string; text: string; avatarUrl?: string; emotion?: string; voiceUrl?: string }
+  | { type: 'narration'; text: string; voiceUrl?: string; voiceAssetRefId?: string }
+  | { type: 'dialogue'; speaker: string; text: string; avatarUrl?: string; emotion?: string; voiceUrl?: string; voiceAssetRefId?: string }
   | { type: 'choice'; prompt: string; options: { text: string; enabled: boolean; visible: boolean }[] }
   | { type: 'cg'; videoUrl: string; duration?: number; skipAllowed: boolean }
   | { type: 'scene_transition'; targetSceneId: string; transitionType: string; duration?: number }
@@ -110,7 +110,7 @@ export class SceneExecutor {
 
     switch (node.type) {
       case 'narration':
-        this.emitEvent({ type: 'narration', text: node.text, voiceUrl: node.voiceAsset?.url });
+        this.emitEvent({ type: 'narration', text: node.text, voiceUrl: node.voiceAsset?.url, voiceAssetRefId: node.voiceAsset?.id });
         break;
       case 'dialogue':
         this.emitEvent({
@@ -120,6 +120,7 @@ export class SceneExecutor {
           avatarUrl: node.speakerAvatar?.url,
           emotion: node.emotion,
           voiceUrl: node.voiceAsset?.url,
+          voiceAssetRefId: node.voiceAsset?.id,
         });
         break;
       case 'choice':

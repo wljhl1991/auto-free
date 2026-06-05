@@ -31,8 +31,10 @@ pub trait IAssetProvider: Send + Sync {
         self.check_connectivity().await
     }
     /// 获取支持的模态
+    #[allow(dead_code)]
     fn supported_modalities(&self) -> Vec<AIModality>;
     /// 获取 Provider ID
+    #[allow(dead_code)]
     fn provider_id(&self) -> &str;
 }
 
@@ -114,6 +116,10 @@ impl ProviderFactory {
             }
             "netease-music" => {
                 Ok(Box::new(netease_music::NeteaseMusicProvider::new(config, asset_base_path.to_path_buf())?))
+            }
+            // 讯飞星辰使用 OpenAI 兼容 HTTP API，复用 DeepSeek Provider
+            "xfyun-sparkdesk" => {
+                Ok(Box::new(deepseek::DeepSeekProvider::new(config, asset_base_path)?))
             }
             _ => Err(ProviderError::InvalidConfig(format!(
                 "Unknown provider: id={}, vendor={}",

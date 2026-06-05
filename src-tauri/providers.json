@@ -767,5 +767,71 @@
     "status": "unconfigured",
     "lastChecked": null,
     "errorMessage": null
+  },
+  {
+    "id": "xfyun-sparkdesk",
+    "name": "讯飞星辰 SparkDesk",
+    "vendor": "科大讯飞",
+    "description": "讯飞星辰 MaaS 平台，OpenAI 兼容接口，支持 SparkDesk 系列大模型",
+    "officialUrl": "https://xingchen.xfyun.cn",
+    "registerUrl": "https://xingchen.xfyun.cn/register",
+    "docsUrl": "https://www.w3cschool.cn/xfyunmaasdoc/xfyun-maas-reasoning-serviceshttp-protocol.html",
+    "modality": ["text"],
+    "authType": "api_key",
+    "authConfig": {
+      "apiKey": {
+        "value": "",
+        "label": "APIPassword",
+        "placeholder": "从服务管控页面获取 APIPassword",
+        "helpUrl": "https://xingchen.xfyun.cn/sparkdesk"
+      },
+      "account": null,
+      "oauth": null,
+      "extraParams": null
+    },
+    "models": [
+      {
+        "id": "sparkdesk-v4",
+        "name": "SparkDesk V4 (推荐)",
+        "modality": "text",
+        "isDefault": true,
+        "endpoint": "https://maas-api.cn-huabei-1.xf-yun.com/v2/chat/completions",
+        "maxTokens": 32768,
+        "supportedSizes": null,
+        "maxDuration": null,
+        "costPerCall": 0.004,
+        "freeQuota": "新用户赠送额度",
+        "quality": "high"
+      },
+      {
+        "id": "sparkdesk-v3",
+        "name": "SparkDesk V3",
+        "modality": "text",
+        "isDefault": false,
+        "endpoint": "https://maas-api.cn-huabei-1.xf-yun.com/v2/chat/completions",
+        "maxTokens": 16384,
+        "supportedSizes": null,
+        "maxDuration": null,
+        "costPerCall": 0.002,
+        "freeQuota": "新用户赠送额度",
+        "quality": "standard"
+      },
+      {
+        "id": "sparkdesk-lite",
+        "name": "SparkDesk Lite (免费)",
+        "modality": "text",
+        "isDefault": false,
+        "endpoint": "https://maas-api.cn-huabei-1.xf-yun.com/v2/chat/completions",
+        "maxTokens": 4096,
+        "supportedSizes": null,
+        "maxDuration": null,
+        "costPerCall": 0.0,
+        "freeQuota": "永久免费",
+        "quality": "fast"
+      }
+    ],
+    "status": "unconfigured",
+    "lastChecked": null,
+    "errorMessage": null
   }
 ]

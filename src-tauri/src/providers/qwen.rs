@@ -138,6 +138,7 @@ impl QwenProvider {
         Err(last_error.unwrap_or_else(|| ProviderError::NetworkError("重试后仍然失败".to_string())))
     }
 
+    #[allow(dead_code)]
     pub async fn chat_stream(&self, messages: Vec<ChatMessage>, model: Option<&str>) -> Result<reqwest::Response, ProviderError> {
         let model = model.unwrap_or(&self.default_model);
         let max_tokens = self.config.models
@@ -242,6 +243,7 @@ impl QwenProvider {
         }
     }
 
+    #[allow(dead_code)]
     async fn send_stream_request(&self, request: &ChatRequest) -> Result<reqwest::Response, ProviderError> {
         log::info!("[Qwen] 流式请求: endpoint={}, model={}", self.endpoint, request.model);
 

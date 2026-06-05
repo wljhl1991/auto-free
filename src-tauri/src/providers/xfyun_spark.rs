@@ -66,40 +66,53 @@ struct SparkResponse {
 
 #[derive(Debug, Deserialize)]
 struct SparkResponseHeader {
+    #[allow(dead_code)]
     code: i32,
+    #[allow(dead_code)]
     message: String,
+    #[allow(dead_code)]
     sid: String,
+    #[allow(dead_code)]
     status: u32,
 }
 
 #[derive(Debug, Deserialize)]
 struct SparkResponsePayload {
     choices: SparkChoices,
+    #[allow(dead_code)]
     usage: Option<SparkUsage>,
 }
 
 #[derive(Debug, Deserialize)]
 struct SparkChoices {
     text: Vec<SparkText>,
+    #[allow(dead_code)]
     status: u32,
 }
 
 #[derive(Debug, Deserialize)]
 struct SparkText {
+    #[allow(dead_code)]
     content: String,
+    #[allow(dead_code)]
     role: String,
+    #[allow(dead_code)]
     index: i32,
 }
 
 #[derive(Debug, Deserialize)]
 struct SparkUsage {
+    #[allow(dead_code)]
     text: SparkTextUsage,
 }
 
 #[derive(Debug, Deserialize)]
 struct SparkTextUsage {
+    #[allow(dead_code)]
     question_tokens: u32,
+    #[allow(dead_code)]
     prompt_tokens: u32,
+    #[allow(dead_code)]
     completion_tokens: u32,
 }
 

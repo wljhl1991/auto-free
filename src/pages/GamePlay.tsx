@@ -79,6 +79,8 @@ function GamePlay() {
 
   // 资源状态追踪：assetRefId -> { source, status }
   const [assetStates, setAssetStates] = useState<Record<string, { source: string; status: 'generating' | 'ready' | 'fallback' }>>({});
+  // 资源URL映射：assetRefId -> resolvedUrl（用于语音/BGM等资源的播放）
+  const assetUrlMapRef = useRef<Record<string, string>>({});
   // 热替换动画状态
   const [hotSwapping, setHotSwapping] = useState(false);
 
@@ -119,6 +121,9 @@ function GamePlay() {
           status: source === 'Builtin' ? 'fallback' : 'ready',
         },
       }));
+
+      // 更新资源URL映射
+      assetUrlMapRef.current[assetRefId] = resolveAssetUrl(localPath);
 
       // 如果当前正在展示该资源，执行热替换
       if (assetType === 'Image' && assetRefId === currentBgAssetRefId) {
@@ -191,6 +196,23 @@ function GamePlay() {
         if (event.type === 'game_end') {
           // 游戏结束
           setGameEnded(true);
+        }
+
+        // 播放语音
+        if ((event.type === 'narration' || event.type === 'dialogue') && event.voiceUrl) {
+          const voiceUrl = resolveAssetUrl(event.voiceUrl);
+          audioEngineRef.current.playVoice(voiceUrl).catch(() => {});
+        } else if ((event.type === 'narration' || event.type === 'dialogue') && event.voiceAssetRefId) {
+          // voiceUrl 为空但 voiceAssetRefId 存在，从 assetUrlMap 中查找
+          const mappedUrl = assetUrlMapRef.current[event.voiceAssetRefId];
+          if (mappedUrl) {
+            audioEngineRef.current.playVoice(mappedUrl).catch(() => {});
+          } else {
+            audioEngineRef.current.stopVoice();
+          }
+        } else if (event.type === 'narration' || event.type === 'dialogue') {
+          // 没有语音资源时停止当前语音
+          audioEngineRef.current.stopVoice();
         }
       });
 

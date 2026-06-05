@@ -1,8 +1,7 @@
-use crate::types::asset::{AssetType, LocalAsset, AssetSource};
-use crate::types::game_script::{GameScript, GameType, AssetRef};
+use crate::types::asset::AssetType;
+use crate::types::game_script::{GameScript, GameType};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BuiltinAssetEntry {
@@ -190,6 +189,7 @@ impl BuiltinAssetRegistry {
 /// 资源管理器 — 管理本地资源存储和缓存
 pub struct AssetManager {
     base_path: PathBuf,  // gen/
+    #[allow(dead_code)]
     cache_path: PathBuf, // gen/cache/
 }
 
@@ -202,111 +202,6 @@ impl AssetManager {
     /// 获取游戏资源目录
     pub fn get_game_asset_dir(&self, game_id: &str) -> PathBuf {
         self.base_path.join("games").join(game_id)
-    }
-
-    /// 获取缓存路径
-    pub fn get_cache_path(&self, cache_key: &str) -> PathBuf {
-        self.cache_path.join(cache_key)
-    }
-
-    /// 保存资源数据到游戏目录
-    pub fn save_asset(&self, game_id: &str, asset_ref: &AssetRef, data: &[u8]) -> Result<LocalAsset, String> {
-        self.ensure_game_dirs(game_id)?;
-
-        let cache_key = asset_ref.cache_key.clone()
-            .unwrap_or_else(|| Self::generate_cache_key_static(&asset_ref.prompt, &Self::convert_asset_type(&asset_ref.asset_type)));
-
-        let file_ext = match asset_ref.asset_type {
-            crate::types::game_script::AssetType::Image => "png",
-            crate::types::game_script::AssetType::Video => "mp4",
-            crate::types::game_script::AssetType::Audio => "mp3",
-            crate::types::game_script::AssetType::Voice => "mp3",
-        };
-
-        let file_name = format!("{}.{}", cache_key, file_ext);
-        let asset_dir = self.get_game_asset_dir(game_id).join("assets");
-        let file_path = asset_dir.join(&file_name);
-
-        std::fs::write(&file_path, data)
-            .map_err(|e| format!("Failed to write asset file: {}", e))?;
-
-        Ok(LocalAsset {
-            id: asset_ref.id.clone(),
-            asset_type: Self::convert_asset_type(&asset_ref.asset_type),
-            local_path: file_path.to_string_lossy().to_string(),
-            source: AssetSource::AiGenerated,
-            cache_key,
-            created_at: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs(),
-        })
-    }
-
-    /// 复制内置资源到游戏目录
-    pub fn copy_builtin_asset(&self, game_id: &str, source: &Path, asset_ref: &AssetRef) -> Result<LocalAsset, String> {
-        self.ensure_game_dirs(game_id)?;
-
-        let cache_key = asset_ref.cache_key.clone()
-            .unwrap_or_else(|| Self::generate_cache_key_static(&asset_ref.prompt, &Self::convert_asset_type(&asset_ref.asset_type)));
-
-        let file_name = source.file_name()
-            .ok_or_else(|| "Invalid source file name".to_string())?;
-        let asset_dir = self.get_game_asset_dir(game_id).join("assets");
-        let dest_path = asset_dir.join(file_name);
-
-        // 如果目标文件已存在，直接返回
-        if dest_path.exists() {
-            return Ok(LocalAsset {
-                id: asset_ref.id.clone(),
-                asset_type: Self::convert_asset_type(&asset_ref.asset_type),
-                local_path: dest_path.to_string_lossy().to_string(),
-                source: AssetSource::Builtin,
-                cache_key,
-                created_at: SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs(),
-            });
-        }
-
-        std::fs::copy(source, &dest_path)
-            .map_err(|e| format!("Failed to copy builtin asset: {}", e))?;
-
-        Ok(LocalAsset {
-            id: asset_ref.id.clone(),
-            asset_type: Self::convert_asset_type(&asset_ref.asset_type),
-            local_path: dest_path.to_string_lossy().to_string(),
-            source: AssetSource::Builtin,
-            cache_key,
-            created_at: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs(),
-        })
-    }
-
-    /// 检查资源是否已存在
-    pub fn asset_exists(&self, game_id: &str, asset_ref_id: &str) -> bool {
-        let asset_dir = self.get_game_asset_dir(game_id).join("assets");
-        if !asset_dir.exists() {
-            return false;
-        }
-        // 简单检查：遍历目录查找包含 asset_ref_id 的文件
-        if let Ok(entries) = std::fs::read_dir(&asset_dir) {
-            for entry in entries.flatten() {
-                let name = entry.file_name().to_string_lossy().to_string();
-                if name.starts_with(asset_ref_id) {
-                    return true;
-                }
-            }
-        }
-        false
-    }
-
-    /// 生成缓存键
-    pub fn generate_cache_key(&self, prompt: &str, asset_type: &AssetType) -> String {
-        Self::generate_cache_key_static(prompt, asset_type)
     }
 
     /// 确保游戏目录存在
@@ -341,25 +236,6 @@ impl AssetManager {
             .map_err(|e| format!("Failed to read script.json: {}", e))?;
         serde_json::from_str(&json)
             .map_err(|e| format!("Failed to parse GameScript: {}", e))
-    }
-
-    /// 将 game_script 的 AssetType 转换为 asset 模块的 AssetType
-    fn convert_asset_type(script_type: &crate::types::game_script::AssetType) -> AssetType {
-        match script_type {
-            crate::types::game_script::AssetType::Image => AssetType::Image,
-            crate::types::game_script::AssetType::Video => AssetType::Video,
-            crate::types::game_script::AssetType::Audio => AssetType::Audio,
-            crate::types::game_script::AssetType::Voice => AssetType::Voice,
-        }
-    }
-
-    /// 静态方法：生成缓存键
-    fn generate_cache_key_static(prompt: &str, asset_type: &AssetType) -> String {
-        use sha2::{Sha256, Digest};
-        let mut hasher = Sha256::new();
-        hasher.update(prompt.as_bytes());
-        hasher.update(format!("{:?}", asset_type).as_bytes());
-        format!("{:x}", hasher.finalize())[..16].to_string()
     }
 }
 

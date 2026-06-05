@@ -1,6 +1,6 @@
 use crate::types::ai_provider::{
-    AppConfig, AIProviderConfig, AuthConfig, AuthType, ConfigPreset, GlobalSettings,
-    PresetProvider, ProviderStatus, QualityLevel,
+    AppConfig, AIProviderConfig, ConfigPreset, GlobalSettings,
+    QualityLevel,
 };
 use super::encryption::EncryptionManager;
 use super::presets;

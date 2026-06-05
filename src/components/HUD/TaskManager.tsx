@@ -170,30 +170,33 @@ export default function TaskManager({ gameId, isOpen, onClose }: TaskManagerProp
   return (
     <div style={{
       position: 'fixed', inset: 0,
-      backgroundColor: 'rgba(0,0,0,0.7)',
+      backgroundColor: 'rgba(0,0,0,0.4)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       zIndex: 1000,
+      backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)',
     }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div style={{
-        backgroundColor: '#16162a', border: '1px solid #2a2a3a',
-        borderRadius: '12px', padding: '1.5rem',
+        backgroundColor: 'rgba(255, 255, 255, 0.85)', border: '1px solid rgba(99, 102, 241, 0.15)',
+        borderRadius: '16px', padding: '1.5rem',
         width: '90%', maxWidth: '700px', maxHeight: '80vh',
         display: 'flex', flexDirection: 'column',
+        backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+        boxShadow: '0 8px 32px rgba(99, 102, 241, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06)',
       }} onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-          <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#e0e0f0' }}>任务管理</h3>
-          <button style={{ background: 'none', border: 'none', color: '#8888aa', fontSize: '1.2rem', cursor: 'pointer' }} onClick={onClose}>✕</button>
+          <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#1a1a2e' }}>任务管理</h3>
+          <button style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: '1.2rem', cursor: 'pointer' }} onClick={onClose}>✕</button>
         </div>
 
         {/* Stats */}
         <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '0.85rem', color: '#9999bb' }}>总计: {stats.total}</span>
+          <span style={{ fontSize: '0.85rem', color: '#4a4a6a' }}>总计: {stats.total}</span>
           <span style={{ fontSize: '0.85rem', color: '#4ade80' }}>就绪: {stats.ready}</span>
           <span style={{ fontSize: '0.85rem', color: '#facc15' }}>生成中: {stats.generating}</span>
           <span style={{ fontSize: '0.85rem', color: '#f87171' }}>失败: {stats.failed}</span>
           <span style={{ fontSize: '0.85rem', color: '#fb923c' }}>超时: {stats.timeout}</span>
-          <span style={{ fontSize: '0.85rem', color: '#555570' }}>等待: {stats.pending}</span>
+          <span style={{ fontSize: '0.85rem', color: '#9ca3af' }}>等待: {stats.pending}</span>
         </div>
 
         {/* Filter */}
@@ -210,15 +213,15 @@ export default function TaskManager({ gameId, isOpen, onClose }: TaskManagerProp
         {/* Task List */}
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {filtered.length === 0 ? (
-            <p style={{ color: '#555570', textAlign: 'center', padding: '2rem' }}>暂无任务</p>
+            <p style={{ color: '#9ca3af', textAlign: 'center', padding: '2rem' }}>暂无任务</p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               {filtered.map(task => (
                 <div key={`${task.chapterId}_${task.assetType}`}
                   style={{
                     display: 'flex', alignItems: 'center', gap: '0.75rem',
-                    padding: '0.75rem', backgroundColor: '#0a0a1a',
-                    border: '1px solid #2a2a3a', borderRadius: '8px',
+                    padding: '0.75rem', backgroundColor: 'rgba(255, 255, 255, 0.6)',
+                    border: '1px solid rgba(99, 102, 241, 0.1)', borderRadius: '10px',
                   }}>
                   <span style={{
                     width: '8px', height: '8px', borderRadius: '50%',
@@ -226,9 +229,9 @@ export default function TaskManager({ gameId, isOpen, onClose }: TaskManagerProp
                     flexShrink: 0,
                   }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: '0.9rem', color: '#e0e0f0' }}>
+                    <div style={{ fontSize: '0.9rem', color: '#1a1a2e' }}>
                       {ASSET_LABELS[task.assetType] || task.assetType}
-                      {task.chapterTitle && <span style={{ color: '#666680', marginLeft: '0.5rem' }}>- {task.chapterTitle}</span>}
+                      {task.chapterTitle && <span style={{ color: '#9ca3af', marginLeft: '0.5rem' }}>- {task.chapterTitle}</span>}
                     </div>
                     {task.errorMessage && (
                       <div style={{ fontSize: '0.8rem', color: '#f87171', marginTop: '0.25rem' }}>{task.errorMessage}</div>

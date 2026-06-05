@@ -114,14 +114,14 @@ export default function UserAssetManager() {
       <h3 style={{
         fontSize: '1.3rem',
         fontWeight: 600,
-        color: '#e0e0f0',
+        color: '#1a1a2e',
         marginBottom: '1rem',
       }}>
         资源管理
       </h3>
       <p style={{
         fontSize: '0.85rem',
-        color: '#8888aa',
+        color: '#6b7280',
         marginBottom: '1rem',
       }}>
         导入自定义资源作为全局替换，当 AI 生成失败时将优先使用这些资源
@@ -132,7 +132,7 @@ export default function UserAssetManager() {
         display: 'flex',
         gap: '0.5rem',
         marginBottom: '1rem',
-        borderBottom: '1px solid #2a2a3a',
+        borderBottom: '1px solid rgba(99, 102, 241, 0.15)',
         paddingBottom: '0.5rem',
       }}>
         {ASSET_TYPE_TABS.map(tab => (
@@ -143,10 +143,10 @@ export default function UserAssetManager() {
               padding: '0.5rem 1.2rem',
               fontSize: '0.9rem',
               fontFamily: 'inherit',
-              background: activeTab === tab.key ? '#1e1e3e' : 'transparent',
-              color: activeTab === tab.key ? '#4a90d9' : '#8888aa',
+              background: activeTab === tab.key ? 'rgba(99, 102, 241, 0.1)' : 'transparent',
+              color: activeTab === tab.key ? '#6366f1' : '#6b7280',
               border: 'none',
-              borderBottom: activeTab === tab.key ? '2px solid #4a90d9' : '2px solid transparent',
+              borderBottom: activeTab === tab.key ? '2px solid #6366f1' : '2px solid transparent',
               cursor: 'pointer',
               transition: 'all 0.2s ease',
               borderRadius: '4px 4px 0 0',
@@ -166,8 +166,8 @@ export default function UserAssetManager() {
           style={{
             padding: '0.6rem 1.5rem',
             fontSize: '0.9rem',
-            border: '1px dashed #3a3a5a',
-            color: importing ? '#555570' : '#8888aa',
+            border: '1px dashed rgba(99, 102, 241, 0.3)',
+            color: importing ? '#9ca3af' : '#6b7280',
           }}
         >
           {importing ? '导入中...' : '+ 导入资源'}
@@ -211,7 +211,7 @@ export default function UserAssetManager() {
           display: 'flex',
           justifyContent: 'center',
           padding: '2rem 0',
-          color: '#555570',
+          color: '#9ca3af',
         }}>
           加载中...
         </div>
@@ -222,7 +222,7 @@ export default function UserAssetManager() {
           alignItems: 'center',
           gap: '0.75rem',
           padding: '2.5rem 0',
-          color: '#555570',
+          color: '#9ca3af',
         }}>
           <span style={{ fontSize: '2rem' }}>📂</span>
           <span style={{ fontStyle: 'italic' }}>暂无导入的{ASSET_TYPE_TABS.find(t => t.key === activeTab)?.label}资源</span>
@@ -238,20 +238,20 @@ export default function UserAssetManager() {
               key={asset.id}
               style={{
                 padding: '0.75rem',
-                backgroundColor: '#12121f',
-                border: '1px solid #1e1e2e',
+                backgroundColor: 'rgba(255, 255, 255, 0.7)',
+                border: '1px solid rgba(99, 102, 241, 0.12)',
                 borderRadius: '10px',
                 transition: 'border-color 0.2s ease',
                 position: 'relative',
               }}
-              onMouseEnter={e => (e.currentTarget.style.borderColor = '#2a2a4a')}
-              onMouseLeave={e => (e.currentTarget.style.borderColor = '#1e1e2e')}
+              onMouseEnter={e => (e.currentTarget.style.borderColor = '#6366f1')}
+              onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.12)')}
             >
               {/* Preview */}
               <div style={{
                 width: '100%',
                 height: '120px',
-                backgroundColor: '#0a0a14',
+                backgroundColor: 'rgba(99, 102, 241, 0.05)',
                 borderRadius: '6px',
                 marginBottom: '0.5rem',
                 overflow: 'hidden',
@@ -266,7 +266,7 @@ export default function UserAssetManager() {
               <div style={{
                 fontSize: '0.85rem',
                 fontWeight: 600,
-                color: '#e0e0f0',
+                color: '#1a1a2e',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
@@ -276,7 +276,7 @@ export default function UserAssetManager() {
               </div>
               <div style={{
                 fontSize: '0.75rem',
-                color: '#666680',
+                color: '#9ca3af',
                 display: 'flex',
                 justifyContent: 'space-between',
               }}>
@@ -298,10 +298,10 @@ export default function UserAssetManager() {
                       style={{
                         padding: '0.1rem 0.5rem',
                         fontSize: '0.7rem',
-                        backgroundColor: 'rgba(74, 144, 217, 0.1)',
-                        border: '1px solid rgba(74, 144, 217, 0.2)',
+                        backgroundColor: 'rgba(99, 102, 241, 0.08)',
+                        border: '1px solid rgba(99, 102, 241, 0.2)',
                         borderRadius: '10px',
-                        color: '#4a90d9',
+                        color: '#6366f1',
                       }}
                     >
                       {tag}

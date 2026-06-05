@@ -33,6 +33,7 @@ pub enum QualityLevel {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[allow(dead_code)]
 pub enum TaskStatus {
     Queued,
     Running,
@@ -220,6 +221,7 @@ pub struct ConnectivityCheck {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct GenerationTask {
     pub id: String,
     pub asset_ref_id: String,

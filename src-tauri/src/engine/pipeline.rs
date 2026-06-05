@@ -51,7 +51,7 @@ pub struct GenerationPipeline {
     app_handle: Option<AppHandle>,
     statuses: Arc<RwLock<HashMap<String, GenerationStatus>>>,
     /// 存储 game_id -> GameScript，供 regenerate_asset 使用
-    scripts: RwLock<HashMap<String, GameScript>>,
+    scripts: Arc<RwLock<HashMap<String, GameScript>>>,
     /// AI 调用历史记录器
     call_history: Arc<CallHistory>,
 }
@@ -65,7 +65,7 @@ impl GenerationPipeline {
             asset_manager,
             app_handle: None,
             statuses: Arc::new(RwLock::new(HashMap::new())),
-            scripts: RwLock::new(HashMap::new()),
+            scripts: Arc::new(RwLock::new(HashMap::new())),
             call_history,
         }
     }
@@ -115,6 +115,7 @@ impl GenerationPipeline {
     }
 
     /// 获取指定模态的 AI 模型显示名称
+    #[allow(dead_code)]
     async fn get_model_display_name_for_modality(&self, modality: &AIModality) -> String {
         let config_manager = self.config_manager.read().await;
         let config = config_manager.get_config();
@@ -413,7 +414,7 @@ impl GenerationPipeline {
             let (chapter_id, asset_ref) = &first_chapter_refs[i];
             match result {
                 Ok(ref local_asset) => {
-                    self.on_asset_ready(&game_id, asset_ref, local_asset);
+                    self.on_asset_ready(&game_id, asset_ref, local_asset).await;
                     completed += 1;
                     *chapter_completed.entry(chapter_id.clone()).or_insert(0) += 1;
                 }
@@ -566,7 +567,7 @@ impl GenerationPipeline {
             let (chapter_id, asset_ref) = &first_chapter_refs[i];
             match result {
                 Ok(ref local_asset) => {
-                    self.on_asset_ready(&game_id, asset_ref, local_asset);
+                    self.on_asset_ready(&game_id, asset_ref, local_asset).await;
                     completed += 1;
                     *chapter_completed.entry(chapter_id.clone()).or_insert(0) += 1;
                 }
@@ -638,6 +639,7 @@ impl GenerationPipeline {
         let app_handle = self.app_handle.clone();
         let statuses = self.statuses.clone();
         let call_history = self.call_history.clone();
+        let scripts = self.scripts.clone();
 
         tokio::spawn(async move {
             // 标记后台生成已激活
@@ -699,6 +701,20 @@ impl GenerationPipeline {
                     let (_, asset_ref) = &refs[i];
                     match result {
                         Ok(ref local_asset) => {
+                            // 更新 GameScript 中对应 AssetRef 的 url 字段
+                            {
+                                let mut scripts = scripts.write().await;
+                                if let Some(script) = scripts.get_mut(&game_id) {
+                                    Self::update_script_assets(script, |ar: &mut AssetRef| {
+                                        if ar.id == asset_ref.id {
+                                            ar.url = Some(local_asset.local_path.clone());
+                                            ar.status = AssetStatus::Ready;
+                                            ar.source = ScriptAssetSource::AiGenerated;
+                                        }
+                                    });
+                                    let _ = asset_manager.save_game_script(&game_id, script);
+                                }
+                            }
                             // 发送 asset-ready 事件
                             if let Some(ref handle) = app_handle {
                                 let _ = handle.emit(
@@ -849,7 +865,7 @@ impl GenerationPipeline {
 
         match result {
             Ok(local_asset) => {
-                self.on_asset_ready(game_id, &asset_ref, &local_asset);
+                self.on_asset_ready(game_id, &asset_ref, &local_asset).await;
                 Ok(())
             }
             Err(e) => {
@@ -916,7 +932,7 @@ impl GenerationPipeline {
             Err(first_error)
         } else {
             // 至少有一个候选成功，通知第一个就绪
-            self.on_asset_ready(game_id, &asset_ref, &candidates[0]);
+            self.on_asset_ready(game_id, &asset_ref, &candidates[0]).await;
             Ok(candidates)
         }
     }
@@ -998,7 +1014,7 @@ impl GenerationPipeline {
         config_manager: &Arc<RwLock<ConfigManager>>,
         asset_manager: &Arc<AssetManager>,
         call_history: &Arc<CallHistory>,
-        game_id: &str,
+        _game_id: &str,
         asset_refs: &[(String, AssetRef)],
     ) -> Vec<Result<LocalAsset, ProviderError>> {
         let mut handles: Vec<tokio::task::JoinHandle<Result<LocalAsset, ProviderError>>> =
@@ -1745,6 +1761,7 @@ impl GenerationPipeline {
     }
 
     /// 根据模态选择 Provider
+    #[allow(dead_code)]
     async fn resolve_provider(
         &self,
         modality: AIModality,
@@ -1764,6 +1781,7 @@ impl GenerationPipeline {
     }
 
     /// 创建内置 Provider
+    #[allow(dead_code)]
     fn create_builtin_provider(&self) -> Result<Box<dyn IAssetProvider>, ProviderError> {
         let builtin_assets_path = self.asset_manager.base_path().join("builtin-assets");
         let game_assets_path = self.asset_manager.base_path().join("games");
@@ -1778,7 +1796,7 @@ impl GenerationPipeline {
     /// 并行获取资源
     async fn fetch_assets(
         &self,
-        game_id: &str,
+        _game_id: &str,
         asset_refs: &[(String, AssetRef)],
     ) -> Vec<Result<LocalAsset, ProviderError>> {
         let mut handles: Vec<tokio::task::JoinHandle<Result<LocalAsset, ProviderError>>> =
@@ -1900,8 +1918,8 @@ impl GenerationPipeline {
         results
     }
 
-    /// 资源就绪回调 → Tauri 事件通知前端
-    fn on_asset_ready(&self, game_id: &str, asset_ref: &AssetRef, local_asset: &LocalAsset) {
+    /// 资源就绪回调 → 更新 GameScript URL + Tauri 事件通知前端
+    async fn on_asset_ready(&self, game_id: &str, asset_ref: &AssetRef, local_asset: &LocalAsset) {
         let asset_type_label = Self::asset_type_label(&asset_ref.asset_type);
         let desc = if asset_ref.prompt.is_empty() {
             format!("{}生成完成", asset_type_label)
@@ -1910,6 +1928,23 @@ impl GenerationPipeline {
             format!("{}: {}", asset_type_label, short_desc)
         };
         self.emit_progress(game_id, "asset_ready", &desc, "");
+
+        // 更新 GameScript 中对应 AssetRef 的 url 字段
+        {
+            let mut scripts = self.scripts.write().await;
+            if let Some(script) = scripts.get_mut(game_id) {
+                Self::update_script_assets(script, |ar: &mut AssetRef| {
+                    if ar.id == asset_ref.id {
+                        ar.url = Some(local_asset.local_path.clone());
+                        ar.status = AssetStatus::Ready;
+                        ar.source = ScriptAssetSource::AiGenerated;
+                    }
+                });
+                // 保存更新后的 GameScript
+                let _ = self.asset_manager.save_game_script(game_id, script);
+            }
+        }
+
         if let Some(ref handle) = self.app_handle {
             let _ = handle.emit(
                 "asset-ready",

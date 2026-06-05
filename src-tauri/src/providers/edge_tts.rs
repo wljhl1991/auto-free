@@ -98,6 +98,7 @@ impl EdgeTTSProvider {
     }
 
     /// 根据 NPC 性别和性格选择语音
+    #[allow(dead_code)]
     pub fn select_voice(&self, gender: &str, personality: &str) -> ChineseVoice {
         let lower_personality = personality.to_lowercase();
         match gender.to_lowercase().as_str() {

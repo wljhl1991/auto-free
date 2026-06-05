@@ -98,6 +98,7 @@ pub struct SiliconFlowProvider {
     client: Client,
     api_key: String,
     default_image_model: String,
+    #[allow(dead_code)]
     default_text_model: String, // reserved for future text generation support
     endpoint: String,
     asset_base_path: PathBuf,
