@@ -22,6 +22,8 @@ use uuid::Uuid;
 
 // 内嵌 Prompt 模板，供高质量模式使用
 const PROMPT_COMBINED: &str = include_str!("../../../prompts/outline-parser/combined.md");
+const PROMPT_CORE_ELEMENTS: &str = include_str!("../../../prompts/outline-parser/core_elements.md");
+const PROMPT_CHAPTER_DETAIL: &str = include_str!("../../../prompts/outline-parser/chapter_detail.md");
 
 /// 生成状态
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -1224,9 +1226,10 @@ impl GenerationPipeline {
         }
     }
 
-    /// 高质量模式：多轮生成游戏脚本
-    /// Round 1: 生成详细故事大纲
-    /// Round 2: 基于大纲生成完整 GameScript JSON
+    /// 高质量模式：三阶段生成游戏脚本
+    /// 阶段1：生成核心要素（世界观、角色、章节梗概、关键情节等）
+    /// 阶段2：逐章生成详细内容（多轮对话保持连续性）
+    /// 阶段3：基于所有章节详情生成完整 GameScript JSON
     async fn parse_outline_high_quality(
         &self,
         deepseek: &DeepSeekProvider,
@@ -1237,71 +1240,117 @@ impl GenerationPipeline {
         let game_type_str = game_type.as_ref().map(|gt| Self::game_type_display_str(gt)).unwrap_or("互动叙事");
         let game_type_prompt = Self::get_game_type_prompt(game_type_str);
 
-        // Round 1: 生成详细故事大纲
-        let outline_system = format!(
-            "你是一位专业的互动叙事游戏设计师。请按照以下要求设计游戏：\n\n\
-             1. 故事结构：设计引人入胜的开场、层层递进的冲突、出人意料的转折、令人满意的结局\n\
-             2. 角色塑造：每个角色有独特的性格、动机和成长弧线\n\
-             3. 选择设计：每个选择都有意义和后果，避免无意义的选项\n\
-             4. 场景描写：使用丰富的感官描写（视觉、听觉、触觉）\n\
-             5. 节奏控制：紧张与舒缓交替，避免持续高压或持续平淡\n\
-             6. 伏笔与回收：在早期埋下伏笔，在后期巧妙回收\n\n\
-             游戏类型要求：{}",
-            game_type_prompt
+        // ========== 阶段1：生成核心要素 ==========
+        let core_system = PROMPT_CORE_ELEMENTS.to_string();
+
+        let core_user = format!(
+            "游戏类型：{}\n\n玩家构想：{}\n\n{}\n\n请生成游戏的核心要素。",
+            game_type_str, input, game_type_prompt
         );
 
-        let outline_user = format!(
-            "请根据以下玩家构想，设计一个详细的游戏故事大纲。\n\n\
-             游戏类型：{}\n\n\
-             玩家构想：{}\n\n\
-             请按以下结构输出大纲：\n\
-             1. 世界观设定（时间、地点、社会背景）\n\
-             2. 主要角色（姓名、性格、动机、关系）\n\
-             3. 故事结构（起承转合，每章核心事件）\n\
-             4. 关键选择点（至少5个重大选择及其后果）\n\
-             5. 伏笔与反转（至少3个伏笔和对应的回收）\n\
-             6. 结局设计（至少2个不同结局）\n\n\
-             {}\n\n\
-             请确保大纲详细、逻辑自洽、引人入胜。",
-            game_type_str,
-            input,
-            game_type_prompt
-        );
-
-        let outline_messages = vec![
+        let mut messages = vec![
             crate::providers::deepseek::ChatMessage {
                 role: "system".to_string(),
-                content: outline_system,
+                content: core_system,
             },
             crate::providers::deepseek::ChatMessage {
                 role: "user".to_string(),
-                content: outline_user,
+                content: core_user,
             },
         ];
 
-        log::info!("高质量模式 Round 1: 生成详细故事大纲");
+        log::info!("高质量模式 阶段1: 生成核心要素");
         let model_name = self.get_text_model_display_name().await;
-        self.emit_progress(game_id, "generating_outline", "正在生成故事大纲", &model_name);
-        let story_outline = deepseek.chat(outline_messages, None).await?;
-        let story_outline = OutlineParser::strip_think_tags(&story_outline);
-        log::info!("高质量模式 Round 1 完成: 大纲长度={}", story_outline.len());
+        self.emit_progress(game_id, "generating_core", "正在生成游戏核心要素（世界观、角色、章节梗概）", &model_name);
+        let core_elements = deepseek.chat(messages.clone(), None).await?;
+        let core_elements = OutlineParser::strip_think_tags(&core_elements);
+        log::info!("高质量模式 阶段1 完成: 核心要素长度={}", core_elements.len());
 
-        // Round 2: 基于详细大纲生成完整 GameScript JSON
+        // 保存核心要素
+        OutlineParser::save_raw_ai_response_sync("core_elements", &core_elements);
+
+        // 将核心要素加入对话历史（多轮对话）
+        messages.push(crate::providers::deepseek::ChatMessage {
+            role: "assistant".to_string(),
+            content: core_elements.clone(),
+        });
+
+        // ========== 阶段2：逐章生成详细内容 ==========
+        // 从核心要素中解析章节数
+        let chapter_count = Self::count_chapters_from_core(&core_elements);
+        log::info!("检测到章节数: {}", chapter_count);
+
+        let mut chapter_details = Vec::new();
+
+        for ch_idx in 1..=chapter_count {
+            let chapter_label = Self::get_chapter_label(ch_idx);
+            log::info!("高质量模式 阶段2: 生成{}详细内容", chapter_label);
+            self.emit_progress(
+                game_id,
+                "generating_chapter",
+                &format!("正在生成{}详细内容（{}/{}）", chapter_label, ch_idx, chapter_count),
+                &model_name,
+            );
+
+            let detail_user = format!(
+                "现在请根据核心要素，生成{}的详细内容。\n\n\
+                 核心要素中关于{}的梗概是关键参考，请严格遵循。\
+                 同时保持与前面章节的连续性和一致性。\
+                 每个场景至少3-5个对话/旁白节点，选择节点至少2-3个选项。\
+                 场景描写要细腻，为后续生成资源提供充分的提示词依据。\n\n\
+                 {}",
+                chapter_label, chapter_label, game_type_prompt
+            );
+
+            messages.push(crate::providers::deepseek::ChatMessage {
+                role: "user".to_string(),
+                content: detail_user,
+            });
+
+            let chapter_detail = deepseek.chat(messages.clone(), None).await?;
+            let chapter_detail = OutlineParser::strip_think_tags(&chapter_detail);
+            log::info!("高质量模式 阶段2 {} 完成: 长度={}", chapter_label, chapter_detail.len());
+
+            // 保存章节详情
+            OutlineParser::save_raw_ai_response_sync(
+                &format!("chapter_{}_detail", ch_idx),
+                &chapter_detail,
+            );
+
+            // 将章节详情加入对话历史
+            messages.push(crate::providers::deepseek::ChatMessage {
+                role: "assistant".to_string(),
+                content: chapter_detail.clone(),
+            });
+
+            chapter_details.push(chapter_detail);
+        }
+
+        // ========== 阶段3：基于所有章节详情生成完整 GameScript JSON ==========
+        log::info!("高质量模式 阶段3: 生成完整 GameScript JSON");
+        self.emit_progress(game_id, "generating_script", "正在根据章节详情生成完整游戏脚本", &model_name);
+
         let script_system = PROMPT_COMBINED.to_string();
 
+        let all_details = chapter_details.iter().enumerate().map(|(i, d)| {
+            let label = Self::get_chapter_label(i + 1);
+            format!("=== {} ===\n{}", label, d)
+        }).collect::<Vec<_>>().join("\n\n");
+
         let script_user = format!(
-            "根据以下详细故事大纲，生成完整的游戏脚本。\n\n\
-             故事大纲：\n{}\n\n\
+            "根据以下核心要素和各章节详细内容，生成完整的游戏脚本 JSON。\n\n\
+             == 核心要素 ==\n{}\n\n\
+             == 各章节详细内容 ==\n{}\n\n\
              要求：\n\
+             - 严格遵循核心要素中的世界观、角色设定和剧情走向\n\
              - 每个场景至少3-5个对话/旁白节点\n\
              - 选择节点至少2-3个选项\n\
              - 场景描写要细腻，注重氛围\n\
              - 角色对话要符合其性格\n\
+             - 为所有资源编写详细的生成 prompt\n\
              {}\n\n\
              玩家描述：{}",
-            story_outline,
-            game_type_prompt,
-            input
+            core_elements, all_details, game_type_prompt, input
         );
 
         let script_messages = vec![
@@ -1315,8 +1364,6 @@ impl GenerationPipeline {
             },
         ];
 
-        log::info!("高质量模式 Round 2: 生成 GameScript JSON");
-        self.emit_progress(game_id, "generating_script", "正在根据大纲生成游戏脚本", &model_name);
         let response = deepseek.chat(script_messages, None).await?;
         let response = OutlineParser::strip_think_tags(&response);
 
@@ -1336,8 +1383,36 @@ impl GenerationPipeline {
 
         // 校验并修复
         Self::validate_and_fix_script(&mut script)?;
-        log::info!("高质量模式 Round 2 完成: chapters={}", script.chapters.len());
+        log::info!("高质量模式 阶段3 完成: chapters={}", script.chapters.len());
         Ok(script)
+    }
+
+    /// 从核心要素文本中解析章节数
+    fn count_chapters_from_core(core: &str) -> usize {
+        // 匹配 "第X章" 格式
+        let re = regex::Regex::new(r"第[一二三四五六七八九十\d]+章").unwrap();
+        let matches: Vec<_> = re.find_iter(core).collect();
+        if !matches.is_empty() {
+            return matches.len();
+        }
+        // 匹配 "Chapter X" 格式
+        let re_en = regex::Regex::new(r"(?i)chapter\s*\d+").unwrap();
+        let matches_en: Vec<_> = re_en.find_iter(core).collect();
+        if !matches_en.is_empty() {
+            return matches_en.len();
+        }
+        // 默认3章
+        3
+    }
+
+    /// 获取章节标签（如"第一章"）
+    fn get_chapter_label(idx: usize) -> String {
+        let labels = ["第一章", "第二章", "第三章", "第四章", "第五章", "第六章", "第七章", "第八章", "第九章", "第十章"];
+        if idx <= labels.len() {
+            labels[idx - 1].to_string()
+        } else {
+            format!("第{}章", idx)
+        }
     }
 
     /// 从 AI 响应中提取 JSON（与 OutlineParser::extract_json 逻辑一致）
