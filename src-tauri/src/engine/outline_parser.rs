@@ -231,7 +231,10 @@ impl OutlineParser {
 
     /// 保存 AI 原始响应到文件
     fn save_raw_ai_response(&self, stage: &str, response: &str) {
-        let dir = std::env::temp_dir().join("autofree_ai_responses");
+        let dir = std::env::current_dir()
+            .unwrap_or_else(|_| std::path::PathBuf::from("."))
+            .join("gen")
+            .join("ai-responses");
         std::fs::create_dir_all(&dir).ok();
         let ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -243,7 +246,10 @@ impl OutlineParser {
     }
 
     fn save_raw_ai_response_sync(stage: &str, response: &str) {
-        let dir = std::env::temp_dir().join("autofree_ai_responses");
+        let dir = std::env::current_dir()
+            .unwrap_or_else(|_| std::path::PathBuf::from("."))
+            .join("gen")
+            .join("ai-responses");
         std::fs::create_dir_all(&dir).ok();
         let ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

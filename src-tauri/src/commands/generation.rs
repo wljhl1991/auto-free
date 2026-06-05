@@ -19,6 +19,14 @@ pub async fn get_generation_status(
 }
 
 #[command]
+pub async fn get_active_generations(
+    pipeline: tauri::State<'_, Arc<RwLock<GenerationPipeline>>>,
+) -> Result<Vec<String>, String> {
+    let p = pipeline.read().await;
+    Ok(p.get_active_generations_list().await)
+}
+
+#[command]
 pub async fn regenerate_asset(
     game_id: String,
     asset_ref_id: String,

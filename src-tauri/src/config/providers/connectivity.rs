@@ -54,9 +54,9 @@ impl ConnectivityChecker {
         }
 
         // 尝试创建 Provider 并检测连通性
-        let base_path = dirs::data_dir()
-            .unwrap_or_else(|| std::path::PathBuf::from("."))
-            .join("autofree");
+        let base_path = std::env::current_dir()
+            .unwrap_or_else(|_| std::path::PathBuf::from("."))
+            .join("gen");
 
         match ProviderFactory::create(provider, &base_path) {
             Ok(provider_instance) => {

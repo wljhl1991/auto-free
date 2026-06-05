@@ -1,24 +1,27 @@
 use async_trait::async_trait;
 use super::{IAssetProvider, ProviderError};
 use crate::engine::asset_manager::BuiltinAssetRegistry;
-use crate::types::game_script::{AssetRef, AssetType as ScriptAssetType, AssetSource as ScriptAssetSource};
+use crate::types::game_script::{AssetRef, AssetType as ScriptAssetType};
 use crate::types::asset::{LocalAsset, AIModality, AssetType, AssetSource};
 use crate::types::ai_provider::{ConnectivityCheck, ConnectivityStatus};
+use crate::commands::user_asset::find_user_asset;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub struct BuiltinAssetProvider {
     registry: BuiltinAssetRegistry,
     asset_base_path: PathBuf,
+    autofree_base_path: PathBuf,
 }
 
 impl BuiltinAssetProvider {
-    pub fn new(builtin_assets_path: PathBuf, asset_base_path: PathBuf) -> Self {
+    pub fn new(builtin_assets_path: PathBuf, asset_base_path: PathBuf, autofree_base_path: PathBuf) -> Self {
         let mut registry = BuiltinAssetRegistry::new(builtin_assets_path);
         registry.load();
         Self {
             registry,
             asset_base_path,
+            autofree_base_path,
         }
     }
 
@@ -62,7 +65,7 @@ impl BuiltinAssetProvider {
         }
     }
 
-    /// 根据 AssetRef 查找匹配的内置资源
+    /// 根据 AssetRef 查找匹配的内置资源（优先使用用户导入资源）
     fn find_builtin_asset(&self, asset_ref: &AssetRef) -> Option<crate::engine::asset_manager::BuiltinAssetEntry> {
         // 优先使用 builtin_asset_id 精确匹配
         if let Some(ref builtin_id) = asset_ref.builtin_asset_id {
@@ -128,6 +131,25 @@ impl BuiltinAssetProvider {
         None
     }
 
+    /// 尝试从用户导入资源中查找匹配的资源
+    fn find_user_asset_path(&self, asset_ref: &AssetRef) -> Option<PathBuf> {
+        let (asset_type_str, tags) = match asset_ref.asset_type {
+            ScriptAssetType::Image => {
+                let mood = Self::infer_mood_from_prompt(&asset_ref.prompt);
+                let tags = mood.map(|m| vec![m.to_string()]).unwrap_or_default();
+                ("image", tags)
+            }
+            ScriptAssetType::Audio => {
+                let mood = Self::infer_mood_from_prompt(&asset_ref.prompt);
+                let tags = mood.map(|m| vec![m.to_string()]).unwrap_or_default();
+                ("music", tags)
+            }
+            ScriptAssetType::Video => ("video", vec![]),
+            ScriptAssetType::Voice => ("voice", vec![]),
+        };
+        find_user_asset(&self.autofree_base_path, asset_type_str, &tags)
+    }
+
     /// 生成 cacheKey
     fn generate_cache_key(asset_ref: &AssetRef) -> String {
         use sha2::{Sha256, Digest};
@@ -141,6 +163,55 @@ impl BuiltinAssetProvider {
 #[async_trait]
 impl IAssetProvider for BuiltinAssetProvider {
     async fn get_asset(&self, asset_ref: &AssetRef) -> Result<LocalAsset, ProviderError> {
+        let cache_key = asset_ref.cache_key.clone()
+            .unwrap_or_else(|| Self::generate_cache_key(asset_ref));
+
+        // 优先检查用户导入资源
+        if let Some(user_path) = self.find_user_asset_path(asset_ref) {
+            if user_path.exists() {
+                // 目标路径：asset_base_path / cache_key / 文件名
+                let dest_dir = self.asset_base_path.join(&cache_key);
+                std::fs::create_dir_all(&dest_dir)
+                    .map_err(|e| ProviderError::GenerationFailed(format!("Failed to create asset dir: {}", e)))?;
+
+                let file_name = user_path.file_name()
+                    .ok_or_else(|| ProviderError::GenerationFailed("Invalid source file name".to_string()))?;
+                let dest_path = dest_dir.join(file_name);
+
+                // 如果目标文件已存在且 cacheKey 匹配，直接返回
+                if dest_path.exists() {
+                    return Ok(LocalAsset {
+                        id: asset_ref.id.clone(),
+                        asset_type: Self::convert_asset_type(&asset_ref.asset_type),
+                        local_path: dest_path.to_string_lossy().to_string(),
+                        source: AssetSource::Builtin,
+                        cache_key,
+                        created_at: SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs(),
+                    });
+                }
+
+                // 复制文件到目标路径
+                std::fs::copy(&user_path, &dest_path)
+                    .map_err(|e| ProviderError::GenerationFailed(format!("Failed to copy user asset: {}", e)))?;
+
+                return Ok(LocalAsset {
+                    id: asset_ref.id.clone(),
+                    asset_type: Self::convert_asset_type(&asset_ref.asset_type),
+                    local_path: dest_path.to_string_lossy().to_string(),
+                    source: AssetSource::Builtin,
+                    cache_key,
+                    created_at: SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs(),
+                });
+            }
+        }
+
+        // 回退到内置资源
         let entry = self.find_builtin_asset(asset_ref)
             .ok_or_else(|| ProviderError::NotFound(format!(
                 "No builtin asset found for asset_ref: {} (type: {:?}, prompt: {})",
@@ -154,9 +225,6 @@ impl IAssetProvider for BuiltinAssetProvider {
                 source_path
             )));
         }
-
-        let cache_key = asset_ref.cache_key.clone()
-            .unwrap_or_else(|| Self::generate_cache_key(asset_ref));
 
         // 目标路径：asset_base_path / cache_key / 文件名
         let dest_dir = self.asset_base_path.join(&cache_key);

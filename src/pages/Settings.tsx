@@ -5,6 +5,7 @@ import type { AIProviderConfig, ConfigPreset, AIModality } from '@/types';
 import PresetSelector from '@/components/Config/PresetSelector';
 import ModalitySection from '@/components/Config/ModalitySection';
 import ProviderConfigModal from '@/components/Config/ProviderConfigModal';
+import UserAssetManager from '@/components/Config/UserAssetManager';
 import LogViewer from '@/components/HUD/LogViewer';
 
 const MODALITY_SECTIONS: { modality: AIModality; title: string }[] = [
@@ -14,6 +15,34 @@ const MODALITY_SECTIONS: { modality: AIModality; title: string }[] = [
   { modality: 'music', title: '音乐生成' },
   { modality: 'voice', title: '语音生成' },
 ];
+
+function generateId(): string {
+  return `custom_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+}
+
+function createEmptyCustomProvider(): AIProviderConfig {
+  return {
+    id: generateId(),
+    name: '',
+    vendor: 'custom',
+    description: '',
+    officialUrl: '',
+    registerUrl: '',
+    docsUrl: '',
+    modality: ['text'],
+    authType: 'api_key',
+    authConfig: {
+      apiKey: {
+        value: '',
+        label: 'API 秘钥',
+        placeholder: '输入 API Key',
+        helpUrl: '',
+      },
+    },
+    models: [],
+    status: 'unconfigured',
+  };
+}
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -28,6 +57,7 @@ export default function Settings() {
   // Modal state
   const [modalProvider, setModalProvider] = useState<AIProviderConfig | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [modalIsNew, setModalIsNew] = useState(false);
 
   // Log viewer state
   const [logViewerOpen, setLogViewerOpen] = useState(false);
@@ -70,18 +100,32 @@ export default function Settings() {
     const provider = providers.find((p) => p.id === providerId);
     if (provider) {
       setModalProvider({ ...provider });
+      setModalIsNew(false);
       setModalOpen(true);
     }
   };
 
+  const handleAddCustomProvider = () => {
+    setModalProvider(createEmptyCustomProvider());
+    setModalIsNew(true);
+    setModalOpen(true);
+  };
+
   const handleSaveProvider = async (updatedProvider: AIProviderConfig) => {
     try {
-      await config.updateProvider(updatedProvider);
-      setProviders((prev) =>
-        prev.map((p) => (p.id === updatedProvider.id ? updatedProvider : p))
-      );
-      // 保存后自动检测连通性
-      handleCheckProvider(updatedProvider.id);
+      if (modalIsNew) {
+        // For new custom providers, add to the list and save via updateProviderModels
+        const newProviders = [...providers, updatedProvider];
+        await config.updateProviderModels(JSON.stringify(newProviders));
+        setProviders(newProviders);
+      } else {
+        await config.updateProvider(updatedProvider);
+        setProviders((prev) =>
+          prev.map((p) => (p.id === updatedProvider.id ? updatedProvider : p))
+        );
+        // 保存后自动检测连通性
+        handleCheckProvider(updatedProvider.id);
+      }
     } catch (err) {
       console.error('Failed to save provider:', err);
     }
@@ -266,6 +310,35 @@ export default function Settings() {
         />
       ))}
 
+      {/* Add Custom Provider Button */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        marginTop: '1.5rem',
+      }}>
+        <button
+          className="btn btn-secondary"
+          onClick={handleAddCustomProvider}
+          style={{
+            padding: '0.75rem 2rem',
+            fontSize: '0.9rem',
+            border: '1px dashed #3a3a5a',
+            color: '#8888aa',
+          }}
+        >
+          + 添加自定义模型
+        </button>
+      </div>
+
+      {/* User Asset Manager */}
+      <div style={{
+        marginTop: '2rem',
+        paddingTop: '1.5rem',
+        borderTop: '1px solid #2a2a3a',
+      }}>
+        <UserAssetManager />
+      </div>
+
       {/* Bottom Actions */}
       <div style={{
         display: 'flex',
@@ -301,18 +374,18 @@ export default function Settings() {
       </div>
 
       {/* Provider Config Modal */}
-      {modalProvider && (
-        <ProviderConfigModal
-          provider={modalProvider}
-          isOpen={modalOpen}
-          onClose={() => {
-            setModalOpen(false);
-            setModalProvider(null);
-          }}
-          onSave={handleSaveProvider}
-          onCheck={handleCheckProvider}
-        />
-      )}
+      <ProviderConfigModal
+        provider={modalProvider}
+        isOpen={modalOpen}
+        isNew={modalIsNew}
+        onClose={() => {
+          setModalOpen(false);
+          setModalProvider(null);
+          setModalIsNew(false);
+        }}
+        onSave={handleSaveProvider}
+        onCheck={handleCheckProvider}
+      />
 
       {/* Log Viewer */}
       <LogViewer

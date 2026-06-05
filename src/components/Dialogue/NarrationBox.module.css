@@ -4,6 +4,8 @@
   left: 50%;
   transform: translate(-50%, -50%);
   max-width: 70%;
+  max-height: 60%;
+  overflow-y: auto;
   padding: 1.5rem 2.5rem;
   background: rgba(10, 10, 26, 0.85);
   border-radius: 12px;

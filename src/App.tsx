@@ -3,6 +3,7 @@ import MainMenu from './pages/MainMenu';
 import CreateGame from './pages/CreateGame';
 import GenerationProgress from './pages/GenerationProgress';
 import GamePlay from './pages/GamePlay';
+import GameList from './pages/GameList';
 import Settings from './pages/Settings';
 
 function App() {
@@ -13,6 +14,7 @@ function App() {
         <Route path="/create" element={<CreateGame />} />
         <Route path="/generate/:gameId" element={<GenerationProgress />} />
         <Route path="/play/:gameId" element={<GamePlay />} />
+        <Route path="/games" element={<GameList />} />
         <Route path="/settings" element={<Settings />} />
       </Routes>
     </BrowserRouter>

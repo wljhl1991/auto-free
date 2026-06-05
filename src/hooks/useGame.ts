@@ -12,7 +12,8 @@ export interface GameInfo {
 
 export function useGame() {
   return useMemo(() => ({
-    createGame: (input: string, gameType?: string) => invoke<GameInfo>('create_game', { input, gameType: gameType || null }),
+    createGame: (input: string, gameType?: string, useLocalFallback?: boolean) => invoke<GameInfo>('create_game', { input, gameType: gameType || null, useLocalFallback: useLocalFallback ?? null }),
+    createGameFromScript: (scriptJson: string) => invoke<GameInfo>('create_game_from_script', { scriptJson }),
     getRandomOutline: (gameType?: string, themes?: string[]) => invoke<string>('random_outline', { gameType: gameType || null, themes: themes || [] }),
     getGame: (gameId: string) => invoke<GameInfo>('get_game', { gameId }),
     getGameScript: (gameId: string) => invoke<any>('get_game_script', { gameId }),

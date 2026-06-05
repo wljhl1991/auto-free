@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGame } from '../hooks/useGame';
+import { useConfig } from '../hooks/useConfig';
+import ModalitySelectModal from '../components/Config/ModalitySelectModal';
+import type { ModalityAvailability } from '../hooks/useConfig';
 
 const GAME_TYPES = [
   { value: '', label: '自动推断' },
@@ -19,13 +22,20 @@ const EXAMPLE_OUTLINES = [
 
 export default function CreateGame() {
   const navigate = useNavigate();
-  const { createGame, getRandomOutline } = useGame();
+  const { createGame, createGameFromScript, getRandomOutline } = useGame();
+  const { checkAvailableModalities } = useConfig();
 
   const [outline, setOutline] = useState('');
   const [gameType, setGameType] = useState('');
   const [loading, setLoading] = useState(false);
   const [randomLoading, setRandomLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showModalityModal, setShowModalityModal] = useState(false);
+  const [modalityAvailability, setModalityAvailability] = useState<ModalityAvailability | null>(null);
+  const [debugExpanded, setDebugExpanded] = useState(false);
+  const [scriptJson, setScriptJson] = useState('');
+  const [scriptLoading, setScriptLoading] = useState(false);
+  const [scriptError, setScriptError] = useState('');
 
   const handleSubmit = async () => {
     if (!outline.trim()) {
@@ -35,7 +45,30 @@ export default function CreateGame() {
     setLoading(true);
     setError('');
     try {
-      const gameInfo = await createGame(outline, gameType || undefined);
+      const availability = await checkAvailableModalities();
+      const hasAnyMissing = !availability.text || !availability.image || !availability.video || !availability.music || !availability.voice;
+
+      if (hasAnyMissing) {
+        setModalityAvailability(availability);
+        setShowModalityModal(true);
+        setLoading(false);
+        return;
+      }
+
+      // All modalities available, proceed directly
+      await doCreateGame(true);
+    } catch (e: any) {
+      const msg = typeof e === 'string' ? e : (e?.message || '检测服务失败，请重试');
+      setError(msg);
+      setLoading(false);
+    }
+  };
+
+  const doCreateGame = async (useLocalFallback: boolean) => {
+    setLoading(true);
+    setError('');
+    try {
+      const gameInfo = await createGame(outline, gameType || undefined, useLocalFallback);
       navigate(`/generate/${gameInfo.id}`);
     } catch (e: any) {
       const msg = typeof e === 'string' ? e : (e?.message || '创建失败，请重试');
@@ -43,6 +76,15 @@ export default function CreateGame() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleModalityConfirm = (useLocalFallback: boolean) => {
+    setShowModalityModal(false);
+    doCreateGame(useLocalFallback);
+  };
+
+  const handleModalityCancel = () => {
+    setShowModalityModal(false);
   };
 
   const handleRandomOutline = async () => {
@@ -58,6 +100,31 @@ export default function CreateGame() {
       setOutline(randomExample);
     } finally {
       setRandomLoading(false);
+    }
+  };
+
+  const handleCreateFromScript = async () => {
+    if (!scriptJson.trim()) {
+      setScriptError('请粘贴游戏脚本 JSON');
+      return;
+    }
+    // 验证 JSON 格式
+    try {
+      JSON.parse(scriptJson);
+    } catch {
+      setScriptError('JSON 格式无效，请检查输入');
+      return;
+    }
+    setScriptLoading(true);
+    setScriptError('');
+    try {
+      const gameInfo = await createGameFromScript(scriptJson);
+      navigate(`/generate/${gameInfo.id}`);
+    } catch (e: any) {
+      const msg = typeof e === 'string' ? e : (e?.message || '从脚本创建失败');
+      setScriptError(msg);
+    } finally {
+      setScriptLoading(false);
     }
   };
 
@@ -132,6 +199,46 @@ export default function CreateGame() {
       >
         {loading ? '创建中...' : '🚀 开始创建'}
       </button>
+
+      {modalityAvailability && (
+        <ModalitySelectModal
+          availability={modalityAvailability}
+          isOpen={showModalityModal}
+          onConfirm={handleModalityConfirm}
+          onCancel={handleModalityCancel}
+        />
+      )}
+
+      <div className="debug-section">
+        <button
+          className="debug-toggle"
+          onClick={() => setDebugExpanded(!debugExpanded)}
+        >
+          <span className="debug-toggle-icon">{debugExpanded ? '▼' : '▶'}</span>
+          调试模式
+        </button>
+
+        {debugExpanded && (
+          <div className="debug-content">
+            <label className="form-label">游戏脚本 JSON</label>
+            <textarea
+              className="form-textarea debug-textarea"
+              value={scriptJson}
+              onChange={(e) => { setScriptJson(e.target.value); setScriptError(''); }}
+              placeholder='粘贴 GameScript JSON，例如：{"meta":{"title":"...","gameType":"visual_novel",...},"chapters":[...]}'
+              rows={12}
+            />
+            {scriptError && <p className="form-error">{scriptError}</p>}
+            <button
+              className="btn btn-debug"
+              onClick={handleCreateFromScript}
+              disabled={scriptLoading || !scriptJson.trim()}
+            >
+              {scriptLoading ? '创建中...' : '🔧 从脚本创建'}
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

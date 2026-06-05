@@ -9,3 +9,6 @@ app-icon.png
 dev-config.json
 .dev-config.json
 config.dev.json
+
+# 生成目录
+gen/

@@ -248,9 +248,9 @@ impl ConfigManager {
 
     /// 创建默认配置
     fn default_config() -> AppConfig {
-        let config_dir = dirs::data_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("autofree")
+        let config_dir = std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join("gen")
             .join("config");
         AppConfig {
             active_preset_id: "default".to_string(),

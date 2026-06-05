@@ -2,9 +2,21 @@ use tauri::command;
 use crate::config::manager::ConfigManager;
 use crate::config::providers;
 use crate::types::ai_provider::{AppConfig, AIProviderConfig, ConfigPreset, ConnectivityCheck, ProviderStatus};
+use crate::types::asset::AIModality;
 use crate::config::providers::connectivity::ConnectivityChecker;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::RwLock;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModalityAvailability {
+    pub text: bool,
+    pub image: bool,
+    pub video: bool,
+    pub music: bool,
+    pub voice: bool,
+}
 
 #[command]
 pub async fn get_config(
@@ -215,4 +227,26 @@ pub async fn update_provider_models(
     cm.reload_providers(parsed)?;
 
     Ok(())
+}
+
+/// 检测各模态是否有已连接的 AI 服务
+#[command]
+pub async fn check_available_modalities(
+    config_manager: tauri::State<'_, Arc<RwLock<ConfigManager>>>,
+) -> Result<ModalityAvailability, String> {
+    let cm = config_manager.read().await;
+    let config = cm.get_config();
+
+    let check = |modality: &AIModality| -> bool {
+        config.providers.iter()
+            .any(|p| p.modality.contains(modality) && p.status == ProviderStatus::Connected)
+    };
+
+    Ok(ModalityAvailability {
+        text: check(&AIModality::Text),
+        image: check(&AIModality::Image),
+        video: check(&AIModality::Video),
+        music: check(&AIModality::Music),
+        voice: check(&AIModality::Voice),
+    })
 }

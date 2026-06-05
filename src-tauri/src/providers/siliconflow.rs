@@ -6,12 +6,58 @@ use crate::types::ai_provider::{AIProviderConfig, ConnectivityCheck, Connectivit
 use reqwest::Client;
 use serde::{Serialize, Deserialize};
 use std::path::PathBuf;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, SystemTime, UNIX_EPOCH, Instant};
 
 const MAX_RETRIES: u32 = 3;
 const DEFAULT_ENDPOINT: &str = "https://api.siliconflow.cn/v1/images/generations";
 const DEFAULT_IMAGE_MODEL: &str = "black-forest-labs/FLUX.1-schnell";
 const DEFAULT_TEXT_MODEL: &str = "deepseek-ai/DeepSeek-V3";
+/// SiliconFlow 免费用户每分钟最大请求数
+const DEFAULT_REQUESTS_PER_MINUTE: u32 = 5;
+
+/// 简单的滑动窗口速率限制器
+struct RateLimiter {
+    /// 窗口内允许的最大请求数
+    max_requests: u32,
+    /// 滑动窗口时长
+    window: Duration,
+    /// 最近请求的时间戳
+    timestamps: Vec<Instant>,
+}
+
+impl RateLimiter {
+    fn new(max_requests: u32, window: Duration) -> Self {
+        Self {
+            max_requests,
+            window,
+            timestamps: Vec::with_capacity(max_requests as usize + 2),
+        }
+    }
+
+    /// 清除过期的请求记录
+    fn prune(&mut self) {
+        let cutoff = Instant::now() - self.window;
+        self.timestamps.retain(|&t| t > cutoff);
+    }
+
+    /// 检查是否可以立即发起请求，返回需要等待的时间
+    fn wait_duration(&mut self) -> Duration {
+        self.prune();
+        if (self.timestamps.len() as u32) < self.max_requests {
+            return Duration::ZERO;
+        }
+        // 需要等到最早的请求过期
+        let earliest = self.timestamps[0];
+        let wait = self.window - (Instant::now() - earliest);
+        wait.max(Duration::ZERO)
+    }
+
+    /// 记录一次请求
+    fn record(&mut self) {
+        self.timestamps.push(Instant::now());
+    }
+}
 
 #[derive(Debug, Serialize)]
 struct ImageGenerationRequest {
@@ -55,6 +101,7 @@ pub struct SiliconFlowProvider {
     default_text_model: String, // reserved for future text generation support
     endpoint: String,
     asset_base_path: PathBuf,
+    rate_limiter: Arc<Mutex<RateLimiter>>,
 }
 
 impl SiliconFlowProvider {
@@ -102,6 +149,10 @@ impl SiliconFlowProvider {
             default_text_model,
             endpoint,
             asset_base_path,
+            rate_limiter: Arc::new(Mutex::new(RateLimiter::new(
+                DEFAULT_REQUESTS_PER_MINUTE,
+                Duration::from_secs(60),
+            ))),
         })
     }
 
@@ -126,13 +177,37 @@ impl SiliconFlowProvider {
 
         let mut last_error = None;
         for attempt in 0..=MAX_RETRIES {
+            // 在每次请求前检查速率限制
+            {
+                let wait = self.rate_limiter.lock().unwrap().wait_duration();
+                if !wait.is_zero() {
+                    log::info!("[SiliconFlow] 速率限制: 等待 {:?}", wait);
+                    tokio::time::sleep(wait).await;
+                }
+            }
+
             if attempt > 0 {
                 tokio::time::sleep(Duration::from_millis(500 * attempt as u64)).await;
             }
 
             match self.send_image_request(&request).await {
                 Ok(image_url) => {
+                    // 记录成功的请求
+                    self.rate_limiter.lock().unwrap().record();
                     return self.download_image(&image_url).await;
+                }
+                Err(ProviderError::QuotaExceeded(msg)) => {
+                    // 429 速率限制：等待后重试
+                    log::warn!("[SiliconFlow] 请求频率超限 (attempt {}/{}): {}", attempt + 1, MAX_RETRIES + 1, msg);
+                    if attempt < MAX_RETRIES {
+                        // 429 重试等待时间：指数退避，基础 10 秒
+                        let backoff = Duration::from_secs(10 * (1 << attempt.min(3)));
+                        log::info!("[SiliconFlow] 等待 {:?} 后重试...", backoff);
+                        tokio::time::sleep(backoff).await;
+                        last_error = Some(ProviderError::QuotaExceeded(msg));
+                        continue;
+                    }
+                    return Err(ProviderError::QuotaExceeded(msg));
                 }
                 Err(e) => {
                     let should_retry = matches!(
@@ -174,6 +249,16 @@ impl SiliconFlowProvider {
             })?;
 
         let status = response.status();
+        // 尝试读取 Retry-After 头（429 响应时可能包含）
+        let retry_after = if status.as_u16() == 429 {
+            response.headers().get("retry-after")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.parse::<u64>().ok())
+                .map(Duration::from_secs)
+        } else {
+            None
+        };
+
         log::info!("[SiliconFlow] 响应状态: {} {}", status.as_u16(), status.canonical_reason().unwrap_or(""));
 
         let body = response.text().await
@@ -202,6 +287,20 @@ impl SiliconFlowProvider {
                     ProviderError::GenerationFailed("响应中没有图片数据".to_string())
                 })
         } else {
+            // 对 429 响应，将 Retry-After 信息附加到错误消息中
+            if status.as_u16() == 429 {
+                let base_msg = serde_json::from_str::<ApiError>(&body)
+                    .ok()
+                    .and_then(|e| e.error)
+                    .and_then(|e| e.message)
+                    .unwrap_or_else(|| body.to_string());
+                let msg = match retry_after {
+                    Some(d) => format!("{} (Retry-After: {}s)", base_msg, d.as_secs()),
+                    None => base_msg,
+                };
+                log::error!("[SiliconFlow] API速率限制: status=429, message={}", msg);
+                return Err(ProviderError::QuotaExceeded(msg));
+            }
             self.handle_error_status(status.as_u16(), &body)
         }
     }

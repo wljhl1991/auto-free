@@ -43,9 +43,9 @@ pub struct CallHistory {
 }
 
 impl CallHistory {
-    /// 创建记录器，文件路径为 data_dir/autofree/logs/call-history.jsonl
+    /// 创建记录器，文件路径为 gen/call-history/call-history.jsonl
     pub fn new(data_dir: &PathBuf) -> Self {
-        let log_dir = data_dir.join("logs");
+        let log_dir = data_dir.join("call-history");
         let _ = std::fs::create_dir_all(&log_dir);
         let file_path = log_dir.join("call-history.jsonl");
         Self {

@@ -69,7 +69,7 @@ impl ProviderFactory {
             "builtin" => {
                 let builtin_assets_path = asset_base_path.join("builtin-assets");
                 let game_assets_path = asset_base_path.join("games");
-                Ok(Box::new(builtin::BuiltinAssetProvider::new(builtin_assets_path, game_assets_path)))
+                Ok(Box::new(builtin::BuiltinAssetProvider::new(builtin_assets_path, game_assets_path, asset_base_path.to_path_buf())))
             }
             "deepseek" => {
                 Ok(Box::new(deepseek::DeepSeekProvider::new(config, asset_base_path)?))

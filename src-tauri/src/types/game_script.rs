@@ -110,6 +110,7 @@ pub enum AssetStatus {
     Ready,
     Failed,
     Fallback,
+    Skipped,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

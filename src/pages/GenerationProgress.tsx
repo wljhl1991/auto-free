@@ -277,9 +277,11 @@ export default function GenerationProgress() {
 
   return (
     <div className="page generation-progress">
-      <button className="btn btn-back" onClick={() => navigate('/')}>
-        ← 返回
-      </button>
+      <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <button className="btn btn-back" onClick={() => navigate('/')}>
+          ← 返回主菜单
+        </button>
+      </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
         <h2 className="page-title" style={{ marginBottom: 0 }}>正在生成游戏：{gameTitle || '加载中...'}</h2>
@@ -288,6 +290,14 @@ export default function GenerationProgress() {
           任务管理
         </button>
       </div>
+
+      {/* 后台生成提示 */}
+      {!firstChapterReady && (
+        <div className="background-generation-hint" style={{ marginBottom: '0.75rem' }}>
+          <span className="hint-icon">💡</span>
+          生成任务在后台运行，离开此页面不会中断生成
+        </div>
+      )}
 
       <div className="overall-progress">
         <div className="overall-progress-header">

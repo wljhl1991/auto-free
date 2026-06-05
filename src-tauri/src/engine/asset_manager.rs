@@ -189,8 +189,8 @@ impl BuiltinAssetRegistry {
 
 /// 资源管理器 — 管理本地资源存储和缓存
 pub struct AssetManager {
-    base_path: PathBuf,  // ~/autofree/
-    cache_path: PathBuf, // ~/autofree/cache/
+    base_path: PathBuf,  // gen/
+    cache_path: PathBuf, // gen/cache/
 }
 
 impl AssetManager {

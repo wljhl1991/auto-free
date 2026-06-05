@@ -1,6 +1,14 @@
 import { useMemo } from 'react';
 import { invoke } from '../adapters/tauri';
 
+export interface ModalityAvailability {
+  text: boolean;
+  image: boolean;
+  video: boolean;
+  music: boolean;
+  voice: boolean;
+}
+
 export function useConfig() {
   return useMemo(() => ({
     getConfig: () => invoke<any>('get_config'),
@@ -11,6 +19,7 @@ export function useConfig() {
     updateProvider: (provider: any) => invoke<void>('update_provider', { provider }),
     checkProvider: (providerId: string) => invoke<any>('check_provider', { providerId }),
     checkAllProviders: () => invoke<any[]>('check_all_providers'),
+    checkAvailableModalities: () => invoke<ModalityAvailability>('check_available_modalities'),
     exportConfig: () => invoke<string>('export_config'),
     importConfig: (configJson: string) => invoke<void>('import_config', { configJson }),
     saveDevConfig: () => invoke<void>('save_dev_config'),

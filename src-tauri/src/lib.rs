@@ -9,17 +9,27 @@ use std::path::PathBuf;
 use tokio::sync::RwLock;
 use tauri::Manager;
 
-use commands::{game, generation, asset, logs};
+use commands::{game, generation, asset, logs, user_asset};
 use commands::config as cmd_config;
 use config::manager::ConfigManager;
 use engine::asset_manager::AssetManager;
 use engine::pipeline::GenerationPipeline;
 
+fn get_gen_base_path() -> PathBuf {
+    std::env::current_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join("gen")
+}
+
+fn ensure_gen_dirs(base_path: &PathBuf) {
+    let subdirs = ["logs", "games", "config", "cache", "exports", "user-assets", "ai-responses", "call-history"];
+    for dir in &subdirs {
+        let _ = std::fs::create_dir_all(base_path.join(dir));
+    }
+}
+
 fn init_logging() {
-    let log_dir = dirs::data_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("autofree")
-        .join("logs");
+    let log_dir = get_gen_base_path().join("logs");
     let _ = std::fs::create_dir_all(&log_dir);
     let log_file = log_dir.join("autofree.log");
 
@@ -50,9 +60,8 @@ fn init_logging() {
 pub fn run() {
     init_logging();
 
-    let base_path = dirs::data_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("autofree");
+    let base_path = get_gen_base_path();
+    ensure_gen_dirs(&base_path);
 
     let config_dir = base_path.join("config");
 
@@ -65,7 +74,12 @@ pub fn run() {
         eprintln!("Warning: Failed to load dev config: {}", e);
     }
 
-    let asset_manager = AssetManager::new(base_path);
+    let asset_manager = AssetManager::new(base_path.clone());
+
+    // 确保 user-assets 目录存在
+    if let Err(e) = crate::commands::user_asset::ensure_user_assets_dirs(&base_path) {
+        eprintln!("Warning: Failed to create user-assets dirs: {}", e);
+    }
 
     let config_manager_arc = Arc::new(RwLock::new(config_manager));
     let asset_manager_arc = Arc::new(asset_manager);
@@ -88,6 +102,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             game::create_game,
+            game::create_game_from_script,
             game::random_outline,
             game::get_game,
             game::get_game_script,
@@ -97,6 +112,7 @@ pub fn run() {
             game::load_save,
             game::list_saves,
             generation::get_generation_status,
+            generation::get_active_generations,
             generation::regenerate_asset,
             generation::regenerate_asset_candidates,
             generation::export_game,
@@ -113,8 +129,13 @@ pub fn run() {
             cmd_config::save_dev_config,
             cmd_config::load_dev_config,
             cmd_config::update_provider_models,
+            cmd_config::check_available_modalities,
             asset::get_asset_path,
             asset::list_builtin_assets,
+            user_asset::import_user_asset,
+            user_asset::list_user_assets,
+            user_asset::delete_user_asset,
+            user_asset::get_user_asset_path,
             logs::get_log_path,
             logs::read_recent_logs,
             logs::read_call_history,

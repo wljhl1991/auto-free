@@ -1,22 +1,23 @@
 use tauri::command;
 use std::path::PathBuf;
 
+fn get_gen_base_path() -> PathBuf {
+    std::env::current_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join("gen")
+}
+
 /// 获取日志文件路径
 #[command]
 pub async fn get_log_path() -> Result<String, String> {
-    let log_dir = dirs::data_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("autofree")
-        .join("logs");
+    let log_dir = get_gen_base_path().join("logs");
     Ok(log_dir.to_string_lossy().to_string())
 }
 
 /// 读取最近的日志
 #[command]
 pub async fn read_recent_logs(lines: Option<usize>) -> Result<String, String> {
-    let log_path = dirs::data_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("autofree")
+    let log_path = get_gen_base_path()
         .join("logs")
         .join("autofree.log");
 
@@ -36,10 +37,8 @@ pub async fn read_recent_logs(lines: Option<usize>) -> Result<String, String> {
 /// 读取最近的 AI 调用历史
 #[command]
 pub async fn read_call_history(lines: Option<usize>) -> Result<String, String> {
-    let history_path = dirs::data_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("autofree")
-        .join("logs")
+    let history_path = get_gen_base_path()
+        .join("call-history")
         .join("call-history.jsonl");
 
     if !history_path.exists() {

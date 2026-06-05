@@ -5,7 +5,8 @@
   right: 0;
   padding: 1.5rem 2rem;
   background: linear-gradient(to top, rgba(10, 10, 26, 0.95) 0%, rgba(10, 10, 26, 0.8) 70%, transparent 100%);
-  min-height: 30%;
+  max-height: 35%;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
