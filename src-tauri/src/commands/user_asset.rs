@@ -4,6 +4,7 @@ use crate::engine::asset_manager::AssetManager;
 use std::sync::Arc;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
+use base64::Engine;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -110,6 +111,79 @@ pub async fn import_user_asset(
     // Copy file
     std::fs::copy(&source, &dest_path)
         .map_err(|e| format!("Failed to copy file: {}", e))?;
+
+    let entry = UserAssetEntry {
+        id,
+        name,
+        asset_type,
+        file_path: relative_path,
+        tags,
+        created_at: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
+        file_size,
+    };
+
+    // Update registry
+    let mut registry = UserAssetRegistry::load(base_path);
+    registry.assets.push(entry.clone());
+    registry.save(base_path)?;
+
+    Ok(entry)
+}
+
+/// Import a user asset from Base64-encoded file data
+/// This avoids the need for a source file path, which is unavailable in Tauri webview
+#[command]
+pub async fn import_user_asset_from_data(
+    data: String,
+    file_name: String,
+    asset_type: String,
+    name: String,
+    tags: Vec<String>,
+    asset_manager: tauri::State<'_, Arc<AssetManager>>,
+) -> Result<UserAssetEntry, String> {
+    let base_path = asset_manager.base_path();
+    ensure_user_assets_dirs(base_path)?;
+
+    let subdir = asset_type_to_subdir(&asset_type)?;
+
+    // Decode Base64 data
+    let file_data = base64::engine::general_purpose::STANDARD
+        .decode(&data)
+        .map_err(|e| format!("Failed to decode file data: {}", e))?;
+
+    let file_size = file_data.len() as u64;
+
+    // Generate unique ID
+    let id = format!("user_{}", uuid::Uuid::new_v4().to_string().replace("-", "")[..12].to_string());
+
+    // Determine extension from file_name
+    let extension = PathBuf::from(&file_name)
+        .extension()
+        .map(|e| e.to_string_lossy().to_string())
+        .unwrap_or_else(|| match asset_type.as_str() {
+            "image" => "png".to_string(),
+            "music" => "mp3".to_string(),
+            "video" => "mp4".to_string(),
+            "voice" => "mp3".to_string(),
+            _ => "bin".to_string(),
+        });
+
+    let dest_filename = format!("{}.{}", id, extension);
+    let relative_path = format!("{}/{}", subdir, dest_filename);
+    let dest_path = base_path.join("user-assets").join(&relative_path);
+
+    // Ensure parent directory exists
+    if let Some(parent) = dest_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create destination directory: {}", e))?;
+    }
+
+    // Write file data
+    std::fs::write(&dest_path, &file_data)
+        .map_err(|e| format!("Failed to write file: {}", e))?;
 
     let entry = UserAssetEntry {
         id,

@@ -35,7 +35,7 @@ export default function ModalitySelectModal({
       style={{
         position: 'fixed',
         inset: 0,
-        backgroundColor: 'rgba(0,0,0,0.4)',
+        backgroundColor: 'rgba(45, 55, 72, 0.3)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -46,22 +46,22 @@ export default function ModalitySelectModal({
     >
       <div
         style={{
-          backgroundColor: 'rgba(26, 35, 50, 0.95)',
-          border: '1px solid #2a3a4e',
+          backgroundColor: 'rgba(255, 255, 255, 0.95)',
+          border: '1px solid #e8e2d8',
           borderRadius: '16px',
           padding: '2rem',
           width: '90%',
           maxWidth: '480px',
           backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.2)',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.05)',
         }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <h3 style={{ fontSize: '1.2rem', fontWeight: 600, color: '#e8eaed', marginBottom: '0.5rem' }}>
+        <h3 style={{ fontSize: '1.2rem', fontWeight: 600, color: '#2d3748', marginBottom: '0.5rem' }}>
           服务可用性检测
         </h3>
-        <p style={{ fontSize: '0.85rem', color: '#7a8594', marginBottom: '1.25rem' }}>
+        <p style={{ fontSize: '0.85rem', color: '#718096', marginBottom: '1.25rem' }}>
           以下模态服务尚未配置或未连接，可能影响游戏生成效果
         </p>
 
@@ -82,12 +82,12 @@ export default function ModalitySelectModal({
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   padding: '0.6rem 0.8rem',
-                  backgroundColor: available ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)',
-                  border: `1px solid ${available ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}`,
+                  backgroundColor: available ? 'rgba(56,161,105,0.08)' : 'rgba(229,62,62,0.08)',
+                  border: `1px solid ${available ? 'rgba(56,161,105,0.2)' : 'rgba(229,62,62,0.2)'}`,
                   borderRadius: '8px',
                 }}
               >
-                <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem', color: '#e8eaed' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem', color: '#2d3748' }}>
                   <span>{item.icon}</span>
                   {item.label}
                 </span>
@@ -105,7 +105,7 @@ export default function ModalitySelectModal({
 
         {/* Fallback Options */}
         <div style={{ marginBottom: '1.5rem' }}>
-          <p style={{ fontSize: '0.85rem', color: '#b0b8c4', marginBottom: '0.75rem' }}>
+          <p style={{ fontSize: '0.85rem', color: '#4a5568', marginBottom: '0.75rem' }}>
             缺失服务处理方式：
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -115,8 +115,8 @@ export default function ModalitySelectModal({
                 alignItems: 'flex-start',
                 gap: '0.6rem',
                 padding: '0.75rem',
-                backgroundColor: useLocalFallback ? 'rgba(201,102,241,0.1)' : 'rgba(26, 35, 50, 0.6)',
-                border: `1px solid ${useLocalFallback ? 'rgba(201,102,241,0.3)' : '#2a3a4e'}`,
+                backgroundColor: useLocalFallback ? 'rgba(201,102,241,0.1)' : 'rgba(250, 248, 245, 0.6)',
+                border: `1px solid ${useLocalFallback ? 'rgba(201,102,241,0.3)' : '#e8e2d8'}`,
                 borderRadius: '8px',
                 cursor: 'pointer',
                 transition: 'all 0.15s',
@@ -131,10 +131,10 @@ export default function ModalitySelectModal({
                 style={{ marginTop: '2px' }}
               />
               <div>
-                <div style={{ fontSize: '0.9rem', color: '#e8eaed', fontWeight: 500 }}>
+                <div style={{ fontSize: '0.9rem', color: '#2d3748', fontWeight: 500 }}>
                   使用本地资源替代缺失服务
                 </div>
-                <div style={{ fontSize: '0.8rem', color: '#7a8594', marginTop: '0.2rem' }}>
+                <div style={{ fontSize: '0.8rem', color: '#718096', marginTop: '0.2rem' }}>
                   缺失的模态将使用内置默认资源，游戏可正常体验
                 </div>
               </div>
@@ -145,8 +145,8 @@ export default function ModalitySelectModal({
                 alignItems: 'flex-start',
                 gap: '0.6rem',
                 padding: '0.75rem',
-                backgroundColor: !useLocalFallback ? 'rgba(201,102,241,0.1)' : 'rgba(26, 35, 50, 0.6)',
-                border: `1px solid ${!useLocalFallback ? 'rgba(201,102,241,0.3)' : '#2a3a4e'}`,
+                backgroundColor: !useLocalFallback ? 'rgba(201,102,241,0.1)' : 'rgba(250, 248, 245, 0.6)',
+                border: `1px solid ${!useLocalFallback ? 'rgba(201,102,241,0.3)' : '#e8e2d8'}`,
                 borderRadius: '8px',
                 cursor: 'pointer',
                 transition: 'all 0.15s',
@@ -161,10 +161,10 @@ export default function ModalitySelectModal({
                 style={{ marginTop: '2px' }}
               />
               <div>
-                <div style={{ fontSize: '0.9rem', color: '#e8eaed', fontWeight: 500 }}>
+                <div style={{ fontSize: '0.9rem', color: '#2d3748', fontWeight: 500 }}>
                   仅使用已配置的服务
                 </div>
-                <div style={{ fontSize: '0.8rem', color: '#7a8594', marginTop: '0.2rem' }}>
+                <div style={{ fontSize: '0.8rem', color: '#718096', marginTop: '0.2rem' }}>
                   缺失的模态将被跳过，相关内容不会生成
                 </div>
               </div>

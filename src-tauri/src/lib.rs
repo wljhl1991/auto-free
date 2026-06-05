@@ -139,6 +139,7 @@ pub fn run() {
             asset::get_asset_path,
             asset::list_builtin_assets,
             user_asset::import_user_asset,
+            user_asset::import_user_asset_from_data,
             user_asset::list_user_assets,
             user_asset::delete_user_asset,
             user_asset::get_user_asset_path,

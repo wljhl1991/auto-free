@@ -197,7 +197,7 @@ export default function TaskManager({ gameId, isOpen, onClose }: TaskManagerProp
       case 'generating': return '#facc15';
       case 'failed': return '#f87171';
       case 'timeout': return '#fb923c';
-      default: return '#555570';
+      default: return '#718096';
     }
   };
 
@@ -215,33 +215,33 @@ export default function TaskManager({ gameId, isOpen, onClose }: TaskManagerProp
   return (
     <div style={{
       position: 'fixed', inset: 0,
-      backgroundColor: 'rgba(0,0,0,0.4)',
+      backgroundColor: 'rgba(45, 55, 72, 0.3)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       zIndex: 1000,
       backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)',
     }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div style={{
-        backgroundColor: 'rgba(26, 35, 50, 0.95)', border: '1px solid #2a3a4e',
+        backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #e8e2d8',
         borderRadius: '16px', padding: '1.5rem',
         width: '90%', maxWidth: '700px', maxHeight: '80vh',
         display: 'flex', flexDirection: 'column',
         backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
-        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.2)',
+        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.05)',
       }} onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-          <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#e8eaed' }}>任务管理</h3>
-          <button style={{ background: 'none', border: 'none', color: '#5a6577', fontSize: '1.2rem', cursor: 'pointer' }} onClick={onClose}>✕</button>
+          <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#2d3748' }}>任务管理</h3>
+          <button style={{ background: 'none', border: 'none', color: '#718096', fontSize: '1.2rem', cursor: 'pointer' }} onClick={onClose}>✕</button>
         </div>
 
         {/* Stats */}
         <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '0.85rem', color: '#b0b8c4' }}>总计: {stats.total}</span>
+          <span style={{ fontSize: '0.85rem', color: '#4a5568' }}>总计: {stats.total}</span>
           <span style={{ fontSize: '0.85rem', color: '#4ade80' }}>就绪: {stats.ready}</span>
           <span style={{ fontSize: '0.85rem', color: '#facc15' }}>生成中: {stats.generating}</span>
           <span style={{ fontSize: '0.85rem', color: '#f87171' }}>失败: {stats.failed}</span>
           <span style={{ fontSize: '0.85rem', color: '#fb923c' }}>超时: {stats.timeout}</span>
-          <span style={{ fontSize: '0.85rem', color: '#5a6577' }}>等待: {stats.pending}</span>
+          <span style={{ fontSize: '0.85rem', color: '#718096' }}>等待: {stats.pending}</span>
         </div>
 
         {/* Filter */}
@@ -258,15 +258,15 @@ export default function TaskManager({ gameId, isOpen, onClose }: TaskManagerProp
         {/* Task List */}
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {filtered.length === 0 ? (
-            <p style={{ color: '#5a6577', textAlign: 'center', padding: '2rem' }}>暂无任务</p>
+            <p style={{ color: '#718096', textAlign: 'center', padding: '2rem' }}>暂无任务</p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               {filtered.map(task => (
                 <div key={`${task.chapterId}_${task.assetType}`}
                   style={{
                     display: 'flex', alignItems: 'center', gap: '0.75rem',
-                    padding: '0.75rem', backgroundColor: 'rgba(26, 35, 50, 0.8)',
-                    border: '1px solid #2a3a4e', borderRadius: '10px',
+                    padding: '0.75rem', backgroundColor: 'rgba(250, 248, 245, 0.8)',
+                    border: '1px solid #e8e2d8', borderRadius: '10px',
                   }}>
                   <span style={{
                     width: '8px', height: '8px', borderRadius: '50%',
@@ -274,9 +274,9 @@ export default function TaskManager({ gameId, isOpen, onClose }: TaskManagerProp
                     flexShrink: 0,
                   }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: '0.9rem', color: '#e8eaed' }}>
+                    <div style={{ fontSize: '0.9rem', color: '#2d3748' }}>
                       {ASSET_LABELS[task.assetType] || task.assetType}
-                      {task.chapterTitle && <span style={{ color: '#5a6577', marginLeft: '0.5rem' }}>- {task.chapterTitle}</span>}
+                      {task.chapterTitle && <span style={{ color: '#718096', marginLeft: '0.5rem' }}>- {task.chapterTitle}</span>}
                     </div>
                     {task.errorMessage && (
                       <div style={{ fontSize: '0.8rem', color: '#f87171', marginTop: '0.25rem' }}>{task.errorMessage}</div>

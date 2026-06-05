@@ -8,7 +8,7 @@
 .defaultBg {
   position: absolute;
   inset: 0;
-  background: linear-gradient(160deg, #0f1419 0%, #1a2332 40%, #0f1419 100%);
+  background: linear-gradient(160deg, #1a202c 0%, #2d3748 40%, #1a202c 100%);
 }
 
 .bgImage {

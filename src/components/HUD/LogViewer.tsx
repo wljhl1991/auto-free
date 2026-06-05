@@ -39,22 +39,22 @@ export default function LogViewer({ isOpen, onClose }: LogViewerProps) {
   return (
     <div style={{
       position: 'fixed', inset: 0,
-      backgroundColor: 'rgba(0,0,0,0.4)',
+      backgroundColor: 'rgba(45, 55, 72, 0.3)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       zIndex: 1000,
       backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)',
     }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div style={{
-        backgroundColor: 'rgba(26, 35, 50, 0.95)', border: '1px solid #2a3a4e',
+        backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #e8e2d8',
         borderRadius: '16px', padding: '1.5rem',
         width: '90%', maxWidth: '800px', maxHeight: '80vh',
         display: 'flex', flexDirection: 'column',
         backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
-        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.2)',
+        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.05)',
       }}>
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-          <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#e8eaed' }}>
+          <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#2d3748' }}>
             日志查看器
           </h3>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -79,12 +79,12 @@ export default function LogViewer({ isOpen, onClose }: LogViewerProps) {
         {/* Log Content */}
         <div style={{
           flex: 1, overflow: 'auto',
-          backgroundColor: 'rgba(15, 20, 25, 0.8)', borderRadius: '10px',
+          backgroundColor: 'rgba(250, 248, 245, 0.8)', borderRadius: '10px',
           padding: '1rem', minHeight: '300px', maxHeight: '60vh',
         }}>
           <pre style={{
             margin: 0, fontSize: '0.8rem', fontFamily: 'monospace',
-            color: '#b0b8c4', whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+            color: '#4a5568', whiteSpace: 'pre-wrap', wordBreak: 'break-all',
             lineHeight: 1.5,
           }}>
             {logs}

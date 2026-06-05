@@ -15,6 +15,8 @@ export function useUserAsset() {
   return useMemo(() => ({
     importUserAsset: (sourcePath: string, assetType: string, name: string, tags: string[]) =>
       invoke<UserAssetEntry>('import_user_asset', { sourcePath, assetType, name, tags }),
+    importUserAssetFromData: (data: string, fileName: string, assetType: string, name: string, tags: string[]) =>
+      invoke<UserAssetEntry>('import_user_asset_from_data', { data, fileName, assetType, name, tags }),
     listUserAssets: (assetType?: string) =>
       invoke<UserAssetEntry[]>('list_user_assets', { assetType: assetType || null }),
     deleteUserAsset: (assetId: string) =>

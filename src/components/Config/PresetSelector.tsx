@@ -12,7 +12,7 @@ export default function PresetSelector({ presets, activePresetId, onSelect }: Pr
       <h3 style={{
         fontSize: '1.1rem',
         fontWeight: 600,
-        color: '#e8eaed',
+        color: '#2d3748',
         marginBottom: '1rem',
       }}>
         预设方案
@@ -34,22 +34,22 @@ export default function PresetSelector({ presets, activePresetId, onSelect }: Pr
               style={{
                 padding: '1.2rem',
                 borderRadius: '10px',
-                border: isActive ? '2px solid #c9a962' : '1px solid #2a3a4e',
-                backgroundColor: isActive ? 'rgba(201, 169, 98, 0.08)' : 'rgba(26, 35, 50, 0.9)',
+                border: isActive ? '2px solid #e07a2f' : '1px solid #e8e2d8',
+                backgroundColor: isActive ? 'rgba(224, 122, 47, 0.08)' : 'rgba(255, 255, 255, 0.9)',
                 cursor: 'pointer',
                 transition: 'all 0.2s ease',
                 position: 'relative',
               }}
               onMouseEnter={(e) => {
                 if (!isActive) {
-                  e.currentTarget.style.borderColor = '#c9a962';
-                  e.currentTarget.style.backgroundColor = 'rgba(42, 58, 78, 0.9)';
+                  e.currentTarget.style.borderColor = '#e07a2f';
+                  e.currentTarget.style.backgroundColor = 'rgba(250, 248, 245, 0.9)';
                 }
               }}
               onMouseLeave={(e) => {
                 if (!isActive) {
-                  e.currentTarget.style.borderColor = '#2a3a4e';
-                  e.currentTarget.style.backgroundColor = 'rgba(26, 35, 50, 0.9)';
+                  e.currentTarget.style.borderColor = '#e8e2d8';
+                  e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
                 }
               }}
             >
@@ -62,7 +62,7 @@ export default function PresetSelector({ presets, activePresetId, onSelect }: Pr
                 <span style={{
                   fontSize: '1rem',
                   fontWeight: 600,
-                  color: isActive ? '#c9a962' : '#e8eaed',
+                  color: isActive ? '#e07a2f' : '#2d3748',
                 }}>
                   {preset.name}
                 </span>
@@ -93,7 +93,7 @@ export default function PresetSelector({ presets, activePresetId, onSelect }: Pr
               </div>
               <p style={{
                 fontSize: '0.8rem',
-                color: '#7a8594',
+                color: '#718096',
                 marginBottom: '0.75rem',
                 lineHeight: 1.5,
               }}>
@@ -104,10 +104,10 @@ export default function PresetSelector({ presets, activePresetId, onSelect }: Pr
                 alignItems: 'center',
                 gap: '0.75rem',
                 fontSize: '0.75rem',
-                color: '#5a6577',
+                color: '#718096',
               }}>
                 <span>{preset.vendorCount} 个服务商</span>
-                <span style={{ color: '#d1d5db' }}>|</span>
+                <span style={{ color: '#718096' }}>|</span>
                 <span>
                   {preset.providers.map((p) => p.providerId).join('、')}
                 </span>

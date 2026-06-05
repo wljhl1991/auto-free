@@ -294,12 +294,7 @@ function GamePlay() {
         return;
       }
       if (e.key === ' ' || e.key === 'Enter') {
-        if (currentEvent?.type === 'narration' || currentEvent?.type === 'dialogue') {
-          // 键盘操作与点击行为一致：直接 advance
-          // （如果正在打字，NarrationBox/DialogueBox 内部不会处理键盘事件，
-          //   所以这里直接 advance 即可——advance 会跳到下一句，
-          //   但如果用户期望的是先完成打字再 advance，需要额外状态追踪。
-          //   目前保持简单：键盘直接 advance）
+        if (currentEvent?.type === 'narration' || currentEvent?.type === 'dialogue' || currentEvent?.type === 'cg') {
           executorRef.current?.advance();
         }
       }
@@ -327,10 +322,10 @@ function GamePlay() {
   }, [showMenu, showInventory, showStats, showGallery, showProgress, chapterTransition, gameEnded]);
 
   const handleClick = useCallback(() => {
-    // 点击空白区域时，如果当前是 narration/dialogue，也执行 advance
+    // 点击空白区域时，如果当前是 narration/dialogue/cg，也执行 advance
     // 但 NarrationBox/DialogueBox 会 stopPropagation，所以只有点击它们以外的区域才会触发
     if (showMenu || showInventory || showStats || showGallery || showProgress || chapterTransition || gameEnded) return;
-    if (currentEvent?.type === 'narration' || currentEvent?.type === 'dialogue') {
+    if (currentEvent?.type === 'narration' || currentEvent?.type === 'dialogue' || currentEvent?.type === 'cg') {
       executorRef.current?.advance();
     }
   }, [currentEvent, showMenu, showInventory, showStats, showProgress, chapterTransition, gameEnded]);
@@ -615,12 +610,12 @@ function GamePlay() {
             left: contextMenu.x,
             top: contextMenu.y,
             zIndex: 1200,
-            backgroundColor: '#1e1e2e',
-            border: '1px solid #2a2a3a',
+            backgroundColor: '#faf8f5',
+            border: '1px solid #e8e2d8',
             borderRadius: '8px',
             padding: '0.4rem 0',
             minWidth: '160px',
-            boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
           }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -630,15 +625,15 @@ function GamePlay() {
               width: '100%',
               padding: '0.5rem 1rem',
               fontSize: '0.9rem',
-              color: '#e0e0f0',
+              color: '#2d3748',
               background: 'none',
               border: 'none',
               textAlign: 'left',
               cursor: 'pointer',
             }}
             onClick={handleMenuRegenerate}
-            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(74, 144, 217, 0.15)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'none'; }}
+            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(43, 108, 176, 0.1)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
           >
             ↻ 重新生成
           </button>
@@ -649,15 +644,15 @@ function GamePlay() {
                 width: '100%',
                 padding: '0.5rem 1rem',
                 fontSize: '0.9rem',
-                color: '#e0e0f0',
+                color: '#2d3748',
                 background: 'none',
                 border: 'none',
                 textAlign: 'left',
                 cursor: 'pointer',
               }}
               onClick={handleMenuCandidates}
-              onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(74, 144, 217, 0.15)'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'none'; }}
+              onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(43, 108, 176, 0.1)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
             >
               ◈ 多候选生成
             </button>
@@ -668,15 +663,15 @@ function GamePlay() {
               width: '100%',
               padding: '0.5rem 1rem',
               fontSize: '0.9rem',
-              color: '#e0e0f0',
+              color: '#2d3748',
               background: 'none',
               border: 'none',
               textAlign: 'left',
               cursor: 'pointer',
             }}
             onClick={handleMenuEditPrompt}
-            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(74, 144, 217, 0.15)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'none'; }}
+            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(43, 108, 176, 0.1)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
           >
             ✎ 编辑 Prompt
           </button>

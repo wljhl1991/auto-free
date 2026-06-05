@@ -60,32 +60,27 @@ export default function UserAssetManager() {
         setImporting(true);
         setError(null);
 
-        // In Tauri, we need the file path. Use the web API to read the file,
-        // then pass the path via a workaround. For Tauri, we use the file dialog approach.
-        // Since we can't get the full path from web API, we'll use a Tauri command
-        // that accepts the file path directly. The user needs to input the path manually
-        // or we use a drag-and-drop approach.
-
-        // For now, we'll use the file name as a hint and read the file as bytes,
-        // then save it via a different approach. But the backend expects a source_path.
-        // The best approach for Tauri is to use the dialog plugin.
-        // Since we don't have the dialog plugin, we'll prompt the user for the path.
-
         const name = file.name.replace(/\.[^/.]+$/, '');
         const tags: string[] = [];
 
-        // Try to get the file path - in Tauri webview, file inputs give us File objects
-        // but not the full path. We need to use a different approach.
-        // We'll use the file's name and try to construct a reasonable path,
-        // but this is a limitation. The proper solution is tauri-plugin-dialog.
-        // For now, we'll use a prompt as a fallback.
-        const sourcePath = prompt('请输入文件的完整路径：', file.name);
-        if (!sourcePath) {
-          setImporting(false);
-          return;
-        }
+        // Read file as Base64 data URL, then extract the Base64 payload
+        const base64Data = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = reader.result as string;
+            // data URL format: "data:<mime>;base64,<payload>"
+            const base64 = result.split(',')[1];
+            if (base64) {
+              resolve(base64);
+            } else {
+              reject(new Error('Failed to read file data'));
+            }
+          };
+          reader.onerror = () => reject(new Error('Failed to read file'));
+          reader.readAsDataURL(file);
+        });
 
-        await userAsset.importUserAsset(sourcePath, activeTab, name, tags);
+        await userAsset.importUserAssetFromData(base64Data, file.name, activeTab, name, tags);
         await loadAssets();
       } catch (err) {
         console.error('Failed to import asset:', err);
@@ -114,14 +109,14 @@ export default function UserAssetManager() {
       <h3 style={{
         fontSize: '1.3rem',
         fontWeight: 600,
-        color: '#e8eaed',
+        color: '#2d3748',
         marginBottom: '1rem',
       }}>
         资源管理
       </h3>
       <p style={{
         fontSize: '0.85rem',
-        color: '#7a8594',
+        color: '#718096',
         marginBottom: '1rem',
       }}>
         导入自定义资源作为全局替换，当 AI 生成失败时将优先使用这些资源
@@ -132,7 +127,7 @@ export default function UserAssetManager() {
         display: 'flex',
         gap: '0.5rem',
         marginBottom: '1rem',
-        borderBottom: '1px solid #2a3a4e',
+        borderBottom: '1px solid #e8e2d8',
         paddingBottom: '0.5rem',
       }}>
         {ASSET_TYPE_TABS.map(tab => (
@@ -143,10 +138,10 @@ export default function UserAssetManager() {
               padding: '0.5rem 1.2rem',
               fontSize: '0.9rem',
               fontFamily: 'inherit',
-              background: activeTab === tab.key ? 'rgba(201, 169, 98, 0.1)' : 'transparent',
-              color: activeTab === tab.key ? '#c9a962' : '#7a8594',
+              background: activeTab === tab.key ? 'rgba(224, 122, 47, 0.1)' : 'transparent',
+              color: activeTab === tab.key ? '#e07a2f' : '#718096',
               border: 'none',
-              borderBottom: activeTab === tab.key ? '2px solid #c9a962' : '2px solid transparent',
+              borderBottom: activeTab === tab.key ? '2px solid #e07a2f' : '2px solid transparent',
               cursor: 'pointer',
               transition: 'all 0.2s ease',
               borderRadius: '4px 4px 0 0',
@@ -166,8 +161,8 @@ export default function UserAssetManager() {
           style={{
             padding: '0.6rem 1.5rem',
             fontSize: '0.9rem',
-            border: '1px dashed rgba(201, 169, 98, 0.3)',
-            color: importing ? '#5a6577' : '#7a8594',
+            border: '1px dashed rgba(224, 122, 47, 0.3)',
+            color: importing ? '#718096' : '#718096',
           }}
         >
           {importing ? '导入中...' : '+ 导入资源'}
@@ -211,7 +206,7 @@ export default function UserAssetManager() {
           display: 'flex',
           justifyContent: 'center',
           padding: '2rem 0',
-          color: '#5a6577',
+          color: '#718096',
         }}>
           加载中...
         </div>
@@ -222,7 +217,7 @@ export default function UserAssetManager() {
           alignItems: 'center',
           gap: '0.75rem',
           padding: '2.5rem 0',
-          color: '#5a6577',
+          color: '#718096',
         }}>
           <span style={{ fontSize: '2rem' }}>📂</span>
           <span style={{ fontStyle: 'italic' }}>暂无导入的{ASSET_TYPE_TABS.find(t => t.key === activeTab)?.label}资源</span>
@@ -238,20 +233,20 @@ export default function UserAssetManager() {
               key={asset.id}
               style={{
                 padding: '0.75rem',
-                backgroundColor: 'rgba(26, 35, 50, 0.9)',
-                border: '1px solid #2a3a4e',
+                backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                border: '1px solid #e8e2d8',
                 borderRadius: '10px',
                 transition: 'border-color 0.2s ease',
                 position: 'relative',
               }}
-              onMouseEnter={e => (e.currentTarget.style.borderColor = '#c9a962')}
-              onMouseLeave={e => (e.currentTarget.style.borderColor = '#2a3a4e')}
+              onMouseEnter={e => (e.currentTarget.style.borderColor = '#e07a2f')}
+              onMouseLeave={e => (e.currentTarget.style.borderColor = '#e8e2d8')}
             >
               {/* Preview */}
               <div style={{
                 width: '100%',
                 height: '120px',
-                backgroundColor: 'rgba(201, 169, 98, 0.05)',
+                backgroundColor: 'rgba(224, 122, 47, 0.05)',
                 borderRadius: '6px',
                 marginBottom: '0.5rem',
                 overflow: 'hidden',
@@ -266,7 +261,7 @@ export default function UserAssetManager() {
               <div style={{
                 fontSize: '0.85rem',
                 fontWeight: 600,
-                color: '#e8eaed',
+                color: '#2d3748',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
@@ -276,7 +271,7 @@ export default function UserAssetManager() {
               </div>
               <div style={{
                 fontSize: '0.75rem',
-                color: '#5a6577',
+                color: '#718096',
                 display: 'flex',
                 justifyContent: 'space-between',
               }}>
@@ -298,10 +293,10 @@ export default function UserAssetManager() {
                       style={{
                         padding: '0.1rem 0.5rem',
                         fontSize: '0.7rem',
-                        backgroundColor: 'rgba(201, 169, 98, 0.08)',
-                        border: '1px solid rgba(201, 169, 98, 0.2)',
+                        backgroundColor: 'rgba(224, 122, 47, 0.08)',
+                        border: '1px solid rgba(224, 122, 47, 0.2)',
                         borderRadius: '10px',
-                        color: '#c9a962',
+                        color: '#e07a2f',
                       }}
                     >
                       {tag}
