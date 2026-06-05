@@ -9,7 +9,7 @@ export type SceneEventType =
   | { type: 'choice'; prompt: string; options: { text: string; enabled: boolean; visible: boolean }[] }
   | { type: 'cg'; videoUrl: string; duration?: number; skipAllowed: boolean }
   | { type: 'scene_transition'; targetSceneId: string; transitionType: string; duration?: number }
-  | { type: 'scene_change'; backgroundImage?: string; backgroundVideo?: string; bgmUrl?: string }
+  | { type: 'scene_change'; backgroundImage?: string; backgroundVideo?: string; bgmUrl?: string; bgAssetRefId?: string }
   | { type: 'action'; actionType: string; params: Record<string, any> }
   | { type: 'chapter_end'; chapterId: string; chapterTitle: string; nextChapterId?: string; nextChapterTitle?: string }
   | { type: 'game_end'; finalChapterTitle: string };
@@ -46,23 +46,23 @@ export class SceneExecutor {
   }
 
   // 开始游戏
-  start() {
+  async start() {
     const firstChapter = this.script.chapters[0];
     if (!firstChapter) return;
-    this.enterChapter(firstChapter.id);
+    await this.enterChapter(firstChapter.id);
   }
 
   // 进入章节
-  enterChapter(chapterId: string) {
+  async enterChapter(chapterId: string) {
     this.currentChapterId = chapterId;
     const chapter = this.script.chapters.find(c => c.id === chapterId);
     if (!chapter) return;
     this.stateManager.setCurrentChapterId(chapterId);
-    this.enterScene(chapter.scenes[0]?.id);
+    await this.enterScene(chapter.scenes[0]?.id);
   }
 
   // 进入场景
-  enterScene(sceneId: string) {
+  async enterScene(sceneId: string) {
     if (!sceneId) return;
     this.currentSceneId = sceneId;
     const scene = this.findScene(sceneId);
@@ -78,32 +78,48 @@ export class SceneExecutor {
       scene.assets.ambientSound,
       scene.assets.cgAnimation,
     ].filter((ref): ref is NonNullable<typeof ref> => ref != null);
-    this.assetLoader.preloadAssets(assetRefs);
+    await this.assetLoader.preloadAssets(assetRefs);
+
+    // 通过 AssetLoader 解析资源 URL（优先使用已缓存的解析结果）
+    const bgImageRef = scene.assets.backgroundImage;
+    const bgVideoRef = scene.assets.backgroundVideo;
+    const bgmRef = scene.assets.bgm;
+
+    const resolvedBgImage = bgImageRef
+      ? (bgImageRef.url || this.assetLoader.getCachedUrl(bgImageRef.id))
+      : undefined;
+    const resolvedBgVideo = bgVideoRef
+      ? (bgVideoRef.url || this.assetLoader.getCachedUrl(bgVideoRef.id))
+      : undefined;
+    const resolvedBgmUrl = bgmRef
+      ? (bgmRef.url || this.assetLoader.getCachedUrl(bgmRef.id))
+      : undefined;
 
     // 发送场景变更事件（背景图/BGM）
     this.emitEvent({
       type: 'scene_change',
-      backgroundImage: scene.assets.backgroundImage?.url,
-      backgroundVideo: scene.assets.backgroundVideo?.url,
-      bgmUrl: scene.assets.bgm?.url,
+      backgroundImage: resolvedBgImage,
+      backgroundVideo: resolvedBgVideo,
+      bgmUrl: resolvedBgmUrl,
+      bgAssetRefId: bgImageRef?.id,
     });
 
     // 播放 BGM
-    if (scene.assets.bgm?.url) {
-      this.audioEngine.playBgm(scene.assets.bgm.url);
+    if (resolvedBgmUrl) {
+      this.audioEngine.playBgm(resolvedBgmUrl);
     }
 
     // 开始执行场景序列
     if (scene.sequence.length > 0) {
-      this.executeNode(scene.sequence[0].id);
+      await this.executeNode(scene.sequence[0].id);
     } else {
       // 空场景，直接尝试进入下一个场景
-      this.advanceToNextSceneOrChapter();
+      await this.advanceToNextSceneOrChapter();
     }
   }
 
   // 执行节点
-  executeNode(nodeId: string) {
+  async executeNode(nodeId: string) {
     this.currentNodeId = nodeId;
     const scene = this.findScene(this.currentSceneId!);
     if (!scene) return;
@@ -114,20 +130,24 @@ export class SceneExecutor {
     this.stateManager.setCurrentNodeId(nodeId);
 
     switch (node.type) {
-      case 'narration':
-        this.emitEvent({ type: 'narration', text: node.text, voiceUrl: node.voiceAsset?.url, voiceAssetRefId: node.voiceAsset?.id });
+      case 'narration': {
+        const voiceUrl = node.voiceAsset?.url || this.assetLoader.getCachedUrl(node.voiceAsset?.id ?? '');
+        this.emitEvent({ type: 'narration', text: node.text, voiceUrl, voiceAssetRefId: node.voiceAsset?.id });
         break;
-      case 'dialogue':
+      }
+      case 'dialogue': {
+        const voiceUrl = node.voiceAsset?.url || this.assetLoader.getCachedUrl(node.voiceAsset?.id ?? '');
         this.emitEvent({
           type: 'dialogue',
           speaker: node.speaker,
           text: node.text,
-          avatarUrl: node.speakerAvatar?.url,
+          avatarUrl: node.speakerAvatar?.url || this.assetLoader.getCachedUrl(node.speakerAvatar?.id ?? ''),
           emotion: node.emotion,
-          voiceUrl: node.voiceAsset?.url,
+          voiceUrl,
           voiceAssetRefId: node.voiceAsset?.id,
         });
         break;
+      }
       case 'choice':
         this.handleChoiceNode(node);
         break;
@@ -140,15 +160,16 @@ export class SceneExecutor {
       case 'cg':
         this.emitEvent({ type: 'cg', videoUrl: node.videoAsset.url ?? '', duration: node.duration, skipAllowed: node.skipAllowed });
         break;
-      case 'scene_transition':
+      case 'scene_transition': {
         // 场景转场：先发出事件（用于视觉转场效果），然后自动进入目标场景
         this.emitEvent({ type: 'scene_transition', targetSceneId: node.targetSceneId, transitionType: node.transitionType, duration: node.duration });
         // 延迟进入目标场景，让转场动画有时间播放
         const delay = node.duration ? node.duration * 1000 : 500;
         setTimeout(() => {
-          this.enterScene(node.targetSceneId);
+          void this.enterScene(node.targetSceneId);
         }, delay);
         break;
+      }
     }
   }
 
@@ -163,7 +184,7 @@ export class SceneExecutor {
   }
 
   // 玩家选择后调用
-  onChoiceSelected(optionIndex: number) {
+  async onChoiceSelected(optionIndex: number) {
     const scene = this.findScene(this.currentSceneId!);
     const node = scene?.sequence.find(n => n.id === this.currentNodeId && n.type === 'choice') as ChoiceNode | undefined;
     if (!node || !node.options[optionIndex]) return;
@@ -180,43 +201,43 @@ export class SceneExecutor {
 
     // 跳转到下一个节点
     if (option.nextNodeId) {
-      this.executeNode(option.nextNodeId);
+      await this.executeNode(option.nextNodeId);
     } else {
-      this.advanceToNextNode();
+      await this.advanceToNextNode();
     }
   }
 
   // 推进到下一个节点（旁白/对话/CG完成后调用）
-  advance() {
-    this.advanceToNextNode();
+  async advance() {
+    await this.advanceToNextNode();
   }
 
   // 处理条件节点
-  private handleConditionNode(node: ConditionNode) {
+  private async handleConditionNode(node: ConditionNode) {
     const result = this.evaluateCondition(node.condition);
     const nextNodeId = result ? node.trueBranch : node.falseBranch;
     if (nextNodeId) {
-      this.executeNode(nextNodeId);
+      await this.executeNode(nextNodeId);
     } else {
-      this.advanceToNextNode();
+      await this.advanceToNextNode();
     }
   }
 
   // 处理动作节点
-  private handleActionNode(node: ActionNode) {
+  private async handleActionNode(node: ActionNode) {
     this.applyEffect({ type: node.actionType as Effect['type'], target: node.params.target ?? '', value: node.params.value });
 
     this.emitEvent({ type: 'action', actionType: node.actionType, params: node.params });
 
     if (node.actionType === 'change_scene' && node.params.sceneId) {
-      this.enterScene(node.params.sceneId);
+      await this.enterScene(node.params.sceneId);
       return;
     }
 
     if (node.nextNodeId) {
-      this.executeNode(node.nextNodeId);
+      await this.executeNode(node.nextNodeId);
     } else {
-      this.advanceToNextNode();
+      await this.advanceToNextNode();
     }
   }
 
@@ -284,7 +305,7 @@ export class SceneExecutor {
   }
 
   // 推进到下一个节点
-  private advanceToNextNode() {
+  private async advanceToNextNode() {
     const scene = this.findScene(this.currentSceneId!);
     if (!scene) return;
 
@@ -293,22 +314,22 @@ export class SceneExecutor {
 
     const nextNode = scene.sequence[currentIndex + 1];
     if (nextNode) {
-      this.executeNode(nextNode.id);
+      await this.executeNode(nextNode.id);
     } else {
       // 场景序列结束，尝试进入下一个场景或章节
-      this.advanceToNextSceneOrChapter();
+      await this.advanceToNextSceneOrChapter();
     }
   }
 
   // 场景序列结束后，尝试进入同章节的下一个场景，或触发章节结束
-  private advanceToNextSceneOrChapter() {
+  private async advanceToNextSceneOrChapter() {
     const chapter = this.findChapterBySceneId(this.currentSceneId!);
     if (chapter) {
       const sceneIndex = chapter.scenes.findIndex(s => s.id === this.currentSceneId);
       const nextScene = chapter.scenes[sceneIndex + 1];
       if (nextScene) {
         // 同章节还有下一个场景，自动进入
-        this.enterScene(nextScene.id);
+        await this.enterScene(nextScene.id);
         return;
       }
     }
@@ -348,11 +369,11 @@ export class SceneExecutor {
   }
 
   // 进入下一章（由前端确认后调用）
-  enterNextChapter() {
+  async enterNextChapter() {
     const currentChapterIndex = this.script.chapters.findIndex(c => c.id === this.currentChapterId);
     const nextChapter = this.script.chapters[currentChapterIndex + 1];
     if (nextChapter) {
-      this.enterChapter(nextChapter.id);
+      await this.enterChapter(nextChapter.id);
     }
   }
 

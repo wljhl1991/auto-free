@@ -1483,6 +1483,104 @@ body {
   margin-top: 0.15rem;
 }
 
+/* ===== History Panel ===== */
+.history-panel {
+  background-color: #1e1e2e;
+  border: 1px solid #2a2a3a;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 560px;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.history-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid #2a2a3a;
+}
+
+.history-panel-header h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #e8eaed;
+  margin: 0;
+}
+
+.history-panel-body {
+  padding: 0.75rem 1.25rem 1.25rem;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.history-empty {
+  color: #5a6577;
+  text-align: center;
+  padding: 2rem 0;
+  font-size: 0.9rem;
+}
+
+.history-entry {
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  background-color: rgba(255, 255, 255, 0.03);
+  border-left: 3px solid transparent;
+}
+
+.history-entry-dialogue {
+  border-left-color: #4a9eff;
+}
+
+.history-entry-narration {
+  border-left-color: #c9a962;
+}
+
+.history-entry-choice {
+  border-left-color: #6fcf97;
+}
+
+.history-speaker {
+  font-weight: 600;
+  color: #4a9eff;
+  font-size: 0.85rem;
+  margin-right: 0.5rem;
+}
+
+.history-text {
+  color: #c8ccd0;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.history-narration-text {
+  color: #b0a878;
+  font-style: italic;
+}
+
+.history-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.history-choice-prompt {
+  color: #7a8594;
+  font-size: 0.82rem;
+}
+
+.history-choice-selected {
+  color: #6fcf97;
+  font-size: 0.88rem;
+  font-weight: 500;
+}
+
 /* Settings Tabs */
 .settings-tabs {
   display: flex;

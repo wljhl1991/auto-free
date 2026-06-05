@@ -47,6 +47,10 @@ const STEP_ICONS: Record<string, string> = {
   completed: '🎉',
 };
 
+// 文本生成步骤的权重（占总进度的比例）
+const TEXT_STEP_WEIGHT = 0.4;
+const ASSET_STEP_WEIGHT = 0.6;
+
 function AssetStatusIcon({ status }: { status: 'pending' | 'generating' | 'ready' | 'failed' }) {
   switch (status) {
     case 'ready':
@@ -72,7 +76,7 @@ function SourceBadge({ source }: { source?: string }) {
   );
 }
 
-function ChapterProgressCard({ chapter, isFirst }: { chapter: ChapterProgress; isFirst: boolean }) {
+function ChapterProgressCard({ chapter }: { chapter: ChapterProgress }) {
   const percent = chapter.totalAssets > 0
     ? Math.round((chapter.completedAssets / chapter.totalAssets) * 100)
     : 0;
@@ -82,7 +86,6 @@ function ChapterProgressCard({ chapter, isFirst }: { chapter: ChapterProgress; i
       <div className="chapter-header">
         <h3 className="chapter-title">
           {chapter.chapterTitle}
-          {isFirst && <span className="chapter-first-badge">第一章</span>}
         </h3>
         <span className="chapter-percent">{percent}%</span>
       </div>
@@ -142,6 +145,10 @@ export default function GenerationProgress() {
   const [currentStep, setCurrentStep] = useState<GenerationStepEvent | null>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
 
+  // 使用 ref 跟踪 chapters，避免在 useEffect 闭包中依赖 chapters state
+  const chaptersRef = useRef<ChapterProgress[]>([]);
+  chaptersRef.current = chapters;
+
   const updateChapterProgress = useCallback(
     (chapterId: string, updater: (ch: ChapterProgress) => ChapterProgress) => {
       setChapters(prev =>
@@ -173,6 +180,7 @@ export default function GenerationProgress() {
     return () => unlisteners.forEach(fn => fn());
   }, [gameId]);
 
+  // 问题2修复：移除 chapters 依赖，避免重复注册监听器
   useEffect(() => {
     const unlisteners: (() => void)[] = [];
 
@@ -254,7 +262,12 @@ export default function GenerationProgress() {
     generation.onGenerationComplete((event: any) => {
       const payload = event.payload;
       if (!payload) return;
-      const { chapterId, allChapters } = payload;
+      const { chapterId, allChapters, gameTitle: title } = payload;
+
+      // 问题6修复：从 generation-complete 事件中获取真实标题
+      if (title) {
+        setGameTitle(title);
+      }
 
       if (allChapters) {
         setGenStatus(prev => ({ ...prev, backgroundGenerationActive: false }));
@@ -267,8 +280,9 @@ export default function GenerationProgress() {
         status: 'ready' as const,
       }));
 
-      // 第一章就绪
-      if (chapters.length > 0 && chapters[0].chapterId === chapterId) {
+      // 问题5修复：使用 chaptersRef 代替闭包中的 chapters，确保能正确检测第一章
+      const currentChapters = chaptersRef.current;
+      if (currentChapters.length > 0 && currentChapters[0].chapterId === chapterId) {
         setGenStatus(prev => ({ ...prev, firstChapterReady: true }));
       }
     }).then(unlisten => unlisteners.push(unlisten));
@@ -317,13 +331,15 @@ export default function GenerationProgress() {
     }).then(unlisten => unlisteners.push(unlisten));
 
     return () => unlisteners.forEach(fn => fn());
-  }, [updateChapterProgress, chapters]);
+  }, [updateChapterProgress]); // 问题2修复：移除 chapters 依赖
 
+  // 问题3修复：组件挂载时从后端获取历史步骤和状态
   useEffect(() => {
     if (!gameId) return;
 
     generation.getGenerationStatus(gameId).then((status: any) => {
       if (!status) return;
+      // 问题6修复：从后端状态中获取 gameTitle
       if (status.gameTitle) setGameTitle(status.gameTitle);
       if (status.firstChapterReady !== undefined) {
         setGenStatus(prev => ({
@@ -347,20 +363,33 @@ export default function GenerationProgress() {
           }))
         );
       }
+      // 问题3修复：从后端恢复历史步骤
+      if (status.progressSteps && Array.isArray(status.progressSteps) && status.progressSteps.length > 0) {
+        const steps: GenerationStepEvent[] = status.progressSteps.map((s: any) => ({
+          gameId: status.gameId,
+          step: s.step,
+          detail: s.detail,
+          modelName: s.modelName,
+          timestamp: s.timestamp,
+        }));
+        setProgressSteps(steps);
+        setCurrentStep(steps[steps.length - 1]);
+      }
     }).catch(() => {
       // status may not be available yet
     });
   }, [gameId]);
 
+  // 问题1修复：overallProgress 综合文本生成步骤和资源生成进度
   useEffect(() => {
-    if (chapters.length === 0) {
-      setOverallProgress(0);
-      return;
-    }
-    const total = chapters.reduce((sum, ch) => sum + ch.totalAssets, 0);
-    const completed = chapters.reduce((sum, ch) => sum + ch.completedAssets, 0);
-    setOverallProgress(total > 0 ? Math.round((completed / total) * 100) : 0);
-  }, [chapters]);
+    // 计算文本生成步骤进度
+    const textStepProgress = computeTextStepProgress(progressSteps);
+    // 计算资源生成进度
+    const assetProgress = computeAssetProgress(chapters);
+    // 综合进度
+    const combined = Math.round(textStepProgress * TEXT_STEP_WEIGHT + assetProgress * ASSET_STEP_WEIGHT);
+    setOverallProgress(combined);
+  }, [progressSteps, chapters]);
 
   const firstChapterReady = chapters.length > 0 && (chapters[0].status === 'ready' || chapters[0].status === 'partial' || genStatus.firstChapterReady);
   const hasRemainingChapters = chapters.length > 1;
@@ -459,11 +488,10 @@ export default function GenerationProgress() {
       )}
 
       <div className="chapter-list">
-        {chapters.map((chapter, index) => (
+        {chapters.map((chapter) => (
           <ChapterProgressCard
             key={chapter.chapterId}
             chapter={chapter}
-            isFirst={index === 0}
           />
         ))}
       </div>
@@ -514,4 +542,47 @@ export default function GenerationProgress() {
       <TaskManager gameId={gameId || ''} isOpen={taskManagerOpen} onClose={() => setTaskManagerOpen(false)} />
     </div>
   );
+}
+
+/**
+ * 问题1修复：根据文本生成步骤计算进度百分比
+ * 定义文本生成阶段的关键步骤和对应的进度
+ */
+function computeTextStepProgress(steps: GenerationStepEvent[]): number {
+  if (steps.length === 0) return 0;
+
+  // 定义每个步骤对应的进度值
+  const stepProgressMap: Record<string, number> = {
+    starting: 5,
+    generating_core: 15,
+    generating_outline: 25,
+    generating_script: 25,
+    generating_chapter: 30,
+    parsing_script: 40,
+    generating_assets: 50,
+    asset_ready: 70,
+    first_chapter_ready: 90,
+    completed: 100,
+  };
+
+  // 找到最高进度的步骤
+  let maxProgress = 0;
+  for (const step of steps) {
+    const progress = stepProgressMap[step.step] ?? 0;
+    if (progress > maxProgress) {
+      maxProgress = progress;
+    }
+  }
+
+  return maxProgress;
+}
+
+/**
+ * 问题1修复：根据章节资源生成情况计算进度百分比
+ */
+function computeAssetProgress(chapters: ChapterProgress[]): number {
+  if (chapters.length === 0) return 0;
+  const total = chapters.reduce((sum, ch) => sum + ch.totalAssets, 0);
+  const completed = chapters.reduce((sum, ch) => sum + ch.completedAssets, 0);
+  return total > 0 ? Math.round((completed / total) * 100) : 0;
 }

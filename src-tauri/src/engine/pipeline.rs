@@ -38,10 +38,20 @@ struct GenerationContext {
     cancelled: Arc<std::sync::atomic::AtomicBool>,
 }
 
+/// 进度步骤记录
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ProgressStep {
+    pub step: String,
+    pub detail: String,
+    pub model_name: String,
+    pub timestamp: u64,
+}
+
 /// 生成状态
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct GenerationStatus {
     pub game_id: String,
+    pub game_title: Option<String>,
     pub total_assets: usize,
     pub completed_assets: usize,
     pub failed_assets: usize,
@@ -49,6 +59,7 @@ pub struct GenerationStatus {
     pub overall_progress: f32,
     pub first_chapter_ready: bool,
     pub background_generation_active: bool,
+    pub progress_steps: Vec<ProgressStep>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -347,6 +358,7 @@ impl GenerationPipeline {
             game_id.clone(),
             GenerationStatus {
                 game_id: game_id.clone(),
+                game_title: None,
                 total_assets: 0,
                 completed_assets: 0,
                 failed_assets: 0,
@@ -354,6 +366,7 @@ impl GenerationPipeline {
                 overall_progress: 0.0,
                 first_chapter_ready: false,
                 background_generation_active: false,
+                progress_steps: Vec::new(),
             },
         );
 
@@ -429,12 +442,22 @@ impl GenerationPipeline {
         game_id: &str,
     ) -> Result<(), ProviderError> {
         // 发送进度辅助函数
+        let collected_steps: Arc<std::sync::Mutex<Vec<ProgressStep>>> = Arc::new(std::sync::Mutex::new(Vec::new()));
         let emit = |step: &str, detail: &str, model_name: &str| {
+            let timestamp = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            // 记录步骤（用于页面返回后恢复）
+            if let Ok(mut steps) = collected_steps.lock() {
+                steps.push(ProgressStep {
+                    step: step.to_string(),
+                    detail: detail.to_string(),
+                    model_name: model_name.to_string(),
+                    timestamp,
+                });
+            }
             if let Some(ref handle) = app_handle {
-                let timestamp = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs();
                 let _ = handle.emit(
                     "generation-step",
                     serde_json::json!({
@@ -546,6 +569,7 @@ impl GenerationPipeline {
             game_id.to_string(),
             GenerationStatus {
                 game_id: game_id.to_string(),
+                game_title: Some(game_script.meta.title.clone()),
                 total_assets: total,
                 completed_assets: 0,
                 failed_assets: 0,
@@ -553,6 +577,7 @@ impl GenerationPipeline {
                 overall_progress: 0.0,
                 first_chapter_ready: false,
                 background_generation_active: false,
+                progress_steps: collected_steps.lock().unwrap_or_else(|e| e.into_inner()).clone(),
             },
         );
 
@@ -658,10 +683,22 @@ impl GenerationPipeline {
 
         // 13. 第一章就绪后发送 generation-complete 事件
         emit("first_chapter_ready", "第一章生成完成", "");
+        // 同步 progress_steps 到 statuses
+        {
+            let steps = collected_steps.lock().unwrap_or_else(|e| e.into_inner()).clone();
+            let mut s = statuses.write().await;
+            if let Some(status) = s.get_mut(game_id) {
+                status.progress_steps = steps;
+            }
+        }
         if let Some(ref handle) = app_handle {
             let _ = handle.emit(
                 "generation-complete",
-                serde_json::json!({ "gameId": game_id, "chapterId": first_chapter_id }),
+                serde_json::json!({
+                    "gameId": game_id,
+                    "chapterId": first_chapter_id,
+                    "gameTitle": game_script.meta.title
+                }),
             );
         }
 
@@ -1670,6 +1707,7 @@ impl GenerationPipeline {
             game_id.clone(),
             GenerationStatus {
                 game_id: game_id.clone(),
+                game_title: Some(game_script.meta.title.clone()),
                 total_assets: total,
                 completed_assets: 0,
                 failed_assets: 0,
@@ -1677,6 +1715,7 @@ impl GenerationPipeline {
                 overall_progress: 0.0,
                 first_chapter_ready: false,
                 background_generation_active: false,
+                progress_steps: Vec::new(),
             },
         );
 
@@ -1839,6 +1878,7 @@ impl GenerationPipeline {
             game_id.clone(),
             GenerationStatus {
                 game_id: game_id.clone(),
+                game_title: Some(game_script.meta.title.clone()),
                 total_assets: total,
                 completed_assets: 0,
                 failed_assets: 0,
@@ -1846,6 +1886,7 @@ impl GenerationPipeline {
                 overall_progress: 0.0,
                 first_chapter_ready: false,
                 background_generation_active: false,
+                progress_steps: Vec::new(),
             },
         );
 

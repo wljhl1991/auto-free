@@ -8,6 +8,7 @@ interface DialogueBoxProps {
   emotion?: string;
   isTyping?: boolean;
   onTypingComplete?: () => void;
+  onAdvance?: () => void;
 }
 
 const TYPING_INTERVAL = 30;
@@ -19,6 +20,7 @@ function DialogueBox({
   emotion,
   isTyping = true,
   onTypingComplete,
+  onAdvance,
 }: DialogueBoxProps) {
   const [displayedLength, setDisplayedLength] = useState(0);
   const [typingDone, setTypingDone] = useState(false);
@@ -56,13 +58,16 @@ function DialogueBox({
     return () => clearInterval(timer);
   }, [text, displayedLength, isTyping, typingDone, onTypingComplete]);
 
-  const handleClick = useCallback(() => {
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
     if (displayedLength < text.length) {
       setDisplayedLength(text.length);
       setTypingDone(true);
       onTypingComplete?.();
+    } else {
+      onAdvance?.();
     }
-  }, [displayedLength, text.length, onTypingComplete]);
+  }, [displayedLength, text.length, onTypingComplete, onAdvance]);
 
   const emotionClass = emotion
     ? styles[`emotion${emotion.charAt(0).toUpperCase()}${emotion.slice(1)}` as keyof typeof styles] || ''

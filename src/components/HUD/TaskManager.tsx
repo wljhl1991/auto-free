@@ -40,6 +40,51 @@ export default function TaskManager({ gameId, isOpen, onClose }: TaskManagerProp
   const [tasks, setTasks] = useState<Map<string, TaskItem>>(new Map());
   const [filter, setFilter] = useState<'all' | 'active' | 'failed'>('all');
 
+  // 问题7修复：打开时从后端获取当前状态初始化任务列表
+  useEffect(() => {
+    if (!isOpen || !gameId) return;
+    
+    generation.getGenerationStatus(gameId).then((status: any) => {
+      if (!status || !status.chapterStatus) return;
+      
+      const chapterStatusMap = status.chapterStatus as Record<string, any>;
+      const initialTasks = new Map<string, TaskItem>();
+      
+      Object.values(chapterStatusMap).forEach((ch: any) => {
+        const chapterId = ch.chapterId;
+        const chapterTitle = ch.chapterTitle;
+        const assetStatus = ch.assetStatus as Record<string, string> || {};
+        const assetSources = ch.assetSources as Record<string, string> || {};
+        
+        Object.entries(assetStatus).forEach(([assetType, ast]) => {
+          const key = `${chapterId}_${assetType}`;
+          const source = assetSources[assetType];
+          initialTasks.set(key, {
+            assetRefId: key,
+            assetType,
+            chapterId,
+            chapterTitle,
+            status: ast === 'ready' ? 'ready' : ast === 'failed' ? 'failed' : 'generating',
+            source: source === 'ai_generated' ? 'ai_generated' : 'builtin',
+          });
+        });
+      });
+      
+      setTasks(prev => {
+        // 合并已有任务和初始化任务
+        const merged = new Map(prev);
+        initialTasks.forEach((task, key) => {
+          if (!merged.has(key)) {
+            merged.set(key, task);
+          }
+        });
+        return merged;
+      });
+    }).catch(() => {
+      // status may not be available yet
+    });
+  }, [isOpen, gameId, generation]);
+
   // 监听事件更新任务状态
   useEffect(() => {
     if (!isOpen) return;

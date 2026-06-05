@@ -45,6 +45,14 @@ interface ContextMenuState {
   negativePrompt?: string;
 }
 
+interface HistoryEntry {
+  type: 'narration' | 'dialogue' | 'choice';
+  speaker?: string;
+  text: string;
+  chosenOption?: string;
+  timestamp: number;
+}
+
 function GamePlay() {
   const { gameId } = useParams<{ gameId: string }>();
   const navigate = useNavigate();
@@ -59,13 +67,14 @@ function GamePlay() {
   const [currentEvent, setCurrentEvent] = useState<SceneEventType | null>(null);
   const [sceneBackground, setSceneBackground] = useState<string | undefined>();
   const [sceneVideo, setSceneVideo] = useState<string | undefined>();
-  const [currentBgAssetRefId] = useState<string | undefined>();
+  const [currentBgAssetRefId, setCurrentBgAssetRefId] = useState<string | undefined>();
   const [chapterTitle, setChapterTitle] = useState('');
   const [showMenu, setShowMenu] = useState(false);
   const [showInventory, setShowInventory] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [showGallery, setShowGallery] = useState(false);
   const [showProgress, setShowProgress] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   // 章节过渡状态
@@ -101,6 +110,9 @@ function GamePlay() {
     isRegenerating: boolean;
   }>({ visible: false, candidates: [], assetRefId: '', isRegenerating: false });
 
+  // 对话历史记录
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+
   // 监听 asset-ready 事件，实现热替换
   useEffect(() => {
     if (!gameId) return;
@@ -124,6 +136,9 @@ function GamePlay() {
 
       // 更新资源URL映射
       assetUrlMapRef.current[assetRefId] = resolveAssetUrl(localPath);
+
+      // 同步更新 AssetLoader 缓存，以便后续场景切换时能正确解析 URL
+      assetLoaderRef.current.setCachedUrl(assetRefId, resolveAssetUrl(localPath));
 
       // 如果当前正在展示该资源，执行热替换
       if (assetType === 'Image' && assetRefId === currentBgAssetRefId) {
@@ -208,9 +223,19 @@ function GamePlay() {
       executor.setOnEvent((event) => {
         setCurrentEvent(event);
 
+        // 记录对话/旁白/选择到历史
+        if (event.type === 'narration') {
+          setHistory(prev => [...prev, { type: 'narration', text: event.text, timestamp: Date.now() }]);
+        } else if (event.type === 'dialogue') {
+          setHistory(prev => [...prev, { type: 'dialogue', speaker: event.speaker, text: event.text, timestamp: Date.now() }]);
+        } else if (event.type === 'choice') {
+          // 选择事件先记录提示，选择结果在 onChoiceSelected 中记录
+        }
+
         if (event.type === 'scene_change') {
           setSceneBackground(event.backgroundImage);
           setSceneVideo(event.backgroundVideo);
+          setCurrentBgAssetRefId(event.bgAssetRefId);
         }
         if (event.type === 'scene_transition') {
           // 场景转场由 SceneExecutor 自动处理（延迟后 enterScene）
@@ -252,7 +277,9 @@ function GamePlay() {
       if (firstChapter) {
         setChapterTitle(firstChapter.title);
       }
-      executor.start();
+      executor.start().catch(err => {
+        console.error('Failed to start game:', err);
+      });
       setIsLoading(false);
     }).catch(err => {
       console.error('Failed to load game:', err);
@@ -268,6 +295,11 @@ function GamePlay() {
       }
       if (e.key === ' ' || e.key === 'Enter') {
         if (currentEvent?.type === 'narration' || currentEvent?.type === 'dialogue') {
+          // 键盘操作与点击行为一致：直接 advance
+          // （如果正在打字，NarrationBox/DialogueBox 内部不会处理键盘事件，
+          //   所以这里直接 advance 即可——advance 会跳到下一句，
+          //   但如果用户期望的是先完成打字再 advance，需要额外状态追踪。
+          //   目前保持简单：键盘直接 advance）
           executorRef.current?.advance();
         }
       }
@@ -277,14 +309,26 @@ function GamePlay() {
   }, [currentEvent]);
 
   const handleChoice = useCallback((index: number) => {
+    // 记录选择到历史
+    if (currentEvent?.type === 'choice') {
+      const chosenText = currentEvent.options[index]?.text;
+      setHistory(prev => [...prev, { type: 'choice', text: currentEvent.prompt, chosenOption: chosenText, timestamp: Date.now() }]);
+    }
     executorRef.current?.onChoiceSelected(index);
-  }, []);
+  }, [currentEvent]);
 
   const handleTypingComplete = useCallback(() => {
     // 不自动推进，等待玩家点击
   }, []);
 
+  const handleAdvance = useCallback(() => {
+    if (showMenu || showInventory || showStats || showGallery || showProgress || chapterTransition || gameEnded) return;
+    executorRef.current?.advance();
+  }, [showMenu, showInventory, showStats, showGallery, showProgress, chapterTransition, gameEnded]);
+
   const handleClick = useCallback(() => {
+    // 点击空白区域时，如果当前是 narration/dialogue，也执行 advance
+    // 但 NarrationBox/DialogueBox 会 stopPropagation，所以只有点击它们以外的区域才会触发
     if (showMenu || showInventory || showStats || showGallery || showProgress || chapterTransition || gameEnded) return;
     if (currentEvent?.type === 'narration' || currentEvent?.type === 'dialogue') {
       executorRef.current?.advance();
@@ -487,6 +531,7 @@ function GamePlay() {
             <span className="gameplay-chapter-title">{chapterTitle}</span>
             <div className="gameplay-hud-buttons">
               <button onClick={(e) => { e.stopPropagation(); setShowProgress(true); }}>进度</button>
+              <button onClick={(e) => { e.stopPropagation(); setShowHistory(true); }}>记录</button>
               <button onClick={(e) => { e.stopPropagation(); setShowGallery(true); }}>CG回廊</button>
               <button onClick={(e) => { e.stopPropagation(); setShowInventory(true); }}>物品栏</button>
               <button onClick={(e) => { e.stopPropagation(); setShowStats(true); }}>状态</button>
@@ -500,6 +545,7 @@ function GamePlay() {
                 text={currentEvent.text}
                 isTyping={true}
                 onTypingComplete={handleTypingComplete}
+                onAdvance={handleAdvance}
               />
             )}
 
@@ -511,6 +557,7 @@ function GamePlay() {
                 emotion={currentEvent.emotion}
                 isTyping={true}
                 onTypingComplete={handleTypingComplete}
+                onAdvance={handleAdvance}
               />
             )}
 
@@ -775,6 +822,43 @@ function GamePlay() {
                 </div>
               );
             })()}
+          </div>
+        </div>
+      )}
+
+      {/* 对话历史记录面板 */}
+      {showHistory && (
+        <div className="overlay" onClick={(e) => e.stopPropagation()}>
+          <div className="history-panel">
+            <div className="history-panel-header">
+              <h3>对话记录</h3>
+              <button className="close-btn" onClick={() => setShowHistory(false)}>✕</button>
+            </div>
+            <div className="history-panel-body">
+              {history.length === 0 ? (
+                <div className="history-empty">暂无记录</div>
+              ) : (
+                [...history].reverse().map((entry, idx) => (
+                  <div key={idx} className={`history-entry history-entry-${entry.type}`}>
+                    {entry.type === 'dialogue' && (
+                      <>
+                        <span className="history-speaker">{entry.speaker}</span>
+                        <span className="history-text">{entry.text}</span>
+                      </>
+                    )}
+                    {entry.type === 'narration' && (
+                      <span className="history-text history-narration-text">{entry.text}</span>
+                    )}
+                    {entry.type === 'choice' && (
+                      <div className="history-choice">
+                        <span className="history-choice-prompt">{entry.text}</span>
+                        <span className="history-choice-selected">▸ {entry.chosenOption}</span>
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
       )}

@@ -5,6 +5,7 @@ interface NarrationBoxProps {
   text: string;
   isTyping?: boolean;
   onTypingComplete?: () => void;
+  onAdvance?: () => void;
 }
 
 const TYPING_INTERVAL = 30;
@@ -13,6 +14,7 @@ function NarrationBox({
   text,
   isTyping = true,
   onTypingComplete,
+  onAdvance,
 }: NarrationBoxProps) {
   const [displayedLength, setDisplayedLength] = useState(0);
   const [typingDone, setTypingDone] = useState(false);
@@ -50,13 +52,16 @@ function NarrationBox({
     return () => clearInterval(timer);
   }, [text, displayedLength, isTyping, typingDone, onTypingComplete]);
 
-  const handleClick = useCallback(() => {
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
     if (displayedLength < text.length) {
       setDisplayedLength(text.length);
       setTypingDone(true);
       onTypingComplete?.();
+    } else {
+      onAdvance?.();
     }
-  }, [displayedLength, text.length, onTypingComplete]);
+  }, [displayedLength, text.length, onTypingComplete, onAdvance]);
 
   const displayedText = text.slice(0, displayedLength);
   const showCursor = displayedLength < text.length;

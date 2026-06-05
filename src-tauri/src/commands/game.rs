@@ -315,18 +315,34 @@ pub async fn list_games(
             Err(_) => continue,
         };
 
-        let created_at = metadata.created()
-            .or_else(|_| metadata.modified())
-            .unwrap_or_else(|_| SystemTime::now())
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
+        const MIN_REASONABLE_TIMESTAMP: u64 = 1577836800; // 2020-01-01
 
-        let updated_at = metadata.modified()
-            .unwrap_or_else(|_| SystemTime::now())
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
+        let created_at = {
+            let secs = metadata.modified()
+                .or_else(|_| metadata.created())
+                .unwrap_or_else(|_| SystemTime::now())
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            if secs < MIN_REASONABLE_TIMESTAMP {
+                SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()
+            } else {
+                secs
+            }
+        };
+
+        let updated_at = {
+            let secs = metadata.modified()
+                .unwrap_or_else(|_| SystemTime::now())
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            if secs < MIN_REASONABLE_TIMESTAMP {
+                SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()
+            } else {
+                secs
+            }
+        };
 
         games.push(GameInfo {
             id: game_id,

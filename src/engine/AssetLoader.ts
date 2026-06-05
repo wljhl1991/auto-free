@@ -29,6 +29,11 @@ export class AssetLoader {
     return this.cache.get(assetRefId);
   }
 
+  // 外部设置缓存 URL（用于 asset-ready 事件更新）
+  setCachedUrl(assetRefId: string, url: string): void {
+    this.cache.set(assetRefId, url);
+  }
+
   // 清除缓存
   clearCache(): void {
     this.cache.clear();
