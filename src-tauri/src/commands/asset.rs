@@ -32,3 +32,38 @@ pub async fn list_builtin_assets(
     registry.load();
     Ok(registry.list_all().to_vec())
 }
+
+/// 读取本地文件并返回 base64 编码的 data URL（用于前端展示图片/音频/视频）
+#[command]
+pub async fn read_file_as_data_url(
+    file_path: String,
+) -> Result<String, String> {
+    let path = std::path::Path::new(&file_path);
+    if !path.exists() {
+        return Err(format!("文件不存在: {}", file_path));
+    }
+
+    let data = std::fs::read(path)
+        .map_err(|e| format!("读取文件失败: {}", e))?;
+
+    let ext = path.extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    let mime = match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "mp3" => "audio/mpeg",
+        "wav" => "audio/wav",
+        "ogg" => "audio/ogg",
+        "mp4" => "video/mp4",
+        "webm" => "video/webm",
+        _ => "application/octet-stream",
+    };
+
+    let base64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &data);
+    Ok(format!("data:{};base64,{}", mime, base64))
+}

@@ -99,6 +99,55 @@ impl GenerationPipeline {
         }
     }
 
+    /// 根据模态查找首选 provider 配置
+    /// 优先级：1. 用户在 preferred_providers 中指定的 provider
+    ///         2. deepseek（仅文本模态的硬编码优先级）
+    ///         3. 任意 Connected 的同模态 provider
+    ///         4. 任意同模态 provider（不论状态）
+    fn find_provider_for_modality<'a>(
+        config: &'a crate::types::ai_provider::AppConfig,
+        modality: &AIModality,
+    ) -> Option<&'a crate::types::ai_provider::AIProviderConfig> {
+        let modality_str = match modality {
+            AIModality::Text => "text",
+            AIModality::Image => "image",
+            AIModality::Video => "video",
+            AIModality::Music => "music",
+            AIModality::Voice => "voice",
+        };
+
+        // 1. 用户指定的首选 provider
+        if let Some(preferred_id) = config.global_settings.preferred_providers.get(modality_str) {
+            if let Some(pc) = config.providers.iter()
+                .find(|p| p.id == *preferred_id && p.modality.contains(modality) && p.status == ProviderStatus::Connected)
+                .or_else(|| config.providers.iter().find(|p| p.id == *preferred_id && p.modality.contains(modality)))
+            {
+                log::info!("使用用户首选 provider: id={}, modality={}", pc.id, modality_str);
+                return Some(pc);
+            }
+        }
+
+        // 2. 文本模态：deepseek 硬编码优先级（向后兼容）
+        if matches!(modality, AIModality::Text) {
+            if let Some(pc) = config.providers.iter()
+                .find(|p| p.id == "deepseek" && p.status == ProviderStatus::Connected)
+                .or_else(|| config.providers.iter().find(|p| p.id == "deepseek"))
+            {
+                return Some(pc);
+            }
+        }
+
+        // 3. 任意 Connected 的同模态 provider
+        if let Some(pc) = config.providers.iter()
+            .find(|p| p.modality.contains(modality) && p.status == ProviderStatus::Connected)
+        {
+            return Some(pc);
+        }
+
+        // 4. 任意同模态 provider
+        config.providers.iter().find(|p| p.modality.contains(modality))
+    }
+
     pub fn set_app_handle(&mut self, handle: AppHandle) {
         self.app_handle = Some(handle);
     }
@@ -123,34 +172,12 @@ impl GenerationPipeline {
         }
     }
 
-    /// 获取当前文本 AI 模型的显示名称
-    async fn get_text_model_display_name(&self) -> String {
-        let config_manager = self.config_manager.read().await;
-        let config = config_manager.get_config();
-        if let Some(pc) = config.providers.iter().find(|p| {
-            p.id == "deepseek" && p.status == ProviderStatus::Connected
-        }).or_else(|| config.providers.iter().find(|p| p.id == "deepseek"))
-        .or_else(|| config.providers.iter().find(|p| {
-            p.modality.contains(&AIModality::Text) && p.status == ProviderStatus::Connected
-        })) {
-            let model = pc.models.iter()
-                .find(|m| m.is_default)
-                .map(|m| m.id.clone())
-                .unwrap_or_default();
-            format!("{}/{}", pc.id, model)
-        } else {
-            "本地模板".to_string()
-        }
-    }
-
     /// 获取指定模态的 AI 模型显示名称
     #[allow(dead_code)]
     async fn get_model_display_name_for_modality(&self, modality: &AIModality) -> String {
         let config_manager = self.config_manager.read().await;
         let config = config_manager.get_config();
-        if let Some(pc) = config.providers.iter().find(|p| {
-            p.modality.contains(modality) && p.status == ProviderStatus::Connected
-        }) {
+        if let Some(pc) = Self::find_provider_for_modality(config, modality) {
             let model = pc.models.iter()
                 .find(|m| m.is_default)
                 .map(|m| m.id.clone())
@@ -181,46 +208,13 @@ impl GenerationPipeline {
         let config_manager = self.config_manager.read().await;
         let config = config_manager.get_config();
 
-        // 优先查找 DeepSeek provider
-        let ds_config = config
-            .providers
-            .iter()
-            .find(|p| p.id == "deepseek" && p.status == ProviderStatus::Connected)
-            .or_else(|| config.providers.iter().find(|p| p.id == "deepseek"))
-            .cloned();
-
-        // 其次查找任意支持 Text 模态的 provider
-        let text_config = if ds_config.is_none() {
-            config
-                .providers
-                .iter()
-                .find(|p| {
-                    p.modality.contains(&AIModality::Text) && p.status == ProviderStatus::Connected
-                })
-                .cloned()
-        } else {
-            None
-        };
+        // 使用统一的 provider 查找逻辑（优先用户首选 > deepseek > 任意 Connected）
+        let text_config = Self::find_provider_for_modality(config, &AIModality::Text).cloned();
 
         drop(config_manager);
 
-        if let Some(provider_config) = ds_config {
-            let deepseek = DeepSeekProvider::new(&provider_config, self.asset_manager.base_path())?;
-            let messages = vec![
-                crate::providers::deepseek::ChatMessage {
-                    role: "system".to_string(),
-                    content: "你是一个创意游戏设计师。".to_string(),
-                },
-                crate::providers::deepseek::ChatMessage {
-                    role: "user".to_string(),
-                    content: prompt,
-                },
-            ];
-            let outline = deepseek.chat(messages, None).await?;
-            Ok(OutlineParser::strip_think_tags(&outline))
-        } else if let Some(provider_config) = text_config {
-            // 对于非 DeepSeek 的文本 provider，也使用 DeepSeek 的 chat 接口
-            // 因为其他文本 provider 可能也兼容 OpenAI API 格式
+        if let Some(provider_config) = text_config {
+            // 所有文本 provider 都使用兼容 OpenAI API 的 chat 接口
             let deepseek = DeepSeekProvider::new(&provider_config, self.asset_manager.base_path())?;
             let messages = vec![
                 crate::providers::deepseek::ChatMessage {
@@ -235,7 +229,7 @@ impl GenerationPipeline {
             let outline = deepseek.chat(messages, None).await?;
             Ok(OutlineParser::strip_think_tags(&outline))
         } else {
-            // 4. 文本 AI 未配置，使用预设的示例大纲
+            // 文本 AI 未配置，使用预设的示例大纲
             Ok(self.fallback_random_outline(&game_type))
         }
     }
@@ -475,12 +469,7 @@ impl GenerationPipeline {
         let model_name = {
             let cm = config_manager.read().await;
             let config = cm.get_config();
-            if let Some(pc) = config.providers.iter().find(|p| {
-                p.id == "deepseek" && p.status == ProviderStatus::Connected
-            }).or_else(|| config.providers.iter().find(|p| p.id == "deepseek"))
-            .or_else(|| config.providers.iter().find(|p| {
-                p.modality.contains(&AIModality::Text) && p.status == ProviderStatus::Connected
-            })) {
+            if let Some(pc) = Self::find_provider_for_modality(config, &AIModality::Text) {
                 let model = pc.models.iter()
                     .find(|m| m.is_default)
                     .map(|m| m.id.clone())
@@ -938,15 +927,7 @@ impl GenerationPipeline {
         let cm = config_manager.read().await;
         let config = cm.get_config();
 
-        let text_config = config
-            .providers
-            .iter()
-            .find(|p| p.id == "deepseek" && p.status == ProviderStatus::Connected)
-            .or_else(|| config.providers.iter().find(|p| p.id == "deepseek"))
-            .or_else(|| config.providers.iter().find(|p| {
-                p.modality.contains(&AIModality::Text) && p.status == ProviderStatus::Connected
-            }))
-            .cloned();
+        let text_config = Self::find_provider_for_modality(config, &AIModality::Text).cloned();
 
         drop(cm);
 
@@ -1250,16 +1231,10 @@ impl GenerationPipeline {
         let game_type_str = ctx.game_type.as_ref().map(|gt| Self::game_type_display_str(gt)).unwrap_or("互动叙事");
         let game_type_prompt = Self::get_game_type_prompt(game_type_str);
 
-        let deepseek = {
+        let text_provider = {
             let cm = config_manager.read().await;
             let config = cm.get_config();
-            let provider_config = config.providers.iter()
-                .find(|p| p.id == "deepseek" && p.status == ProviderStatus::Connected)
-                .or_else(|| config.providers.iter().find(|p| p.id == "deepseek"))
-                .or_else(|| config.providers.iter().find(|p| {
-                    p.modality.contains(&AIModality::Text) && p.status == ProviderStatus::Connected
-                }))
-                .cloned();
+            let provider_config = Self::find_provider_for_modality(config, &AIModality::Text).cloned();
             drop(cm);
 
             match provider_config {
@@ -1280,7 +1255,7 @@ impl GenerationPipeline {
         let model_name = {
             let cm = config_manager.read().await;
             let config = cm.get_config();
-            if let Some(pc) = config.providers.iter().find(|p| p.id == "deepseek") {
+            if let Some(pc) = Self::find_provider_for_modality(config, &AIModality::Text) {
                 let model = pc.models.iter().find(|m| m.is_default).map(|m| m.id.clone()).unwrap_or_default();
                 format!("{}/{}", pc.id, model)
             } else {
@@ -1340,7 +1315,7 @@ impl GenerationPipeline {
                 content: detail_user,
             });
 
-            let chapter_detail = match deepseek.chat(messages.clone(), None).await {
+            let chapter_detail = match text_provider.chat(messages.clone(), None).await {
                 Ok(d) => OutlineParser::strip_think_tags(&d),
                 Err(e) => {
                     log::error!("第{}章详情生成失败: {:?}", ch_idx, e);
@@ -1403,7 +1378,7 @@ impl GenerationPipeline {
                 },
             ];
 
-            let response = match deepseek.chat(script_messages, None).await {
+            let response = match text_provider.chat(script_messages, None).await {
                 Ok(r) => OutlineParser::strip_think_tags(&r),
                 Err(e) => {
                     log::error!("第{}章脚本生成失败: {:?}", ch_idx, e);
@@ -1617,196 +1592,6 @@ impl GenerationPipeline {
         }
 
         log::info!("所有后续章节生成完成: game_id={}", game_id);
-    }
-
-    /// 完整的游戏创建流程 — 渐进式加载：第一章优先生成，后续章节后台生成
-    /// 同步版本（保留作为备用）
-    pub async fn create_game(
-        &self,
-        input: &str,
-        game_type: Option<GameType>,
-        use_local_fallback: bool,
-        high_quality: bool,
-        chapter_count: Option<u32>,
-    ) -> Result<(String, GameScript), ProviderError> {
-        log::info!("开始创建游戏: input_len={}, game_type={:?}, high_quality={}, chapter_count={:?}", input.len(), game_type, high_quality, chapter_count);
-
-        // 1. 生成 game_id
-        let game_id = Uuid::new_v4().to_string();
-
-        // 发送初始进度事件
-        self.emit_progress(&game_id, "starting", "正在初始化生成任务", "");
-
-        // 2. 创建游戏目录
-        self.asset_manager
-            .ensure_game_dirs(&game_id)
-            .map_err(ProviderError::GenerationFailed)?;
-
-        // 3. 调用 OutlineParser 解析大纲为 GameScript
-        log::info!("解析大纲: game_id={}", game_id);
-        let model_name = self.get_text_model_display_name().await;
-        if high_quality {
-            self.emit_progress(&game_id, "generating_outline", "正在生成故事大纲", &model_name);
-        } else {
-            self.emit_progress(&game_id, "generating_script", "正在生成游戏脚本", &model_name);
-        }
-        let mut game_script = self.parse_outline(input, game_type.clone(), high_quality, &game_id, chapter_count).await?;
-
-        // 4. 提取所有 AssetRef
-        self.emit_progress(&game_id, "parsing_script", "正在解析游戏脚本", "");
-        let mut asset_refs = self.extract_asset_refs(&game_script);
-
-        // 5. 为每个 AssetRef 确定来源
-        self.resolve_sources(&mut asset_refs, use_local_fallback).await?;
-
-        // 6. 将来源写回 GameScript
-        Self::apply_sources_to_script(&mut game_script, &asset_refs);
-
-        // 7. 保存 GameScript 到 script.json
-        log::info!("保存 GameScript: game_id={}", game_id);
-        self.asset_manager
-            .save_game_script(&game_id, &game_script)
-            .map_err(ProviderError::GenerationFailed)?;
-
-        // 8. 存储 GameScript 供后续 regenerate_asset 使用
-        self.scripts.write().await.insert(game_id.clone(), game_script.clone());
-
-        // 9. 按优先级排序：场景背景图 > NPC头像 > BGM > 语音 > CG视频
-        asset_refs.sort_by(|a, b| {
-            Self::asset_priority(&a.1.asset_type).cmp(&Self::asset_priority(&b.1.asset_type))
-        });
-
-        // 10. 分离第一章和后续章节的 AssetRef
-        let first_chapter_id = game_script.chapters.first().map(|c| c.id.clone());
-        let (first_chapter_refs, remaining_refs): (Vec<_>, Vec<_>) = asset_refs
-            .into_iter()
-            .partition(|(cid, _)| first_chapter_id.as_ref() == Some(cid));
-
-        // 11. 初始化生成状态
-        let total = first_chapter_refs.len() + remaining_refs.len();
-        let mut chapter_map: HashMap<String, ChapterStatus> = HashMap::new();
-        for chapter in &game_script.chapters {
-            let is_first = first_chapter_id.as_ref() == Some(&chapter.id);
-            let chapter_asset_count = if is_first {
-                first_chapter_refs.iter().filter(|(cid, _)| cid == &chapter.id).count()
-            } else {
-                remaining_refs.iter().filter(|(cid, _)| cid == &chapter.id).count()
-            };
-            chapter_map.insert(
-                chapter.id.clone(),
-                ChapterStatus {
-                    chapter_id: chapter.id.clone(),
-                    chapter_title: chapter.title.clone(),
-                    total_assets: chapter_asset_count,
-                    completed_assets: 0,
-                    status: if is_first { "generating".to_string() } else { "pending".to_string() },
-                },
-            );
-        }
-        self.statuses.write().await.insert(
-            game_id.clone(),
-            GenerationStatus {
-                game_id: game_id.clone(),
-                game_title: Some(game_script.meta.title.clone()),
-                total_assets: total,
-                completed_assets: 0,
-                failed_assets: 0,
-                chapter_status: chapter_map,
-                overall_progress: 0.0,
-                first_chapter_ready: false,
-                background_generation_active: false,
-                progress_steps: Vec::new(),
-            },
-        );
-
-        // 12. 优先生成第一章资源
-        self.emit_progress(&game_id, "generating_assets", &format!("正在生成第一章资源（共{}项）", first_chapter_refs.len()), "");
-        let first_results = self.fetch_assets(&game_id, &first_chapter_refs).await;
-
-        // 13. 处理第一章结果
-        let mut completed = 0usize;
-        let mut failed = 0usize;
-        let mut chapter_completed: HashMap<String, usize> = HashMap::new();
-        let mut chapter_failed: HashMap<String, usize> = HashMap::new();
-
-        for (i, result) in first_results.into_iter().enumerate() {
-            let (chapter_id, asset_ref) = &first_chapter_refs[i];
-            match result {
-                Ok(ref local_asset) => {
-                    self.on_asset_ready(&game_id, asset_ref, local_asset).await;
-                    completed += 1;
-                    *chapter_completed.entry(chapter_id.clone()).or_insert(0) += 1;
-                }
-                Err(ref error) => {
-                    self.on_asset_failed(&game_id, asset_ref, error);
-                    failed += 1;
-                    *chapter_failed.entry(chapter_id.clone()).or_insert(0) += 1;
-                }
-            }
-        }
-
-        // 14. 更新第一章状态
-        {
-            let mut statuses = self.statuses.write().await;
-            if let Some(status) = statuses.get_mut(&game_id) {
-                status.completed_assets = completed;
-                status.failed_assets = failed;
-                status.overall_progress = if total > 0 {
-                    (completed + failed) as f32 / total as f32
-                } else {
-                    1.0
-                };
-                for (cid, cs) in status.chapter_status.iter_mut() {
-                    if first_chapter_id.as_ref() == Some(cid) {
-                        let chap_completed = *chapter_completed.get(cid).unwrap_or(&0);
-                        let chap_failed = *chapter_failed.get(cid).unwrap_or(&0);
-                        cs.completed_assets = chap_completed;
-                        cs.status = if chap_completed + chap_failed >= cs.total_assets {
-                            if chap_failed > 0 { "partial".to_string() } else { "ready".to_string() }
-                        } else if chap_completed > 0 {
-                            "partial".to_string()
-                        } else {
-                            "generating".to_string()
-                        };
-                    }
-                }
-                status.first_chapter_ready = status.chapter_status
-                    .get(first_chapter_id.as_deref().unwrap_or(""))
-                    .map(|cs| cs.status == "ready" || cs.status == "partial")
-                    .unwrap_or(false);
-            }
-        }
-
-        // 15. 第一章就绪后立即发送 generation-complete 事件
-        self.emit_progress(&game_id, "first_chapter_ready", "第一章生成完成", "");
-        if let Some(ref handle) = self.app_handle {
-            let _ = handle.emit(
-                "generation-complete",
-                serde_json::json!({ "gameId": game_id, "chapterId": first_chapter_id }),
-            );
-        }
-
-        // 16. 启动后台生成后续章节
-        if !remaining_refs.is_empty() {
-            self.start_background_generation(game_id.clone(), remaining_refs, first_chapter_id.clone());
-        }
-
-        // 17. 高质量模式下，如果有后续章节需要生成脚本，启动后台章节生成
-        if high_quality {
-            let has_context = self.generation_contexts.read().await.contains_key(&game_id);
-            if has_context {
-                // 标记后台生成已激活
-                {
-                    let mut s = self.statuses.write().await;
-                    if let Some(status) = s.get_mut(&game_id) {
-                        status.background_generation_active = true;
-                    }
-                }
-                let _ = self.start_remaining_chapters(&game_id).await;
-            }
-        }
-
-        Ok((game_id, game_script))
     }
 
     /// 从已有的 GameScript 直接创建游戏（跳过大纲解析步骤，用于调试）
@@ -2331,9 +2116,7 @@ impl GenerationPipeline {
         let config_manager = self.config_manager.read().await;
         let config = config_manager.get_config();
 
-        let provider_config = config.providers.iter().find(|p| {
-            p.modality.contains(&modality) && p.status == ProviderStatus::Connected
-        });
+        let provider_config = Self::find_provider_for_modality(config, &modality);
 
         if let Some(pc) = provider_config {
             ProviderFactory::create(pc, self.asset_manager.base_path())
@@ -2368,9 +2151,7 @@ impl GenerationPipeline {
                 let provider = {
                     let config_mgr = config_manager.read().await;
                     let config = config_mgr.get_config();
-                    let pc = config.providers.iter().find(|p| {
-                        p.modality.contains(&modality) && p.status == ProviderStatus::Connected
-                    });
+                    let pc = Self::find_provider_for_modality(config, &modality);
                     if let Some(pc) = pc {
                         ProviderFactory::create(pc, &asset_base_path)?
                     } else {
@@ -2389,7 +2170,7 @@ impl GenerationPipeline {
                 let (provider_id, model, endpoint) = {
                     let cm = config_manager.read().await;
                     let config = cm.get_config();
-                    if let Some(pc) = config.providers.iter().find(|p| p.modality.contains(&modality)) {
+                    if let Some(pc) = Self::find_provider_for_modality(config, &modality) {
                         let m = pc.models.iter().find(|m| m.is_default).map(|m| m.id.clone()).unwrap_or_default();
                         let e = pc.models.iter().find(|m| m.is_default).map(|m| m.endpoint.clone()).unwrap_or_default();
                         (pc.id.clone(), m, e)
@@ -2463,284 +2244,6 @@ impl GenerationPipeline {
             }
         }
         results
-    }
-
-    /// 解析大纲为 GameScript
-    async fn parse_outline(
-        &self,
-        input: &str,
-        game_type: Option<GameType>,
-        high_quality: bool,
-        game_id: &str,
-        chapter_count: Option<u32>,
-    ) -> Result<GameScript, ProviderError> {
-        log::info!("解析大纲: input_len={}, game_type={:?}, high_quality={}", input.len(), game_type, high_quality);
-        let config_manager = self.config_manager.read().await;
-        let config = config_manager.get_config();
-
-        // 查找任意可用的文本 Provider（优先 DeepSeek）
-        let text_config = config
-            .providers
-            .iter()
-            .find(|p| p.id == "deepseek" && p.status == ProviderStatus::Connected)
-            .or_else(|| config.providers.iter().find(|p| p.id == "deepseek"))
-            .or_else(|| config.providers.iter().find(|p| {
-                p.modality.contains(&AIModality::Text) && p.status == ProviderStatus::Connected
-            }))
-            .cloned();
-
-        drop(config_manager);
-
-        if let Some(provider_config) = text_config {
-            let deepseek = DeepSeekProvider::new(&provider_config, self.asset_manager.base_path())?;
-
-            if high_quality {
-                // 高质量模式：多轮生成
-                let start = Instant::now();
-                let result = self.parse_outline_high_quality(&deepseek, input, game_type.clone(), game_id, chapter_count).await;
-                let duration = start.elapsed().as_millis() as u64;
-
-                let model = provider_config.models.iter()
-                    .find(|m| m.is_default)
-                    .map(|m| m.id.clone())
-                    .unwrap_or_default();
-                let endpoint = provider_config.models.iter()
-                    .find(|m| m.is_default)
-                    .map(|m| m.endpoint.clone())
-                    .unwrap_or_default();
-                let record = match &result {
-                    Ok(script) => build_record(
-                        &provider_config.id, "text", &model, &endpoint,
-                        input, duration, "success", None,
-                        Some(format!("chapters: {} (high_quality)", script.chapters.len())), None,
-                    ),
-                    Err(e) => build_record(
-                        &provider_config.id, "text", &model, &endpoint,
-                        input, duration, "error", Some(format!("{:?}", e)),
-                        None, None,
-                    ),
-                };
-                self.call_history.record(record);
-                result
-            } else {
-                // 普通模式：使用 OutlineParser 单轮/双轮生成
-                let parser = OutlineParser::new(deepseek);
-                let start = Instant::now();
-                let result = parser.parse(input, game_type).await;
-                let duration = start.elapsed().as_millis() as u64;
-
-                // 记录大纲解析调用历史
-                let model = provider_config.models.iter()
-                    .find(|m| m.is_default)
-                    .map(|m| m.id.clone())
-                    .unwrap_or_default();
-                let endpoint = provider_config.models.iter()
-                    .find(|m| m.is_default)
-                    .map(|m| m.endpoint.clone())
-                    .unwrap_or_default();
-                let record = match &result {
-                    Ok(script) => build_record(
-                        &provider_config.id, "text", &model, &endpoint,
-                        input, duration, "success", None,
-                        Some(format!("chapters: {}", script.chapters.len())), None,
-                    ),
-                    Err(e) => build_record(
-                        &provider_config.id, "text", &model, &endpoint,
-                        input, duration, "error", Some(format!("{:?}", e)),
-                        None, None,
-                    ),
-                };
-                self.call_history.record(record);
-
-                result
-            }
-        } else {
-            // 无文本 AI 配置，使用本地模板生成
-            eprintln!("No text AI provider configured, using local template fallback");
-            Ok(Self::fallback_game_script(input, game_type))
-        }
-    }
-
-    /// 高质量模式：三阶段生成游戏脚本（边玩边生成版）
-    /// 阶段1：生成核心要素（世界观、角色、章节梗概、关键情节等）
-    /// 阶段2：只生成第一章详细内容
-    /// 阶段3：只生成第一章的 GameScript JSON
-    /// 保存 GenerationContext 供后续章节后台生成
-    async fn parse_outline_high_quality(
-        &self,
-        deepseek: &DeepSeekProvider,
-        input: &str,
-        game_type: Option<GameType>,
-        game_id: &str,
-        chapter_count: Option<u32>,
-    ) -> Result<GameScript, ProviderError> {
-        let game_type_str = game_type.as_ref().map(|gt| Self::game_type_display_str(gt)).unwrap_or("互动叙事");
-        let game_type_prompt = Self::get_game_type_prompt(game_type_str);
-
-        // ========== 阶段1：生成核心要素 ==========
-        let core_system = PROMPT_CORE_ELEMENTS.to_string();
-        let effective_chapter_count = chapter_count.unwrap_or(3);
-
-        let core_user = format!(
-            "游戏类型：{}\n\n玩家构想：{}\n\n{}\n\n请生成游戏的核心要素，章节数限定为{}章。",
-            game_type_str, input, game_type_prompt, effective_chapter_count
-        );
-
-        let mut messages = vec![
-            crate::providers::deepseek::ChatMessage {
-                role: "system".to_string(),
-                content: core_system,
-            },
-            crate::providers::deepseek::ChatMessage {
-                role: "user".to_string(),
-                content: core_user,
-            },
-        ];
-
-        log::info!("高质量模式 阶段1: 生成核心要素");
-        let model_name = self.get_text_model_display_name().await;
-        self.emit_progress(game_id, "generating_core", "正在生成游戏核心要素（世界观、角色、章节梗概）", &model_name);
-        let core_elements = deepseek.chat(messages.clone(), None).await?;
-        let core_elements = OutlineParser::strip_think_tags(&core_elements);
-        log::info!("高质量模式 阶段1 完成: 核心要素长度={}", core_elements.len());
-
-        // 保存核心要素
-        OutlineParser::save_raw_ai_response_sync("core_elements", &core_elements);
-
-        // 将核心要素加入对话历史（多轮对话）
-        messages.push(crate::providers::deepseek::ChatMessage {
-            role: "assistant".to_string(),
-            content: core_elements.clone(),
-        });
-
-        // ========== 阶段2：只生成第一章详细内容 ==========
-        let chapter_count_usize = effective_chapter_count as usize;
-        log::info!("使用指定章节数: {}, 仅生成第一章", chapter_count_usize);
-
-        let mut chapter_details = Vec::new();
-
-        // 只生成第一章
-        let chapter_label = Self::get_chapter_label(1);
-        log::info!("高质量模式 阶段2: 生成{}详细内容", chapter_label);
-        self.emit_progress(
-            game_id,
-            "generating_chapter",
-            &format!("正在生成{}详细内容（1/{}）", chapter_label, chapter_count_usize),
-            &model_name,
-        );
-
-        let detail_user = format!(
-            "现在请根据核心要素，生成{}的详细内容。\n\n\
-             核心要素中关于{}的梗概是关键参考，请严格遵循。\
-             同时保持与前面章节的连续性和一致性。\
-             每个场景至少3-5个对话/旁白节点，选择节点至少2-3个选项。\
-             场景描写要细腻，为后续生成资源提供充分的提示词依据。\n\n\
-             {}",
-            chapter_label, chapter_label, game_type_prompt
-        );
-
-        messages.push(crate::providers::deepseek::ChatMessage {
-            role: "user".to_string(),
-            content: detail_user,
-        });
-
-        let chapter_detail = deepseek.chat(messages.clone(), None).await?;
-        let chapter_detail = OutlineParser::strip_think_tags(&chapter_detail);
-        log::info!("高质量模式 阶段2 {} 完成: 长度={}", chapter_label, chapter_detail.len());
-
-        // 保存章节详情
-        OutlineParser::save_raw_ai_response_sync(
-            &format!("chapter_{}_detail", 1),
-            &chapter_detail,
-        );
-
-        // 将章节详情加入对话历史
-        messages.push(crate::providers::deepseek::ChatMessage {
-            role: "assistant".to_string(),
-            content: chapter_detail.clone(),
-        });
-
-        chapter_details.push(chapter_detail);
-
-        // ========== 阶段3：只生成第一章的 GameScript JSON ==========
-        log::info!("高质量模式 阶段3: 生成第一章 GameScript JSON");
-        self.emit_progress(game_id, "generating_script", "正在根据第一章详情生成游戏脚本", &model_name);
-
-        let script_system = PROMPT_COMBINED.to_string();
-
-        let first_chapter_detail = &chapter_details[0];
-        let first_chapter_label = Self::get_chapter_label(1);
-
-        let script_user = format!(
-            "根据以下核心要素和{}的详细内容，生成该章节的游戏脚本 JSON。\n\n\
-             == 核心要素 ==\n{}\n\n\
-             == {} 详细内容 ==\n{}\n\n\
-             要求：只生成{}的脚本，包含完整的 scenes 和 sequence。\n\
-             - 严格遵循核心要素中的世界观、角色设定和剧情走向\n\
-             - 每个场景至少3-5个对话/旁白节点\n\
-             - 选择节点至少2-3个选项\n\
-             - 场景描写要细腻，注重氛围\n\
-             - 角色对话要符合其性格\n\
-             - 为所有资源编写详细的生成 prompt\n\
-             {}\n\n\
-             玩家描述：{}",
-            first_chapter_label, core_elements, first_chapter_label, first_chapter_detail,
-            first_chapter_label, game_type_prompt, input
-        );
-
-        let script_messages = vec![
-            crate::providers::deepseek::ChatMessage {
-                role: "system".to_string(),
-                content: script_system,
-            },
-            crate::providers::deepseek::ChatMessage {
-                role: "user".to_string(),
-                content: script_user,
-            },
-        ];
-
-        let response = deepseek.chat(script_messages, None).await?;
-        let response = OutlineParser::strip_think_tags(&response);
-
-        // 保存 AI 原始响应
-        OutlineParser::save_raw_ai_response_sync("high_quality_chapter1", &response);
-
-        // 提取 JSON
-        let json_str = Self::extract_json_from_response(&response).map_err(|e| {
-            OutlineParser::save_raw_ai_response_sync("high_quality_chapter1_error", &response);
-            e
-        })?;
-        let json_str = OutlineParser::normalize_json(&json_str);
-        let mut script: GameScript = match serde_json::from_str(&json_str) {
-            Ok(s) => s,
-            Err(e) => {
-                log::error!("GameScript JSON 解析失败: {}, 尝试宽松解析", e);
-                OutlineParser::save_raw_ai_response_sync("high_quality_chapter1_json_error", &response);
-                Self::parse_script_lenient(&json_str)?
-            }
-        };
-
-        // 校验并修复
-        Self::validate_and_fix_script(&mut script)?;
-
-        // 更新 meta.total_chapters 为实际总章节数（而非当前已生成的章节数）
-        script.meta.total_chapters = effective_chapter_count;
-
-        log::info!("高质量模式 阶段3 完成: chapters={} (total_chapters={})", script.chapters.len(), script.meta.total_chapters);
-
-        // 保存 GenerationContext 供后续章节后台生成
-        let ctx = GenerationContext {
-            core_elements,
-            chapter_details,
-            total_chapters: chapter_count_usize,
-            game_type,
-            input: input.to_string(),
-            messages,
-            cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
-        };
-        self.generation_contexts.write().await.insert(game_id.to_string(), ctx);
-
-        Ok(script)
     }
 
     /// 宽松解析 GameScript JSON：逐章解析，跳过有问题的节点
@@ -3247,9 +2750,7 @@ impl GenerationPipeline {
         let config_manager = self.config_manager.read().await;
         let config = config_manager.get_config();
 
-        let provider_config = config.providers.iter().find(|p| {
-            p.modality.contains(&modality) && p.status == ProviderStatus::Connected
-        });
+        let provider_config = Self::find_provider_for_modality(config, &modality);
 
         if let Some(pc) = provider_config {
             ProviderFactory::create(pc, self.asset_manager.base_path())
@@ -3293,9 +2794,7 @@ impl GenerationPipeline {
                 let provider = {
                     let config_mgr = config_manager.read().await;
                     let config = config_mgr.get_config();
-                    let pc = config.providers.iter().find(|p| {
-                        p.modality.contains(&modality) && p.status == ProviderStatus::Connected
-                    });
+                    let pc = Self::find_provider_for_modality(config, &modality);
                     if let Some(pc) = pc {
                         ProviderFactory::create(pc, &asset_base_path)?
                     } else {
@@ -3315,7 +2814,7 @@ impl GenerationPipeline {
                 let (provider_id, model, endpoint) = {
                     let cm = config_manager.read().await;
                     let config = cm.get_config();
-                    if let Some(pc) = config.providers.iter().find(|p| p.modality.contains(&modality)) {
+                    if let Some(pc) = Self::find_provider_for_modality(config, &modality) {
                         let m = pc.models.iter().find(|m| m.is_default).map(|m| m.id.clone()).unwrap_or_default();
                         let e = pc.models.iter().find(|m| m.is_default).map(|m| m.endpoint.clone()).unwrap_or_default();
                         (pc.id.clone(), m, e)
@@ -3494,16 +2993,10 @@ impl GenerationPipeline {
             let game_type_prompt = Self::get_game_type_prompt(game_type_str);
 
             // 获取文本 provider
-            let deepseek = {
+            let text_provider = {
                 let config_manager = config_manager.read().await;
                 let config = config_manager.get_config();
-                let provider_config = config.providers.iter()
-                    .find(|p| p.id == "deepseek" && p.status == ProviderStatus::Connected)
-                    .or_else(|| config.providers.iter().find(|p| p.id == "deepseek"))
-                    .or_else(|| config.providers.iter().find(|p| {
-                        p.modality.contains(&AIModality::Text) && p.status == ProviderStatus::Connected
-                    }))
-                    .cloned();
+                let provider_config = Self::find_provider_for_modality(config, &AIModality::Text).cloned();
                 drop(config_manager);
 
                 match provider_config {
@@ -3515,7 +3008,7 @@ impl GenerationPipeline {
                 }
             };
 
-            let deepseek = match deepseek {
+            let text_provider = match text_provider {
                 Ok(d) => d,
                 Err(e) => {
                     log::error!("后续章节生成失败：创建 Provider 失败: {:?}", e);
@@ -3526,7 +3019,7 @@ impl GenerationPipeline {
             let model_name = {
                 let cm = config_manager.read().await;
                 let config = cm.get_config();
-                if let Some(pc) = config.providers.iter().find(|p| p.id == "deepseek") {
+                if let Some(pc) = Self::find_provider_for_modality(config, &AIModality::Text) {
                     let model = pc.models.iter().find(|m| m.is_default).map(|m| m.id.clone()).unwrap_or_default();
                     format!("{}/{}", pc.id, model)
                 } else {
@@ -3590,7 +3083,7 @@ impl GenerationPipeline {
                     content: detail_user,
                 });
 
-                let chapter_detail = match deepseek.chat(messages.clone(), None).await {
+                let chapter_detail = match text_provider.chat(messages.clone(), None).await {
                     Ok(d) => OutlineParser::strip_think_tags(&d),
                     Err(e) => {
                         log::error!("第{}章详情生成失败: {:?}", ch_idx, e);
@@ -3659,7 +3152,7 @@ impl GenerationPipeline {
                     },
                 ];
 
-                let response = match deepseek.chat(script_messages, None).await {
+                let response = match text_provider.chat(script_messages, None).await {
                     Ok(r) => OutlineParser::strip_think_tags(&r),
                     Err(e) => {
                         log::error!("第{}章脚本生成失败: {:?}", ch_idx, e);
@@ -3957,7 +3450,7 @@ impl GenerationPipeline {
     async fn get_provider_info(&self, modality: &AIModality) -> (String, String, String) {
         let cm = self.config_manager.read().await;
         let config = cm.get_config();
-        if let Some(pc) = config.providers.iter().find(|p| p.modality.contains(modality)) {
+        if let Some(pc) = Self::find_provider_for_modality(config, modality) {
             let model = pc.models.iter()
                 .find(|m| m.is_default)
                 .map(|m| m.id.clone())

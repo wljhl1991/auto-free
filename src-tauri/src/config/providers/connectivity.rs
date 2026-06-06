@@ -11,32 +11,11 @@ impl ConnectivityChecker {
     pub async fn check_provider(provider: &AIProviderConfig, test_prompt: Option<&str>) -> ConnectivityCheck {
         let start = SystemTime::now();
 
-        // Edge TTS 无需 API Key，始终 Connected
-        if provider.id == "edge-tts" {
-            return ConnectivityCheck {
-                provider_id: provider.id.clone(),
-                timestamp: SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs(),
-                status: ConnectivityStatus::Ok,
-                latency: Some(0),
-                error_message: None,
-                quota_info: None,
-                response_preview: None,
-                test_prompt: test_prompt.map(|s| s.to_string()),
-                media_url: None,
-                media_type: None,
-                request_endpoint: None,
-                request_model: None,
-                request_headers: None,
-                request_body: None,
-                response_status: None,
-            };
-        }
+        // Edge TTS 无需 API Key，跳过凭证检查，直接调用 check_connectivity
+        let skip_credential_check = provider.id == "edge-tts";
 
-        // 检查 API Key 是否已填写
-        let has_api_key = provider.auth_config.api_key
+        // 检查 API Key 是否已填写（Edge TTS 等无需凭证的服务跳过）
+        let has_api_key = skip_credential_check || provider.auth_config.api_key
             .as_ref()
             .map(|k| !k.value.is_empty() && k.value != "FREE" && !k.value.contains("***"))
             .unwrap_or(false);

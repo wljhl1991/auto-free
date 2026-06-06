@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useConfig } from '@/hooks/useConfig';
-import type { AIProviderConfig, ConfigPreset, AIModality } from '@/types';
+import type { AIProviderConfig, ConfigPreset, AIModality, GlobalSettings } from '@/types';
 import PresetSelector from '@/components/Config/PresetSelector';
 import ModalitySection from '@/components/Config/ModalitySection';
 import ProviderConfigModal from '@/components/Config/ProviderConfigModal';
@@ -15,6 +15,14 @@ const MODALITY_SECTIONS: { modality: AIModality; title: string }[] = [
   { modality: 'music', title: '音乐生成' },
   { modality: 'voice', title: '语音生成' },
 ];
+
+const MODALITY_LABELS: Record<string, string> = {
+  text: '文本生成',
+  image: '图片生成',
+  video: '视频生成',
+  music: '音乐生成',
+  voice: '语音生成',
+};
 
 function generateId(): string {
   return `custom_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
@@ -51,6 +59,7 @@ export default function Settings() {
   const [presets, setPresets] = useState<ConfigPreset[]>([]);
   const [activePresetId, setActivePresetId] = useState('');
   const [providers, setProviders] = useState<AIProviderConfig[]>([]);
+  const [globalSettings, setGlobalSettings] = useState<GlobalSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [checking, setChecking] = useState(false);
 
@@ -83,6 +92,7 @@ export default function Settings() {
       setActivePresetId(configData?.activePresetId || '');
       setPresets(presetsData || []);
       setProviders(providersData || []);
+      setGlobalSettings(configData?.globalSettings || null);
     } catch (err) {
       console.error('Failed to load config:', err);
     } finally {
@@ -137,9 +147,9 @@ export default function Settings() {
     }
   };
 
-  const handleCheckProvider = async (providerId: string, testPrompt?: string, modelId?: string) => {
+  const handleCheckProvider = async (providerId: string, testPrompt?: string, modelId?: string, providerOverride?: any) => {
     try {
-      const result = await config.checkProvider(providerId, testPrompt, modelId);
+      const result = await config.checkProvider(providerId, testPrompt, modelId, providerOverride);
       const newStatus = result.status === 'ok' ? 'connected' :
                         result.status === 'auth_failed' ? 'auth_failed' :
                         result.status === 'network_error' ? 'network_error' :
@@ -221,11 +231,13 @@ export default function Settings() {
   };
 
   const handleReset = async () => {
+    if (!confirm('确定要恢复默认配置吗？\n\n这将清空所有已保存的配置（包括 API Key 等凭证和开发配置），恢复为系统内置默认值。')) return;
     try {
-      await config.applyPreset('default');
+      await config.resetConfig();
       await loadData();
     } catch (err) {
       console.error('Failed to reset config:', err);
+      alert('恢复默认配置失败: ' + err);
     }
   };
 
@@ -236,6 +248,29 @@ export default function Settings() {
     } catch (err: any) {
       const msg = typeof err === 'string' ? err : (err?.message || '保存失败');
       alert(msg);
+    }
+  };
+
+  const handlePreferredProviderChange = async (modality: string, providerId: string) => {
+    try {
+      const configData = await config.getConfig();
+      const newPreferred = { ...(configData?.globalSettings?.preferredProviders || {}) };
+      if (providerId) {
+        newPreferred[modality] = providerId;
+      } else {
+        delete newPreferred[modality];
+      }
+      const newGlobalSettings = {
+        ...configData?.globalSettings,
+        preferredProviders: newPreferred,
+      };
+      await config.updateConfig({
+        ...configData,
+        globalSettings: newGlobalSettings,
+      });
+      setGlobalSettings(newGlobalSettings as GlobalSettings);
+    } catch (err) {
+      console.error('Failed to update preferred provider:', err);
     }
   };
 
@@ -296,6 +331,64 @@ export default function Settings() {
             onSelect={handleSelectPreset}
           />
 
+          {/* 首选服务商 */}
+          <div style={{
+            background: 'rgba(255, 255, 255, 0.9)',
+            borderRadius: '14px',
+            padding: '1.25rem',
+            marginBottom: '1.5rem',
+            border: '1px solid #e8e2d8',
+            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.08)',
+          }}>
+            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1rem', color: '#2d3748', fontWeight: 600 }}>
+              首选服务商
+            </h3>
+            <p style={{ margin: '0 0 1rem 0', fontSize: '0.8rem', color: '#718096' }}>
+              为每种模态指定优先使用的服务商。生成游戏时，系统会优先使用您指定的服务商。
+            </p>
+            {['text', 'image', 'video', 'music', 'voice'].map((modality) => {
+              const modalityProviders = providers.filter((p) => p.modality.includes(modality as AIModality));
+              const currentPreferred = globalSettings?.preferredProviders?.[modality] || '';
+              return (
+                <div key={modality} style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.75rem',
+                  marginBottom: '0.5rem',
+                }}>
+                  <span style={{
+                    minWidth: '80px',
+                    fontSize: '0.85rem',
+                    color: '#4a5568',
+                  }}>
+                    {MODALITY_LABELS[modality]}
+                  </span>
+                  <select
+                    value={currentPreferred}
+                    onChange={(e) => handlePreferredProviderChange(modality, e.target.value)}
+                    style={{
+                      flex: 1,
+                      padding: '0.5rem 0.7rem',
+                      background: '#ffffff',
+                      border: '1px solid #d4cdc2',
+                      borderRadius: '10px',
+                      color: '#2d3748',
+                      fontSize: '0.85rem',
+                      outline: 'none',
+                    }}
+                  >
+                    <option value="">自动选择</option>
+                    {modalityProviders.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name || p.id} {p.status === 'connected' ? '(已连接)' : p.status === 'auth_failed' ? '(认证失败)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              );
+            })}
+          </div>
+
           {MODALITY_SECTIONS.map(({ modality, title }) => (
             <ModalitySection
               key={modality}
@@ -322,7 +415,7 @@ export default function Settings() {
                 color: '#8888aa',
               }}
             >
-              + 添加自定义模型
+              + 添加服务商
             </button>
           </div>
 

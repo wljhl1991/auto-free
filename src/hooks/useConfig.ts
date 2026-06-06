@@ -17,7 +17,7 @@ export function useConfig() {
     applyPreset: (presetId: string) => invoke<void>('apply_preset', { presetId }),
     getProviders: () => invoke<any[]>('get_providers'),
     updateProvider: (provider: any) => invoke<void>('update_provider', { provider }),
-    checkProvider: (providerId: string, testPrompt?: string, modelId?: string) => invoke<any>('check_provider', { providerId, testPrompt: testPrompt || null, modelId: modelId || null }),
+    checkProvider: (providerId: string, testPrompt?: string, modelId?: string, providerOverride?: any) => invoke<any>('check_provider', { providerId, testPrompt: testPrompt || null, modelId: modelId || null, providerOverride: providerOverride || null }),
     checkAllProviders: () => invoke<any[]>('check_all_providers'),
     checkAvailableModalities: () => invoke<ModalityAvailability>('check_available_modalities'),
     exportConfig: () => invoke<string>('export_config'),
@@ -27,5 +27,7 @@ export function useConfig() {
     updateProviderModels: (providersJson: string) => invoke<void>('update_provider_models', { providersJson }),
     readLogs: (lines?: number) => invoke<string>('read_recent_logs', { lines: lines || null }),
     readCallHistory: (lines?: number) => invoke<string>('read_call_history', { lines: lines || null }),
+    resetConfig: () => invoke<void>('reset_config'),
+    getBuiltinProviderTemplates: () => invoke<any[]>('get_builtin_provider_templates'),
   }), []);
 }

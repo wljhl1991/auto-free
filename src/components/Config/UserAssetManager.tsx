@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useUserAsset, type UserAssetEntry } from '@/hooks/useUserAsset';
-import { convertFileSrc } from '@/adapters/tauri';
+import { invoke } from '@/adapters/tauri';
 
 const ASSET_TYPE_TABS: { key: string; label: string; accept: string }[] = [
   { key: 'image', label: '图片', accept: 'image/*' },
@@ -348,17 +348,27 @@ export default function UserAssetManager() {
 
 /** Asset preview component */
 function AssetPreview({ asset }: { asset: UserAssetEntry }) {
-  const [assetPath, setAssetPath] = useState<string | null>(null);
+  const [assetDataUrl, setAssetDataUrl] = useState<string | null>(null);
   const userAsset = useUserAsset();
 
   useEffect(() => {
-    userAsset.getUserAssetPath(asset.id).then(setAssetPath).catch(() => setAssetPath(null));
+    let cancelled = false;
+    userAsset.getUserAssetPath(asset.id).then(async (path) => {
+      if (!path || cancelled) return;
+      try {
+        const dataUrl = await invoke<string>('read_file_as_data_url', { filePath: path });
+        if (!cancelled) setAssetDataUrl(dataUrl);
+      } catch (e) {
+        console.warn('读取资源文件失败:', e);
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
   }, [asset.id, userAsset]);
 
-  if (asset.assetType === 'image' && assetPath) {
+  if (asset.assetType === 'image' && assetDataUrl) {
     return (
       <img
-        src={convertFileSrc(assetPath)}
+        src={assetDataUrl}
         alt={asset.name}
         style={{
           width: '100%',

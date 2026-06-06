@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use super::{truncate_str, IAssetProvider, ProviderError};
+use super::{truncate_str, save_raw_response, IAssetProvider, ProviderError};
 use crate::types::game_script::AssetRef;
 use crate::types::asset::{LocalAsset, AIModality, AssetType, AssetSource};
 use crate::types::ai_provider::{AIProviderConfig, ConnectivityCheck, ConnectivityStatus};
@@ -159,6 +159,7 @@ impl SkyMusicProvider {
             body.clone()
         };
         log::info!("[SkyMusic] 响应体: {}", truncated_response);
+        save_raw_response("skymusic", "music_gen", &body);
 
         if !status.is_success() {
             return Err(self.handle_error_status(status.as_u16(), &body));
@@ -225,6 +226,7 @@ impl SkyMusicProvider {
                 body.clone()
             };
             log::info!("[SkyMusic] 轮询响应: status={}, body={}", status.as_u16(), truncated);
+            save_raw_response("skymusic", "music_gen_query", &body);
 
             if !status.is_success() {
                 return Err(self.handle_error_status(status.as_u16(), &body));

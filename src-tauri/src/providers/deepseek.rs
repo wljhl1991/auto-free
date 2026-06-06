@@ -230,6 +230,7 @@ impl DeepSeekProvider {
 
         // 记录响应体（完整）
         log::info!("[DeepSeek] 响应体: {}", body);
+        super::save_raw_response("deepseek", "chat", &body);
 
         if status.is_success() {
             let chat_response: ChatResponse = serde_json::from_str(&body)
@@ -278,6 +279,7 @@ impl DeepSeekProvider {
             let body = response.text().await
                 .map_err(|e| ProviderError::NetworkError(format!("读取错误响应失败: {}", e)))?;
             log::error!("[DeepSeek] 流式请求失败: status={}, body={}", status, truncate_str(&body, 500));
+            super::save_raw_response("deepseek", "chat", &body);
             Err(self.handle_error_status(status.as_u16(), &body).unwrap_err())
         }
     }

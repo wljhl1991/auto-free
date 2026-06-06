@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use super::{IAssetProvider, ProviderError};
+use super::{IAssetProvider, ProviderError, truncate_str};
 use crate::types::game_script::AssetRef;
 use crate::types::asset::{LocalAsset, AIModality, AssetType, AssetSource};
 use crate::types::ai_provider::{AIProviderConfig, ConnectivityCheck, ConnectivityStatus};
@@ -9,6 +9,7 @@ use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio_tungstenite::{connect_async, tungstenite};
+use tungstenite::client::IntoClientRequest;
 use uuid::Uuid;
 
 /// Edge TTS 支持的中文语音
@@ -155,8 +156,23 @@ impl EdgeTTSProvider {
         let ws_url = format!("{}{}", EDGE_TTS_WS_URL, connection_id);
         log::info!("[EdgeTTS] 连接WebSocket: voice={}, text_len={}", voice.as_str(), ssml.len());
 
+        // 构建带 User-Agent 的 WebSocket 请求（微软要求包含 Edg/ 版本标识）
+        // 使用 IntoClientRequest 让 tungstenite 自动添加 sec-websocket-key 等必需头
+        let mut request = ws_url.into_client_request()
+            .map_err(|e| ProviderError::NetworkError(format!("构建WebSocket请求失败: {}", e)))?;
+        request.headers_mut().insert(
+            "User-Agent",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0".parse()
+                .map_err(|e| ProviderError::NetworkError(format!("解析User-Agent失败: {}", e)))?,
+        );
+        request.headers_mut().insert(
+            "Origin",
+            "https://azure.microsoft.com".parse()
+                .map_err(|e| ProviderError::NetworkError(format!("解析Origin失败: {}", e)))?,
+        );
+
         // 连接 WebSocket
-        let (mut ws_stream, _) = connect_async(&ws_url)
+        let (mut ws_stream, _) = connect_async(request)
             .await
             .map_err(|e| {
                 log::error!("[EdgeTTS] WebSocket连接失败: {}", e);
@@ -332,10 +348,17 @@ impl IAssetProvider for EdgeTTSProvider {
     }
 
     async fn check_connectivity(&self) -> Result<ConnectivityCheck, ProviderError> {
+        self.check_connectivity_with_prompt("测试").await
+    }
+
+    async fn check_connectivity_with_prompt(&self, prompt: &str) -> Result<ConnectivityCheck, ProviderError> {
         let start = SystemTime::now();
 
-        // 尝试合成一个短文本验证连通性
-        let result = self.synthesize("测试", None, None, None).await;
+        // 实际合成音频验证连通性
+        let voice = self.default_voice.clone();
+        let voice_name = voice.as_str();
+        let request_body = format!("voice={}, text={}", voice_name, prompt);
+        let result = self.synthesize(prompt, None, None, None).await;
 
         let latency = SystemTime::now()
             .duration_since(start)
@@ -356,15 +379,15 @@ impl IAssetProvider for EdgeTTSProvider {
                     latency: Some(latency),
                     error_message: None,
                     quota_info: None,
-                    response_preview: None,
-                    test_prompt: Some("测试".to_string()),
+                    response_preview: Some(format!("合成成功，音频大小: {}KB", audio_data.len() / 1024)),
+                    test_prompt: Some(prompt.to_string()),
                     media_url,
                     media_type: Some("audio".to_string()),
-                    request_endpoint: None,
-                    request_model: None,
-                    request_headers: None,
-                    request_body: None,
-                    response_status: None,
+                    request_endpoint: Some(EDGE_TTS_WS_URL.to_string()),
+                    request_model: Some(voice_name.to_string()),
+                    request_headers: Some("WebSocket (无需请求头)".to_string()),
+                    request_body: Some(truncate_str(&request_body, 2000).to_string()),
+                    response_status: Some(200),
                 })
             }
             Err(e) => Ok(ConnectivityCheck {
@@ -378,13 +401,13 @@ impl IAssetProvider for EdgeTTSProvider {
                 error_message: Some(format!("{:?}", e)),
                 quota_info: None,
                 response_preview: None,
-                test_prompt: Some("测试".to_string()),
+                test_prompt: Some(prompt.to_string()),
                 media_url: None,
                 media_type: None,
-                request_endpoint: None,
-                request_model: None,
-                request_headers: None,
-                request_body: None,
+                request_endpoint: Some(EDGE_TTS_WS_URL.to_string()),
+                request_model: Some(self.default_voice.as_str().to_string()),
+                request_headers: Some("WebSocket (无需请求头)".to_string()),
+                request_body: Some(truncate_str(&request_body, 2000).to_string()),
                 response_status: None,
             }),
         }

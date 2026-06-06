@@ -225,6 +225,7 @@ impl QwenProvider {
             body.clone()
         };
         log::info!("[Qwen] 响应体: {}", truncated_response);
+        super::save_raw_response("qwen", "chat", &body);
 
         if status.is_success() {
             let chat_response: ChatResponse = serde_json::from_str(&body)
@@ -273,6 +274,7 @@ impl QwenProvider {
             let body = response.text().await
                 .map_err(|e| ProviderError::NetworkError(format!("读取错误响应失败: {}", e)))?;
             log::error!("[Qwen] 流式请求失败: status={}, body={}", status, truncate_str(&body, 500));
+            super::save_raw_response("qwen", "chat", &body);
             Err(self.handle_error_status(status.as_u16(), &body).unwrap_err())
         }
     }

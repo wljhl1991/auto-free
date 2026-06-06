@@ -120,12 +120,19 @@ pub struct AIModelConfig {
     pub cost_per_call: Option<f64>,
     pub free_quota: Option<String>,
     pub quality: QualityLevel,
+    /// 高级参数（如 num_inference_steps, guidance_scale, seed 等）
+    /// key 为参数名，value 为参数值（字符串形式，运行时按需解析）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub advanced_params: Option<std::collections::HashMap<String, serde_json::Value>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AIProviderConfig {
     pub id: String,
+    /// 原始内置服务商类型 ID（如 "siliconflow"、"deepseek"），用于 Provider 工厂路由
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_type: Option<String>,
     pub name: String,
     pub vendor: String,
     pub description: String,
@@ -178,6 +185,9 @@ pub struct GlobalSettings {
     pub max_concurrent_generations: u32,
     pub default_quality: QualityLevel,
     pub language: String,
+    /// 每个模态的首选 provider ID，用户可指定文本用 DeepSeek、图片用硅基流动等
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub preferred_providers: std::collections::HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

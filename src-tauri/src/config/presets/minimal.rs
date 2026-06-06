@@ -15,8 +15,8 @@ pub fn preset() -> ConfigPreset {
             PresetProvider {
                 provider_id: "siliconflow".to_string(),
                 modality: AIModality::Text,
-                model_id: "deepseek-v3.2".to_string(),
-                note: Some("硅基流动托管的 DeepSeek-V3.2".to_string()),
+                model_id: "deepseek-ai/DeepSeek-R1".to_string(),
+                note: Some("硅基流动托管的 DeepSeek-R1（免费）".to_string()),
             },
             PresetProvider {
                 provider_id: "siliconflow".to_string(),

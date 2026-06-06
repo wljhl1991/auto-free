@@ -64,10 +64,12 @@ export interface AIModelConfig {
   costPerCall?: number;
   freeQuota?: string;
   quality: QualityLevel;
+  advancedParams?: Record<string, any>;
 }
 
 export interface AIProviderConfig {
   id: string;
+  providerType?: string;
   name: string;
   vendor: string;
   description: string;
@@ -112,6 +114,8 @@ export interface GlobalSettings {
   maxConcurrentGenerations: number;
   defaultQuality: QualityLevel;
   language: string;
+  /** 每个模态的首选 provider ID，如 { text: "deepseek", image: "siliconflow" } */
+  preferredProviders?: Record<string, string>;
 }
 
 export interface AppConfig {

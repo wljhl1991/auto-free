@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use super::{truncate_str, IAssetProvider, ProviderError};
+use super::{truncate_str, save_raw_response, IAssetProvider, ProviderError};
 use crate::types::game_script::AssetRef;
 use crate::types::asset::{LocalAsset, AIModality, AssetType, AssetSource};
 use crate::types::ai_provider::{AIProviderConfig, ConnectivityCheck, ConnectivityStatus};
@@ -167,6 +167,7 @@ impl ViduProvider {
             body.clone()
         };
         log::info!("[Vidu] 响应体: {}", truncated_response);
+        super::save_raw_response("vidu", "video_gen", &body);
 
         if status.is_success() {
             let gen_response: VideoGenerationResponse = serde_json::from_str(&body)
@@ -225,6 +226,7 @@ impl ViduProvider {
                 body.clone()
             };
             log::info!("[Vidu] 轮询响应: status={}, body={}", status.as_u16(), truncated);
+            save_raw_response("vidu", "video_gen_query", &body);
 
             if !status.is_success() {
                 return self.handle_error_status(status.as_u16(), &body);

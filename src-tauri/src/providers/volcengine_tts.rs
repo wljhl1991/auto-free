@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use super::{truncate_str, IAssetProvider, ProviderError};
+use super::{truncate_str, save_raw_response, IAssetProvider, ProviderError};
 use crate::types::game_script::AssetRef;
 use crate::types::asset::{LocalAsset, AIModality, AssetType, AssetSource};
 use crate::types::ai_provider::{AIProviderConfig, ConnectivityCheck, ConnectivityStatus};
@@ -189,6 +189,7 @@ impl VolcengineTTSProvider {
             body.clone()
         };
         log::info!("[VolcengineTTS] 响应体: {}", truncated_response);
+        save_raw_response("volcengine_tts", "tts", &body);
 
         if status.is_success() {
             let tts_response: TTSResponse = serde_json::from_str(&body)

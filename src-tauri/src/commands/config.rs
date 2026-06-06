@@ -119,18 +119,70 @@ pub async fn check_provider(
     provider_id: String,
     test_prompt: Option<String>,
     model_id: Option<String>,
+    provider_override: Option<crate::types::ai_provider::AIProviderConfig>,
     config_manager: tauri::State<'_, Arc<RwLock<ConfigManager>>>,
 ) -> Result<ConnectivityCheck, String> {
-    log::info!("检测服务商连通性: id={}, model_id={:?}, test_prompt={:?}", provider_id, model_id, test_prompt);
+    log::info!("检测服务商连通性: id={}, model_id={:?}, test_prompt={:?}, has_override={}", provider_id, model_id, test_prompt, provider_override.is_some());
 
-    // 1. 读取配置获取 provider
+    // 1. 获取 provider 配置：优先使用前端传入的编辑中配置
+    //    但需要从已保存的配置中恢复脱敏的 API Key 等凭证字段
     let mut provider = {
         let cm = config_manager.read().await;
-        let config = cm.get_config();
-        config.providers.iter()
-            .find(|p| p.id == provider_id)
-            .cloned()
-            .ok_or_else(|| format!("Provider '{}' not found", provider_id))?
+        let saved_config = cm.get_config();
+        let saved_provider = saved_config.providers.iter()
+            .find(|p| p.id == provider_id);
+
+        if let Some(ref override_config) = provider_override {
+            log::info!("使用前端传入的编辑中配置（含未保存的高级参数），合并已保存的凭证");
+            let mut merged = override_config.clone();
+            // 从已保存的配置中恢复脱敏的凭证字段
+            if let Some(saved) = saved_provider {
+                // 恢复 API Key（前端传来的可能是脱敏值 ***）
+                if let Some(ref mut override_key) = merged.auth_config.api_key {
+                    if override_key.value.contains("***") {
+                        if let Some(ref saved_key) = saved.auth_config.api_key {
+                            override_key.value = saved_key.value.clone();
+                        }
+                    }
+                }
+                // 恢复 extraParams 中的凭证
+                if let Some(ref mut override_extra) = merged.auth_config.extra_params {
+                    if let Some(ref saved_extra) = saved.auth_config.extra_params {
+                        for (key, override_field) in override_extra.iter_mut() {
+                            if override_field.value.contains("***") {
+                                if let Some(saved_field) = saved_extra.get(key) {
+                                    override_field.value = saved_field.value.clone();
+                                }
+                            }
+                        }
+                    }
+                }
+                // 恢复 account 凭证
+                if let Some(ref mut override_account) = merged.auth_config.account {
+                    if let Some(ref saved_account) = saved.auth_config.account {
+                        if let Some(ref mut u) = override_account.username {
+                            if u.value.contains("***") {
+                                if let Some(ref su) = saved_account.username {
+                                    u.value = su.value.clone();
+                                }
+                            }
+                        }
+                        if let Some(ref mut p) = override_account.password {
+                            if p.value.contains("***") {
+                                if let Some(ref sp) = saved_account.password {
+                                    p.value = sp.value.clone();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            merged
+        } else {
+            saved_provider
+                .cloned()
+                .ok_or_else(|| format!("Provider '{}' not found", provider_id))?
+        }
     };
 
     // 如果指定了 model_id，临时将该模型设为默认
@@ -149,7 +201,7 @@ pub async fn check_provider(
     // 2. 执行连通性检测
     let check = ConnectivityChecker::check_provider(&provider, test_prompt.as_deref()).await;
 
-    // 3. 更新 Provider 状态并保存
+    // 3. 更新 Provider 状态并保存（仅更新已保存的配置，不影响编辑中的配置）
     let new_status = ConnectivityChecker::check_to_status(&check);
     {
         let mut cm = config_manager.write().await;
@@ -264,4 +316,19 @@ pub async fn check_available_modalities(
         music: check(&AIModality::Music),
         voice: check(&AIModality::Voice),
     })
+}
+
+#[command]
+pub async fn reset_config(
+    config_manager: tauri::State<'_, Arc<RwLock<ConfigManager>>>,
+) -> Result<(), String> {
+    log::info!("收到恢复默认配置请求");
+    let mut cm = config_manager.write().await;
+    cm.reset_to_default()
+}
+
+/// 获取内置服务商模板列表（静态数据，用于前端添加服务商时选择）
+#[command]
+pub async fn get_builtin_provider_templates() -> Result<Vec<AIProviderConfig>, String> {
+    Ok(providers::builtin_providers())
 }

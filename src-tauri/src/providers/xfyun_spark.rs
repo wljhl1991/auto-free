@@ -271,6 +271,7 @@ impl XfyunSparkProvider {
                     // status=2 表示尾帧，响应结束
                     if response.header.status == 2 {
                         log::info!("[XfyunSpark] 响应完成: content_len={}", full_content.len());
+                        super::save_raw_response("xfyun_spark", "chat", &full_content);
                         break;
                     }
                 }

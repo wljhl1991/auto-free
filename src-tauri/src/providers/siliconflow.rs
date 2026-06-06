@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use super::{truncate_str, IAssetProvider, ProviderError};
+use super::{truncate_str, save_raw_response, IAssetProvider, ProviderError};
 use crate::types::game_script::AssetRef;
 use crate::types::asset::{LocalAsset, AIModality, AssetType, AssetSource};
 use crate::types::ai_provider::{AIProviderConfig, ConnectivityCheck, ConnectivityStatus};
@@ -69,6 +69,8 @@ struct ImageGenerationRequest {
     image_size: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     num_inference_steps: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    guidance_scale: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     seed: Option<u64>,
 }
@@ -163,6 +165,27 @@ impl SiliconFlowProvider {
         })
     }
 
+    /// 从模型配置的 advanced_params 读取高级参数
+    fn get_advanced_params(&self, model_id: &str) -> (Option<u32>, Option<f64>, Option<u64>) {
+        let model = self.config.models.iter().find(|m| m.id == model_id);
+        let params = model.and_then(|m| m.advanced_params.as_ref());
+
+        let num_inference_steps = params
+            .and_then(|p| p.get("num_inference_steps"))
+            .and_then(|v| v.as_u64())
+            .map(|v| v as u32);
+
+        let guidance_scale = params
+            .and_then(|p| p.get("guidance_scale"))
+            .and_then(|v| v.as_f64());
+
+        let seed = params
+            .and_then(|p| p.get("seed"))
+            .and_then(|v| v.as_u64());
+
+        (num_inference_steps, guidance_scale, seed)
+    }
+
     /// 生成图片
     pub async fn generate_image(
         &self,
@@ -173,13 +196,17 @@ impl SiliconFlowProvider {
     ) -> Result<Vec<u8>, ProviderError> {
         let model = model.unwrap_or(&self.default_image_model);
 
+        // 从当前模型的 advanced_params 读取高级参数
+        let (num_inference_steps, guidance_scale, seed) = self.get_advanced_params(model);
+
         let request = ImageGenerationRequest {
             model: model.to_string(),
             prompt: prompt.to_string(),
             negative_prompt: negative_prompt.map(|s| s.to_string()),
             image_size: size.map(|s| s.to_string()),
-            num_inference_steps: None,
-            seed: None,
+            num_inference_steps,
+            guidance_scale,
+            seed,
         };
 
         let mut last_error = None;
@@ -233,8 +260,16 @@ impl SiliconFlowProvider {
     }
 
     async fn send_image_request(&self, request: &ImageGenerationRequest) -> Result<String, ProviderError> {
-        log::info!("[SiliconFlow] 请求: endpoint={}, model={}, prompt_len={}", 
-            self.endpoint, request.model, request.prompt.len());
+        log::info!("[SiliconFlow] 图片生成请求: endpoint={}, model={}, prompt={}, negative_prompt={}, image_size={}, num_inference_steps={}, guidance_scale={}, seed={}",
+            self.endpoint,
+            request.model,
+            truncate_str(&request.prompt, 2000),
+            request.negative_prompt.as_deref().unwrap_or("None"),
+            request.image_size.as_deref().unwrap_or("None"),
+            request.num_inference_steps.map(|s| s.to_string()).as_deref().unwrap_or("None"),
+            request.guidance_scale.map(|s| s.to_string()).as_deref().unwrap_or("None"),
+            request.seed.map(|s| s.to_string()).as_deref().unwrap_or("None"),
+        );
 
         let response = self.client
             .post(&self.endpoint)
@@ -280,6 +315,7 @@ impl SiliconFlowProvider {
             body.clone()
         };
         log::info!("[SiliconFlow] 响应体: {}", truncated_response);
+        save_raw_response("siliconflow", "image_gen", &body);
 
         if status.is_success() {
             let gen_response: ImageGenerationResponse = serde_json::from_str(&body)
@@ -487,17 +523,31 @@ impl IAssetProvider for SiliconFlowProvider {
     }
 
     async fn check_connectivity(&self) -> Result<ConnectivityCheck, ProviderError> {
-        let start = SystemTime::now();
-        let test_prompt = "a beautiful sunset over mountains, digital art";
+        self.check_connectivity_with_prompt("a beautiful sunset over mountains, digital art").await
+    }
 
-        // 生成测试图片验证连通性
+    async fn check_connectivity_with_prompt(&self, prompt: &str) -> Result<ConnectivityCheck, ProviderError> {
+        let start = SystemTime::now();
+
+        // 非空且不超长时使用用户输入的提示词，否则使用默认提示词
+        let test_prompt = if !prompt.trim().is_empty() && prompt.len() <= 2000 {
+            prompt.trim()
+        } else {
+            "a beautiful sunset over mountains, digital art"
+        };
+
+        // 从当前模型的 advanced_params 读取高级参数，测试时也使用用户配置的值
+        let (num_inference_steps, guidance_scale, seed) = self.get_advanced_params(&self.default_image_model);
+
+        // 生成测试图片验证连通性（使用 512x512 以获得更好的预览效果）
         let request = ImageGenerationRequest {
             model: self.default_image_model.clone(),
             prompt: test_prompt.to_string(),
             negative_prompt: None,
-            image_size: Some("256x256".to_string()),
-            num_inference_steps: Some(1),
-            seed: Some(42),
+            image_size: Some("512x512".to_string()),
+            num_inference_steps,
+            guidance_scale,
+            seed,
         };
 
         let request_body = serde_json::to_string(&request).unwrap_or_default();

@@ -169,8 +169,99 @@
     },
     "models": [
       {
+        "id": "deepseek-ai/DeepSeek-R1",
+        "name": "DeepSeek-R1",
+        "modality": "text",
+        "isDefault": false,
+        "endpoint": "https://api.siliconflow.cn/v1/chat/completions",
+        "maxTokens": 65536,
+        "supportedSizes": null,
+        "maxDuration": null,
+        "costPerCall": 0,
+        "freeQuota": "免费",
+        "quality": "high"
+      },
+      {
+        "id": "nex-agi/Nex-N2-Pro",
+        "name": "Nex-N2-Pro",
+        "modality": "text",
+        "isDefault": false,
+        "endpoint": "https://api.siliconflow.cn/v1/chat/completions",
+        "maxTokens": 32768,
+        "supportedSizes": null,
+        "maxDuration": null,
+        "costPerCall": 0,
+        "freeQuota": "免费",
+        "quality": "high"
+      },
+      {
+        "id": "Qwen/Qwen3.5-4B",
+        "name": "Qwen3.5-4B",
+        "modality": "text",
+        "isDefault": false,
+        "endpoint": "https://api.siliconflow.cn/v1/chat/completions",
+        "maxTokens": 32768,
+        "supportedSizes": null,
+        "maxDuration": null,
+        "costPerCall": 0,
+        "freeQuota": "免费",
+        "quality": "standard"
+      },
+      {
+        "id": "deepseek-ai/DeepSeek-R1-0528-Qwen3-8B",
+        "name": "DeepSeek-R1-0528-Qwen3-8B",
+        "modality": "text",
+        "isDefault": false,
+        "endpoint": "https://api.siliconflow.cn/v1/chat/completions",
+        "maxTokens": 32768,
+        "supportedSizes": null,
+        "maxDuration": null,
+        "costPerCall": 0,
+        "freeQuota": "免费",
+        "quality": "high"
+      },
+      {
+        "id": "Qwen/Qwen3-8B",
+        "name": "Qwen3-8B",
+        "modality": "text",
+        "isDefault": false,
+        "endpoint": "https://api.siliconflow.cn/v1/chat/completions",
+        "maxTokens": 32768,
+        "supportedSizes": null,
+        "maxDuration": null,
+        "costPerCall": 0,
+        "freeQuota": "免费",
+        "quality": "standard"
+      },
+      {
+        "id": "THUDM/GLM-Z1-9B-0414",
+        "name": "GLM-Z1-9B",
+        "modality": "text",
+        "isDefault": false,
+        "endpoint": "https://api.siliconflow.cn/v1/chat/completions",
+        "maxTokens": 32768,
+        "supportedSizes": null,
+        "maxDuration": null,
+        "costPerCall": 0,
+        "freeQuota": "免费",
+        "quality": "high"
+      },
+      {
+        "id": "THUDM/GLM-4-9B-0414",
+        "name": "GLM-4-9B",
+        "modality": "text",
+        "isDefault": false,
+        "endpoint": "https://api.siliconflow.cn/v1/chat/completions",
+        "maxTokens": 32768,
+        "supportedSizes": null,
+        "maxDuration": null,
+        "costPerCall": 0,
+        "freeQuota": "免费",
+        "quality": "standard"
+      },
+      {
         "id": "deepseek-ai/DeepSeek-V3",
-        "name": "DeepSeek-V3 (硅基流动托管)",
+        "name": "DeepSeek-V3",
         "modality": "text",
         "isDefault": false,
         "endpoint": "https://api.siliconflow.cn/v1/chat/completions",
@@ -178,7 +269,7 @@
         "supportedSizes": null,
         "maxDuration": null,
         "costPerCall": 0.001,
-        "freeQuota": "基础开源模型免费，付费模型按量计费",
+        "freeQuota": "付费",
         "quality": "high"
       },
       {
@@ -192,7 +283,11 @@
         "maxDuration": null,
         "costPerCall": 0,
         "freeQuota": "免费",
-        "quality": "fast"
+        "quality": "fast",
+        "advancedParams": {
+          "num_inference_steps": 20,
+          "guidance_scale": 7.5
+        }
       },
       {
         "id": "Tongyi-MAI/Z-Image-Turbo",
@@ -205,7 +300,11 @@
         "maxDuration": null,
         "costPerCall": 0.1,
         "freeQuota": "0.1元/张",
-        "quality": "high"
+        "quality": "high",
+        "advancedParams": {
+          "num_inference_steps": 20,
+          "guidance_scale": 7.5
+        }
       }
     ],
     "status": "unconfigured",

@@ -71,10 +71,10 @@ impl ConfigManager {
 
         self.config = config;
 
-        // 如果 providers 为空，用内置默认值填充
+        // 如果 providers 为空，用内置默认值填充（每个模态一条）
         if self.config.providers.is_empty() {
             log::info!("配置中 providers 为空，使用内置默认 providers");
-            self.config.providers = providers::builtin_providers_with_override(&self.config_dir);
+            self.config.providers = Self::default_providers();
         }
 
         Ok(())
@@ -246,15 +246,84 @@ impl ConfigManager {
         self.save()
     }
 
-    /// 创建默认配置
-    fn default_config() -> AppConfig {
+    /// 恢复默认配置：清空当前保存的配置（包括开发配置），重新载入系统内置的值
+    pub fn reset_to_default(&mut self) -> Result<(), String> {
+        log::info!("恢复默认配置: 清空所有用户配置和开发配置");
+
+        // 删除已保存的配置文件
+        let config_path = self.config_dir.join("config.json");
+        let secrets_path = self.config_dir.join("secrets.enc");
+        if config_path.exists() {
+            std::fs::remove_file(&config_path)
+                .map_err(|e| format!("删除配置文件失败: {}", e))?;
+        }
+        if secrets_path.exists() {
+            std::fs::remove_file(&secrets_path)
+                .map_err(|e| format!("删除密钥文件失败: {}", e))?;
+        }
+
+        // 删除开发配置文件
+        if let Some(ref dev_path) = self.dev_config_path {
+            if dev_path.exists() {
+                std::fs::remove_file(dev_path)
+                    .map_err(|e| format!("删除开发配置文件失败: {}", e))?;
+            }
+        }
+
+        // 重新生成默认配置
+        self.config = Self::default_config();
+        self.save()?;
+
+        log::info!("已恢复默认配置");
+        Ok(())
+    }
+
+    /// 为每个模态创建一条默认服务商记录（每个模态独立，多模态服务商拆分为多条）
+    fn default_providers() -> Vec<AIProviderConfig> {
         let config_dir = std::env::current_dir()
             .unwrap_or_else(|_| PathBuf::from("."))
             .join("gen")
             .join("config");
+        let all_providers = providers::builtin_providers_with_override(&config_dir);
+        // 每个模态对应的默认 provider ID（避免多模态服务商被错误匹配）
+        let default_provider_map: [(crate::types::asset::AIModality, &str); 5] = [
+            (crate::types::asset::AIModality::Text, "deepseek"),
+            (crate::types::asset::AIModality::Image, "siliconflow"),
+            (crate::types::asset::AIModality::Video, "kling"),
+            (crate::types::asset::AIModality::Music, "skymusic"),
+            (crate::types::asset::AIModality::Voice, "edge-tts"),
+        ];
+        let mut init_providers = Vec::new();
+        for (modality, preferred_id) in default_provider_map.iter() {
+            if let Some(pc) = all_providers.iter().find(|p| p.id == *preferred_id && p.modality.contains(modality))
+                .or_else(|| all_providers.iter().find(|p| p.modality.contains(modality)))
+            {
+                let mut cloned = pc.clone();
+                // 只保留当前模态，过滤掉其他模态的模型
+                cloned.modality = vec![modality.clone()];
+                cloned.models.retain(|m| m.modality == *modality);
+                // 如果过滤后没有模型，保留原始模型但标记模态
+                if cloned.models.is_empty() {
+                    cloned.models = pc.models.iter()
+                        .filter(|m| m.modality == *modality)
+                        .cloned()
+                        .collect();
+                }
+                // 确保至少有一个默认模型
+                if !cloned.models.is_empty() && cloned.models.iter().all(|m| !m.is_default) {
+                    cloned.models[0].is_default = true;
+                }
+                init_providers.push(cloned);
+            }
+        }
+        init_providers
+    }
+
+    /// 创建默认配置
+    fn default_config() -> AppConfig {
         AppConfig {
             active_preset_id: "default".to_string(),
-            providers: providers::builtin_providers_with_override(&config_dir),
+            providers: Self::default_providers(),
             presets: presets::all_presets(),
             global_settings: GlobalSettings {
                 auto_retry_on_fail: true,
@@ -262,6 +331,7 @@ impl ConfigManager {
                 max_concurrent_generations: 3,
                 default_quality: QualityLevel::Standard,
                 language: "zh-CN".to_string(),
+                preferred_providers: std::collections::HashMap::new(),
             },
         }
     }

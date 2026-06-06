@@ -64,14 +64,35 @@ pub fn truncate_str(s: &str, max_bytes: usize) -> &str {
     &s[..boundary]
 }
 
+/// 保存 AI 原始响应到 gen/ai-responses/ 目录，不截断
+/// provider_id: 服务商标识（如 "deepseek", "siliconflow"）
+/// api_type: 接口类型（如 "chat", "image_gen", "tts"）
+/// response: 原始响应内容
+pub fn save_raw_response(provider_id: &str, api_type: &str, response: &str) {
+    let dir = std::env::current_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+        .join("gen")
+        .join("ai-responses");
+    std::fs::create_dir_all(&dir).ok();
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let path = dir.join(format!("{}_{}_{}.txt", provider_id, api_type, ts));
+    match std::fs::write(&path, response) {
+        Ok(_) => log::info!("[RawResponse] 已保存: {} ({}字节)", path.display(), response.len()),
+        Err(e) => log::warn!("[RawResponse] 保存失败: {}", e),
+    }
+}
+
 /// Provider 工厂 — 根据配置创建 Provider 实例
 pub struct ProviderFactory;
 
 impl ProviderFactory {
     /// 根据服务商配置创建对应的 Provider
     pub fn create(config: &AIProviderConfig, asset_base_path: &std::path::Path) -> Result<Box<dyn IAssetProvider>, ProviderError> {
-        // 优先用 id 匹配（英文标识符），fallback 到 vendor（中文名）
-        let key = config.id.as_str();
+        // 优先用 provider_type（自定义服务商的原始类型），其次用 id
+        let key = config.provider_type.as_deref().unwrap_or(config.id.as_str());
         match key {
             "builtin" => {
                 let builtin_assets_path = asset_base_path.join("builtin-assets");
