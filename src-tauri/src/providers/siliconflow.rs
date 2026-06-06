@@ -11,7 +11,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH, Instant};
 
 const MAX_RETRIES: u32 = 3;
 const DEFAULT_ENDPOINT: &str = "https://api.siliconflow.cn/v1/images/generations";
-const DEFAULT_IMAGE_MODEL: &str = "black-forest-labs/FLUX.1-schnell";
+const DEFAULT_IMAGE_MODEL: &str = "Kwai-Kolors/Kolors";
 const DEFAULT_TEXT_MODEL: &str = "deepseek-ai/DeepSeek-V3";
 /// SiliconFlow 免费用户每分钟最大请求数
 const DEFAULT_REQUESTS_PER_MINUTE: u32 = 5;

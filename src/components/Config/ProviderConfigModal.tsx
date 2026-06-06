@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { AIProviderConfig, AIModelConfig, ProviderStatus, AIModality } from '@/types';
 import { convertFileSrc } from '@/adapters/tauri';
 
@@ -56,18 +56,27 @@ export default function ProviderConfigModal({
   const [isCustomModel, setIsCustomModel] = useState(false);
   const [testPrompt, setTestPrompt] = useState('hi');
 
-  // 弹窗打开/切换 provider 时重置所有状态
+  // 弹窗打开时重置状态（使用 ref 防止 provider 引用变化导致重复重置）
+  const openIdRef = useRef<string>('');
   useEffect(() => {
     if (isOpen && provider) {
-      setEditedProvider({ ...provider, models: provider.models.map(m => ({ ...m })) });
-      const defaultModel = provider.models.find(m => m.isDefault) || provider.models[0];
-      setSelectedModelId(defaultModel?.id || '');
-      setIsCustomModel(false);
-      setCustomModelInput('');
-      setCustomModelModality('text');
-      setCheckResult(null);
-      setSaveResult(null);
-      setShowApiKey(false);
+      // 仅在弹窗新打开或切换 provider 时重置
+      const openId = `${isOpen}-${provider.id}`;
+      if (openIdRef.current !== openId) {
+        openIdRef.current = openId;
+        setEditedProvider({ ...provider, models: provider.models.map(m => ({ ...m })) });
+        const defaultModel = provider.models.find(m => m.isDefault) || provider.models[0];
+        setSelectedModelId(defaultModel?.id || '');
+        setIsCustomModel(false);
+        setCustomModelInput('');
+        setCustomModelModality('text');
+        setCheckResult(null);
+        setSaveResult(null);
+        setShowApiKey(false);
+      } else {
+        // provider 引用变了但 id 没变（如测试后状态更新），只同步状态字段
+        setEditedProvider({ ...provider, models: provider.models.map(m => ({ ...m })) });
+      }
     }
   }, [isOpen, provider]);
 
@@ -75,6 +84,7 @@ export default function ProviderConfigModal({
   const handleClose = useCallback(() => {
     setCheckResult(null);
     setSaveResult(null);
+    openIdRef.current = '';
     onClose();
   }, [onClose]);
 
@@ -369,15 +379,38 @@ export default function ProviderConfigModal({
 
   // --- 右侧测试结果面板 ---
   const renderTestPanel = () => {
+    if (checking) {
+      return (
+        <div style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          height: '100%', color: '#718096', fontSize: '0.9rem', textAlign: 'center', padding: '2rem',
+        }}>
+          <div style={{
+            width: '32px', height: '32px', border: '3px solid #e8e2d8',
+            borderTopColor: '#e07a2f', borderRadius: '50%',
+            animation: 'spin 0.8s linear infinite', marginBottom: '1rem',
+          }} />
+          <div style={{ fontWeight: 500 }}>正在测试连接...</div>
+          <div style={{ fontSize: '0.8rem', marginTop: '0.3rem', color: '#a0aec0' }}>请稍候</div>
+        </div>
+      );
+    }
+
     if (!checkResult) {
       return (
         <div style={{
           display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
           height: '100%', color: '#a0aec0', fontSize: '0.9rem', textAlign: 'center', padding: '2rem',
         }}>
-          <div style={{ fontSize: '2rem', marginBottom: '1rem', opacity: 0.3 }}>&#9881;</div>
-          <div>点击左侧"测试连接"按钮</div>
-          <div style={{ fontSize: '0.8rem', marginTop: '0.3rem' }}>测试结果将在此处显示</div>
+          <div style={{
+            width: '56px', height: '56px', borderRadius: '14px',
+            backgroundColor: '#f5f0e8', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            marginBottom: '1rem', fontSize: '1.5rem',
+          }}>&#9881;</div>
+          <div style={{ color: '#718096', fontWeight: 500 }}>接口调用信息</div>
+          <div style={{ fontSize: '0.8rem', marginTop: '0.4rem', lineHeight: 1.5 }}>
+            点击左侧"测试连接"按钮后<br/>请求和响应详情将在此处显示
+          </div>
         </div>
       );
     }
@@ -560,7 +593,7 @@ export default function ProviderConfigModal({
         backgroundColor: '#ffffff',
         border: '1px solid #e8e2d8',
         borderRadius: '16px',
-        width: '95%', maxWidth: checkResult ? '1100px' : '560px',
+        width: '95%', maxWidth: '1100px',
         maxHeight: '88vh',
         display: 'flex',
         transition: 'max-width 0.3s ease',
@@ -572,7 +605,7 @@ export default function ProviderConfigModal({
           minWidth: 0,
           padding: '1.5rem',
           overflowY: 'auto',
-          borderRight: checkResult ? '1px solid #e8e2d8' : 'none',
+          borderRight: '1px solid #e8e2d8',
         }}>
           {/* Header */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
@@ -874,28 +907,28 @@ export default function ProviderConfigModal({
           </div>
         </div>
 
-        {/* ===== 右侧：测试结果面板（仅在测试后显示） ===== */}
-        {checkResult && (
+        {/* ===== 右侧：测试结果面板（始终显示） ===== */}
+        <div style={{
+          flex: '0 0 420px', maxWidth: '420px',
+          maxHeight: '88vh',
+          overflowY: 'auto',
+          backgroundColor: '#faf8f5',
+          borderRadius: '0 16px 16px 0',
+        }}>
           <div style={{
-            flex: '0 0 420px', maxWidth: '420px',
-            maxHeight: '88vh',
-            overflowY: 'auto',
-            backgroundColor: '#faf8f5',
-            borderRadius: '0 16px 16px 0',
+            padding: '0.8rem 1rem', borderBottom: '1px solid #e8e2d8',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           }}>
-            <div style={{
-              padding: '0.8rem 1rem', borderBottom: '1px solid #e8e2d8',
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            }}>
-              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#4a5568' }}>测试结果</span>
+            <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#4a5568' }}>接口调用信息</span>
+            {checkResult && (
               <button onClick={() => setCheckResult(null)}
                 style={{ background: 'none', border: 'none', color: '#a0aec0', cursor: 'pointer', fontSize: '0.9rem', padding: '0.1rem' }}>
                 ✕
               </button>
-            </div>
-            {renderTestPanel()}
+            )}
           </div>
-        )}
+          {renderTestPanel()}
+        </div>
       </div>
     </div>
   );

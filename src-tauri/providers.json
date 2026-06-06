@@ -182,29 +182,29 @@
         "quality": "high"
       },
       {
-        "id": "black-forest-labs/FLUX.1-schnell",
-        "name": "FLUX.1-schnell",
+        "id": "Kwai-Kolors/Kolors",
+        "name": "Kolors",
         "modality": "image",
         "isDefault": true,
         "endpoint": "https://api.siliconflow.cn/v1/images/generations",
         "maxTokens": null,
         "supportedSizes": ["1:1", "16:9", "9:16", "4:3", "3:4"],
         "maxDuration": null,
-        "costPerCall": 0.5,
-        "freeQuota": "注册送 2000 万 tokens",
+        "costPerCall": 0,
+        "freeQuota": "免费",
         "quality": "fast"
       },
       {
-        "id": "black-forest-labs/FLUX.1-dev",
-        "name": "FLUX.1-dev",
+        "id": "Tongyi-MAI/Z-Image-Turbo",
+        "name": "Z-Image-Turbo",
         "modality": "image",
         "isDefault": false,
         "endpoint": "https://api.siliconflow.cn/v1/images/generations",
         "maxTokens": null,
         "supportedSizes": ["1:1", "16:9", "9:16", "4:3", "3:4"],
         "maxDuration": null,
-        "costPerCall": 2.0,
-        "freeQuota": "注册送 2000 万 tokens",
+        "costPerCall": 0.1,
+        "freeQuota": "0.1元/张",
         "quality": "high"
       }
     ],

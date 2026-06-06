@@ -21,8 +21,8 @@ pub fn preset() -> ConfigPreset {
             PresetProvider {
                 provider_id: "siliconflow".to_string(),
                 modality: AIModality::Image,
-                model_id: "flux-1-schnell".to_string(),
-                note: Some("FLUX.1-schnell 快速出图".to_string()),
+                model_id: "Kwai-Kolors/Kolors".to_string(),
+                note: Some("Kolors 免费出图".to_string()),
             },
             PresetProvider {
                 provider_id: "skymusic".to_string(),
