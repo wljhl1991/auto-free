@@ -76,6 +76,7 @@ function GamePlay() {
   const [showProgress, setShowProgress] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRepairing, setIsRepairing] = useState(false);
 
   // 章节过渡状态
   const [chapterTransition, setChapterTransition] = useState<{
@@ -212,48 +213,111 @@ function GamePlay() {
   useEffect(() => {
     if (!gameId) return;
 
-    game.getGameScript(gameId).then(script => {
+    game.getGameScript(gameId).then(async (script) => {
       // 初始化所有已存在的资源 URL 到 AssetLoader 和 assetUrlMapRef
       for (const chapter of script.chapters) {
         for (const scene of chapter.scenes) {
           // 场景资产
           if (scene.assets.backgroundImage?.url) {
-            const resolvedUrl = resolveAssetUrl(scene.assets.backgroundImage.url);
-            assetLoaderRef.current.setCachedUrl(scene.assets.backgroundImage.id, resolvedUrl);
-            assetUrlMapRef.current[scene.assets.backgroundImage.id] = resolvedUrl;
+            const assetRef = scene.assets.backgroundImage;
+            try {
+              const dataUrl = await invoke<string>('read_file_as_data_url', {
+                filePath: assetRef.url
+              });
+              assetLoaderRef.current.setCachedUrl(assetRef.id, dataUrl);
+              assetUrlMapRef.current[assetRef.id] = dataUrl;
+            } catch {
+              const resolvedUrl = resolveAssetUrl(assetRef.url);
+              assetLoaderRef.current.setCachedUrl(assetRef.id, resolvedUrl);
+              assetUrlMapRef.current[assetRef.id] = resolvedUrl;
+            }
           }
           if (scene.assets.backgroundVideo?.url) {
-            const resolvedUrl = resolveAssetUrl(scene.assets.backgroundVideo.url);
-            assetLoaderRef.current.setCachedUrl(scene.assets.backgroundVideo.id, resolvedUrl);
-            assetUrlMapRef.current[scene.assets.backgroundVideo.id] = resolvedUrl;
+            const assetRef = scene.assets.backgroundVideo;
+            try {
+              const dataUrl = await invoke<string>('read_file_as_data_url', {
+                filePath: assetRef.url
+              });
+              assetLoaderRef.current.setCachedUrl(assetRef.id, dataUrl);
+              assetUrlMapRef.current[assetRef.id] = dataUrl;
+            } catch {
+              const resolvedUrl = resolveAssetUrl(assetRef.url);
+              assetLoaderRef.current.setCachedUrl(assetRef.id, resolvedUrl);
+              assetUrlMapRef.current[assetRef.id] = resolvedUrl;
+            }
           }
           if (scene.assets.bgm?.url) {
-            const resolvedUrl = resolveAssetUrl(scene.assets.bgm.url);
-            assetLoaderRef.current.setCachedUrl(scene.assets.bgm.id, resolvedUrl);
-            assetUrlMapRef.current[scene.assets.bgm.id] = resolvedUrl;
+            const assetRef = scene.assets.bgm;
+            try {
+              const dataUrl = await invoke<string>('read_file_as_data_url', {
+                filePath: assetRef.url
+              });
+              assetLoaderRef.current.setCachedUrl(assetRef.id, dataUrl);
+              assetUrlMapRef.current[assetRef.id] = dataUrl;
+            } catch {
+              const resolvedUrl = resolveAssetUrl(assetRef.url);
+              assetLoaderRef.current.setCachedUrl(assetRef.id, resolvedUrl);
+              assetUrlMapRef.current[assetRef.id] = resolvedUrl;
+            }
           }
           if (scene.assets.ambientSound?.url) {
-            const resolvedUrl = resolveAssetUrl(scene.assets.ambientSound.url);
-            assetLoaderRef.current.setCachedUrl(scene.assets.ambientSound.id, resolvedUrl);
-            assetUrlMapRef.current[scene.assets.ambientSound.id] = resolvedUrl;
+            const assetRef = scene.assets.ambientSound;
+            try {
+              const dataUrl = await invoke<string>('read_file_as_data_url', {
+                filePath: assetRef.url
+              });
+              assetLoaderRef.current.setCachedUrl(assetRef.id, dataUrl);
+              assetUrlMapRef.current[assetRef.id] = dataUrl;
+            } catch {
+              const resolvedUrl = resolveAssetUrl(assetRef.url);
+              assetLoaderRef.current.setCachedUrl(assetRef.id, resolvedUrl);
+              assetUrlMapRef.current[assetRef.id] = resolvedUrl;
+            }
           }
           if (scene.assets.cgAnimation?.url) {
-            const resolvedUrl = resolveAssetUrl(scene.assets.cgAnimation.url);
-            assetLoaderRef.current.setCachedUrl(scene.assets.cgAnimation.id, resolvedUrl);
-            assetUrlMapRef.current[scene.assets.cgAnimation.id] = resolvedUrl;
+            const assetRef = scene.assets.cgAnimation;
+            try {
+              const dataUrl = await invoke<string>('read_file_as_data_url', {
+                filePath: assetRef.url
+              });
+              assetLoaderRef.current.setCachedUrl(assetRef.id, dataUrl);
+              assetUrlMapRef.current[assetRef.id] = dataUrl;
+            } catch {
+              const resolvedUrl = resolveAssetUrl(assetRef.url);
+              assetLoaderRef.current.setCachedUrl(assetRef.id, resolvedUrl);
+              assetUrlMapRef.current[assetRef.id] = resolvedUrl;
+            }
           }
           
           // 节点资产
           for (const node of scene.sequence) {
             if ('speakerAvatar' in node && node.speakerAvatar?.url) {
-              const resolvedUrl = resolveAssetUrl(node.speakerAvatar.url);
-              assetLoaderRef.current.setCachedUrl(node.speakerAvatar.id, resolvedUrl);
-              assetUrlMapRef.current[node.speakerAvatar.id] = resolvedUrl;
+              const assetRef = node.speakerAvatar;
+              try {
+                const dataUrl = await invoke<string>('read_file_as_data_url', {
+                  filePath: assetRef.url
+                });
+                assetLoaderRef.current.setCachedUrl(assetRef.id, dataUrl);
+                assetUrlMapRef.current[assetRef.id] = dataUrl;
+              } catch {
+                const resolvedUrl = resolveAssetUrl(assetRef.url);
+                assetLoaderRef.current.setCachedUrl(assetRef.id, resolvedUrl);
+                assetUrlMapRef.current[assetRef.id] = resolvedUrl;
+              }
             }
             if ('voiceAsset' in node && node.voiceAsset?.url) {
-              const resolvedUrl = resolveAssetUrl(node.voiceAsset.url);
-              assetLoaderRef.current.setCachedUrl(node.voiceAsset.id, resolvedUrl);
-              assetUrlMapRef.current[node.voiceAsset.id] = resolvedUrl;
+              const assetRef = node.voiceAsset;
+              try {
+                const dataUrl = await invoke<string>('read_file_as_data_url', {
+                  filePath: assetRef.url
+                });
+                assetLoaderRef.current.setCachedUrl(assetRef.id, dataUrl);
+                assetUrlMapRef.current[assetRef.id] = dataUrl;
+              } catch {
+                const resolvedUrl = resolveAssetUrl(assetRef.url);
+                assetLoaderRef.current.setCachedUrl(assetRef.id, resolvedUrl);
+                assetUrlMapRef.current[assetRef.id] = resolvedUrl;
+              }
             }
           }
         }
@@ -301,8 +365,8 @@ function GamePlay() {
 
         // 播放语音
         if ((event.type === 'narration' || event.type === 'dialogue') && event.voiceUrl) {
-          const voiceUrl = resolveAssetUrl(event.voiceUrl);
-          audioEngineRef.current.playVoice(voiceUrl).catch(() => {});
+          // 直接用 event.voiceUrl，它已经通过 AssetLoader 加载过
+          audioEngineRef.current.playVoice(event.voiceUrl).catch(() => {});
         } else if ((event.type === 'narration' || event.type === 'dialogue') && event.voiceAssetRefId) {
           // voiceUrl 为空但 voiceAssetRefId 存在，从 assetUrlMap 中查找
           const mappedUrl = assetUrlMapRef.current[event.voiceAssetRefId];
@@ -399,6 +463,152 @@ function GamePlay() {
       await generation.cancelRemainingChapters(gameId);
     } catch (err) {
       console.error('取消后续生成失败:', err);
+    }
+  }, [gameId]);
+
+  // 修复游戏并重新加载
+  const handleRepairGame = useCallback(async () => {
+    if (!gameId) return;
+    setIsRepairing(true);
+    try {
+      const count = await game.repairGame(gameId);
+      alert(`修复完成！成功移动了 ${count} 个资源到正确位置`);
+      // 重新加载游戏脚本和资源
+      await reloadGame();
+    } catch (err) {
+      console.error('修复游戏失败:', err);
+      alert(`修复失败: ${err}`);
+    } finally {
+      setIsRepairing(false);
+      setShowMenu(false);
+    }
+  }, [gameId]);
+
+  // 重新加载游戏
+  const reloadGame = useCallback(async () => {
+    if (!gameId) return;
+    setIsLoading(true);
+    
+    try {
+      const script = await game.getGameScript(gameId);
+      
+      // 重新初始化所有资源 URL 到 AssetLoader 和 assetUrlMapRef
+      for (const chapter of script.chapters) {
+        for (const scene of chapter.scenes) {
+          // 场景资产
+          if (scene.assets.backgroundImage?.url) {
+            const assetRef = scene.assets.backgroundImage;
+            try {
+              const dataUrl = await invoke<string>('read_file_as_data_url', {
+                filePath: assetRef.url
+              });
+              assetLoaderRef.current.setCachedUrl(assetRef.id, dataUrl);
+              assetUrlMapRef.current[assetRef.id] = dataUrl;
+            } catch {
+              const resolvedUrl = resolveAssetUrl(assetRef.url);
+              assetLoaderRef.current.setCachedUrl(assetRef.id, resolvedUrl);
+              assetUrlMapRef.current[assetRef.id] = resolvedUrl;
+            }
+          }
+          if (scene.assets.backgroundVideo?.url) {
+            const assetRef = scene.assets.backgroundVideo;
+            try {
+              const dataUrl = await invoke<string>('read_file_as_data_url', {
+                filePath: assetRef.url
+              });
+              assetLoaderRef.current.setCachedUrl(assetRef.id, dataUrl);
+              assetUrlMapRef.current[assetRef.id] = dataUrl;
+            } catch {
+              const resolvedUrl = resolveAssetUrl(assetRef.url);
+              assetLoaderRef.current.setCachedUrl(assetRef.id, resolvedUrl);
+              assetUrlMapRef.current[assetRef.id] = resolvedUrl;
+            }
+          }
+          if (scene.assets.bgm?.url) {
+            const assetRef = scene.assets.bgm;
+            try {
+              const dataUrl = await invoke<string>('read_file_as_data_url', {
+                filePath: assetRef.url
+              });
+              assetLoaderRef.current.setCachedUrl(assetRef.id, dataUrl);
+              assetUrlMapRef.current[assetRef.id] = dataUrl;
+            } catch {
+              const resolvedUrl = resolveAssetUrl(assetRef.url);
+              assetLoaderRef.current.setCachedUrl(assetRef.id, resolvedUrl);
+              assetUrlMapRef.current[assetRef.id] = resolvedUrl;
+            }
+          }
+          if (scene.assets.ambientSound?.url) {
+            const assetRef = scene.assets.ambientSound;
+            try {
+              const dataUrl = await invoke<string>('read_file_as_data_url', {
+                filePath: assetRef.url
+              });
+              assetLoaderRef.current.setCachedUrl(assetRef.id, dataUrl);
+              assetUrlMapRef.current[assetRef.id] = dataUrl;
+            } catch {
+              const resolvedUrl = resolveAssetUrl(assetRef.url);
+              assetLoaderRef.current.setCachedUrl(assetRef.id, resolvedUrl);
+              assetUrlMapRef.current[assetRef.id] = resolvedUrl;
+            }
+          }
+          if (scene.assets.cgAnimation?.url) {
+            const assetRef = scene.assets.cgAnimation;
+            try {
+              const dataUrl = await invoke<string>('read_file_as_data_url', {
+                filePath: assetRef.url
+              });
+              assetLoaderRef.current.setCachedUrl(assetRef.id, dataUrl);
+              assetUrlMapRef.current[assetRef.id] = dataUrl;
+            } catch {
+              const resolvedUrl = resolveAssetUrl(assetRef.url);
+              assetLoaderRef.current.setCachedUrl(assetRef.id, resolvedUrl);
+              assetUrlMapRef.current[assetRef.id] = resolvedUrl;
+            }
+          }
+          
+          // 节点资产
+          for (const node of scene.sequence) {
+            if ('speakerAvatar' in node && node.speakerAvatar?.url) {
+              const assetRef = node.speakerAvatar;
+              try {
+                const dataUrl = await invoke<string>('read_file_as_data_url', {
+                  filePath: assetRef.url
+                });
+                assetLoaderRef.current.setCachedUrl(assetRef.id, dataUrl);
+                assetUrlMapRef.current[assetRef.id] = dataUrl;
+              } catch {
+                const resolvedUrl = resolveAssetUrl(assetRef.url);
+                assetLoaderRef.current.setCachedUrl(assetRef.id, resolvedUrl);
+                assetUrlMapRef.current[assetRef.id] = resolvedUrl;
+              }
+            }
+            if ('voiceAsset' in node && node.voiceAsset?.url) {
+              const assetRef = node.voiceAsset;
+              try {
+                const dataUrl = await invoke<string>('read_file_as_data_url', {
+                  filePath: assetRef.url
+                });
+                assetLoaderRef.current.setCachedUrl(assetRef.id, dataUrl);
+                assetUrlMapRef.current[assetRef.id] = dataUrl;
+              } catch {
+                const resolvedUrl = resolveAssetUrl(assetRef.url);
+                assetLoaderRef.current.setCachedUrl(assetRef.id, resolvedUrl);
+                assetUrlMapRef.current[assetRef.id] = resolvedUrl;
+              }
+            }
+          }
+        }
+      }
+
+      // 更新 executor 的脚本
+      if (executorRef.current) {
+        executorRef.current.updateScript(script);
+      }
+    } catch (err) {
+      console.error('重新加载游戏失败:', err);
+    } finally {
+      setIsLoading(false);
     }
   }, [gameId]);
 
@@ -623,10 +833,11 @@ function GamePlay() {
           </div>
         </SceneRenderer>
 
-        {/* 资源状态指示器和重新生成按钮 */}
+        {/* 资源状态指示器和重新生成按钮 - 调整位置到右下角，不遮挡菜单 */}
         {sceneBackground && currentBgAssetRefId && (
           <div
             className="asset-status-overlay"
+            style={{ bottom: '20px', right: '20px', top: 'auto', left: 'auto' }}
             onContextMenu={(e) => handleContextMenu(e, currentBgAssetRefId, 'Image', '', undefined)}
           >
             <span className={`asset-status-badge ${currentBgState?.status ?? 'fallback'}`}>
@@ -753,6 +964,8 @@ function GamePlay() {
           onBackToMenu={handleBackToMenu}
           onExportGame={handleExportGame}
           onCancelGeneration={handleCancelGeneration}
+          onRepairGame={handleRepairGame}
+          isRepairing={isRepairing}
           onClose={() => setShowMenu(false)}
         />
       )}

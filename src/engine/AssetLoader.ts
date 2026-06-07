@@ -1,8 +1,8 @@
-import { convertFileSrc } from '../adapters/tauri';
+import { convertFileSrc, invoke } from '../adapters/tauri';
 import type { AssetRef } from '../../shared/types/game-script';
 
 export class AssetLoader {
-  private cache: Map<string, string> = new Map(); // assetRefId -> localUrl
+  private cache: Map<string, string> = new Map(); // assetRefId -> data URL or accessible URL
 
   // 根据 AssetRef 加载本地资源
   async loadAsset(assetRef: AssetRef): Promise<string | undefined> {
@@ -11,9 +11,20 @@ export class AssetLoader {
     }
 
     if (assetRef.url) {
-      const resolvedUrl = this.resolveAssetUrl(assetRef.url);
-      this.cache.set(assetRef.id, resolvedUrl);
-      return resolvedUrl;
+      // 尝试用 data URL 方式（最可靠）
+      try {
+        const dataUrl = await invoke<string>('read_file_as_data_url', {
+          filePath: assetRef.url
+        });
+        this.cache.set(assetRef.id, dataUrl);
+        return dataUrl;
+      } catch (e) {
+        // 如果失败，回退到 convertFileSrc
+        console.warn('Failed to load as data URL, falling back to convertFileSrc:', e);
+        const resolvedUrl = this.resolveAssetUrl(assetRef.url);
+        this.cache.set(assetRef.id, resolvedUrl);
+        return resolvedUrl;
+      }
     }
 
     return undefined;
