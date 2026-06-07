@@ -108,6 +108,7 @@ pub fn run() {
             game::get_game_script,
             game::list_games,
             game::delete_game,
+            game::repair_game,
             game::save_game,
             game::load_save,
             game::list_saves,
