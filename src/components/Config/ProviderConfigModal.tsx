@@ -29,6 +29,7 @@ interface CheckResultData {
   mediaUrl?: string;  // 本地文件路径（需要转换为 data URL）
   mediaDataUrl?: string;  // base64 data URL（前端直接使用）
   mediaType?: string;
+  mediaError?: string;  // 媒体文件读取错误
   requestEndpoint?: string;
   requestModel?: string;
   requestHeaders?: string;
@@ -244,6 +245,25 @@ export default function ProviderConfigModal({
     });
   };
 
+  // 语音参数处理（字符串值）
+  const handleVoiceParamChange = (key: string, value: string) => {
+    setEditedProvider(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        models: prev.models.map(m => {
+          if (m.id !== selectedModelId) return m;
+          const currentParams = m.advancedParams || {};
+          if (value === '' || value === '__default__') {
+            const { [key]: _, ...rest } = currentParams;
+            return { ...m, advancedParams: Object.keys(rest).length > 0 ? rest : undefined };
+          }
+          return { ...m, advancedParams: { ...currentParams, [key]: value } };
+        }),
+      };
+    });
+  };
+
   const handleExtraParamChange = (key: string, value: string) => {
     setEditedProvider(prev => {
       if (!prev) return prev;
@@ -297,11 +317,14 @@ export default function ProviderConfigModal({
 
       // 如果有媒体文件，转换为 base64 data URL
       let mediaDataUrl: string | undefined;
+      let mediaError: string | undefined;
       if (result?.mediaUrl) {
         try {
           mediaDataUrl = await invoke<string>('read_file_as_data_url', { filePath: result.mediaUrl });
-        } catch (e) {
-          console.warn('读取媒体文件失败:', e);
+          console.log('[ProviderConfigModal] 媒体文件加载成功, 大小:', mediaDataUrl.length, '字符');
+        } catch (e: any) {
+          console.warn('[ProviderConfigModal] 读取媒体文件失败:', e, '路径:', result.mediaUrl);
+          mediaError = typeof e === 'string' ? e : (e?.message || '读取失败');
         }
       }
 
@@ -314,6 +337,7 @@ export default function ProviderConfigModal({
         mediaUrl: result?.mediaUrl,
         mediaDataUrl,
         mediaType: result?.mediaType,
+        mediaError,
         requestEndpoint: result?.requestEndpoint,
         requestModel: result?.requestModel,
         requestHeaders: result?.requestHeaders,
@@ -584,10 +608,42 @@ export default function ProviderConfigModal({
           )}
 
           {/* 音频 */}
-          {checkResult.mediaDataUrl && checkResult.mediaType === 'audio' && (
+          {checkResult.mediaType === 'audio' && (
             <div style={{ marginBottom: '0.5rem' }}>
               <div style={{ fontSize: '0.75rem', color: '#718096', marginBottom: '0.25rem' }}>测试音频</div>
-              <audio controls src={checkResult.mediaDataUrl} style={{ width: '100%' }} />
+              {checkResult.mediaDataUrl ? (
+                <audio
+                  key={checkResult.mediaDataUrl.substring(0, 50)}
+                  controls
+                  src={checkResult.mediaDataUrl}
+                  style={{ width: '100%' }}
+                  onError={(e) => {
+                    const audioEl = e.currentTarget;
+                    console.warn('[ProviderConfigModal] 音频播放失败, error:', audioEl.error?.code, audioEl.error?.message);
+                  }}
+                >
+                  <p>您的浏览器不支持音频播放</p>
+                </audio>
+              ) : checkResult.mediaError ? (
+                <div style={{
+                  padding: '0.5rem 0.6rem', backgroundColor: 'rgba(229,62,62,0.06)',
+                  borderRadius: '6px', fontSize: '0.8rem', color: '#e53e3e',
+                  border: '1px solid rgba(229,62,62,0.2)',
+                }}>
+                  音频加载失败: {checkResult.mediaError}
+                  {checkResult.mediaUrl && (
+                    <div style={{ fontSize: '0.7rem', color: '#718096', marginTop: '0.3rem' }}>
+                      文件路径: {checkResult.mediaUrl}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{
+                  padding: '0.5rem', color: '#a0aec0', fontSize: '0.8rem',
+                }}>
+                  音频数据不可用
+                </div>
+              )}
             </div>
           )}
 
@@ -1035,6 +1091,139 @@ export default function ProviderConfigModal({
                               </button>
                             )}
                           </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+
+              {/* ===== Section: 语音参数（Edge TTS） ===== */}
+              {selectedModel?.modality === 'voice' && (() => {
+                const advParams = selectedModel?.advancedParams || {};
+                const rateOptions = [
+                  { value: '__default__', label: '默认 (+0%)' },
+                  { value: '-50%', label: '-50% (很慢)' },
+                  { value: '-20%', label: '-20% (较慢)' },
+                  { value: '-10%', label: '-10% (稍慢)' },
+                  { value: '+0%', label: '+0% (正常)' },
+                  { value: '+10%', label: '+10% (稍快)' },
+                  { value: '+20%', label: '+20% (较快)' },
+                  { value: '+50%', label: '+50% (很快)' },
+                  { value: '+100%', label: '+100% (极快)' },
+                ];
+                const pitchOptions = [
+                  { value: '__default__', label: '默认 (+0Hz)' },
+                  { value: '-20Hz', label: '-20Hz (很低)' },
+                  { value: '-10Hz', label: '-10Hz (较低)' },
+                  { value: '-5Hz', label: '-5Hz (稍低)' },
+                  { value: '+0Hz', label: '+0Hz (正常)' },
+                  { value: '+5Hz', label: '+5Hz (稍高)' },
+                  { value: '+10Hz', label: '+10Hz (较高)' },
+                  { value: '+20Hz', label: '+20Hz (很高)' },
+                ];
+                const volumeOptions = [
+                  { value: '__default__', label: '默认 (medium)' },
+                  { value: 'silent', label: 'silent (静音)' },
+                  { value: 'x-soft', label: 'x-soft (极轻)' },
+                  { value: 'soft', label: 'soft (轻声)' },
+                  { value: 'medium', label: 'medium (中等)' },
+                  { value: 'loud', label: 'loud (响亮)' },
+                  { value: 'x-loud', label: 'x-loud (极响)' },
+                ];
+                const formatOptions = [
+                  { value: '__default__', label: '默认 (24khz 96kbps)' },
+                  { value: 'audio-24khz-48kbitrate-mono-mp3', label: '24khz 48kbps (文件小)' },
+                  { value: 'audio-24khz-96kbitrate-mono-mp3', label: '24khz 96kbps (推荐)' },
+                ];
+                const voiceOptions = [
+                  { value: '__default__', label: '默认 (Yunjian 男声)' },
+                  { value: 'zh-CN-XiaoxiaoNeural', label: 'Xiaoxiao (女声，温柔)' },
+                  { value: 'zh-CN-XiaoyiNeural', label: 'Xiaoyi (女声，活泼)' },
+                  { value: 'zh-CN-XiaochenNeural', label: 'Xiaochen (女声，自然)' },
+                  { value: 'zh-CN-XiaohanNeural', label: 'Xiaohan (女声)' },
+                  { value: 'zh-CN-XiaomengNeural', label: 'Xiaomeng (女声)' },
+                  { value: 'zh-CN-XiaomoNeural', label: 'Xiaomo (女声)' },
+                  { value: 'zh-CN-XiaoqiuNeural', label: 'Xiaoqiu (女声)' },
+                  { value: 'zh-CN-XiaoruiNeural', label: 'Xiaorui (女声)' },
+                  { value: 'zh-CN-XiaoshuangNeural', label: 'Xiaoshuang (女声，甜美)' },
+                  { value: 'zh-CN-XiaoxuanNeural', label: 'Xiaoxuan (女声)' },
+                  { value: 'zh-CN-XiaoyanNeural', label: 'Xiaoyan (女声)' },
+                  { value: 'zh-CN-XiaozhenNeural', label: 'Xiaozhen (女声)' },
+                  { value: 'zh-CN-YunjianNeural', label: 'Yunjian (男声，沉稳)' },
+                  { value: 'zh-CN-YunxiNeural', label: 'Yunxi (男声，年轻)' },
+                  { value: 'zh-CN-YunxiaNeural', label: 'Yunxia (男声，少年)' },
+                  { value: 'zh-CN-YunyangNeural', label: 'Yunyang (男声，新闻播音)' },
+                  { value: 'zh-CN-YunfengNeural', label: 'Yunfeng (男声)' },
+                  { value: 'zh-CN-YunhaoNeural', label: 'Yunhao (男声)' },
+                  { value: 'zh-CN-YunjieNeural', label: 'Yunjie (男声)' },
+                  { value: 'zh-CN-YunyeNeural', label: 'Yunye (男声)' },
+                  { value: 'zh-CN-YunzeNeural', label: 'Yunze (男声)' },
+                  { value: 'zh-CN-liaoning-XiaobeiNeural', label: 'Xiaobei (女声，辽宁方言)' },
+                  { value: 'zh-CN-shaanxi-XiaoniNeural', label: 'Xiaoni (女声，陕西方言)' },
+                  { value: 'zh-TW-HsiaoChenNeural', label: 'HsiaoChen (台湾女声)' },
+                  { value: 'zh-TW-HsiaoYuNeural', label: 'HsiaoYu (台湾女声)' },
+                  { value: 'zh-TW-YunJheNeural', label: 'YunJhe (台湾男声)' },
+                  { value: 'zh-HK-HiuGaaiNeural', label: 'HiuGaai (粤语女声)' },
+                  { value: 'zh-HK-HiuMaanNeural', label: 'HiuMaan (粤语女声)' },
+                  { value: 'zh-HK-WanLungNeural', label: 'WanLung (粤语男声)' },
+                ];
+                const voiceParamDefs = [
+                  { key: 'voice', label: '音色', tip: '选择不同的语音角色。默认 Yunjian（男声沉稳）。测试连接时使用选中的音色。', options: voiceOptions },
+                  { key: 'rate', label: '语速', tip: '控制语音的播放速度。负值减慢，正值加快。范围：-50% ~ +100%', options: rateOptions },
+                  { key: 'pitch', label: '音调', tip: '控制语音的音调高低。负值降低，正值升高。范围：-50Hz ~ +50Hz', options: pitchOptions },
+                  { key: 'volume', label: '音量', tip: '控制语音的音量大小。支持预设值 (silent/x-soft/soft/medium/loud/x-loud) 或分贝值 (如 +10dB)', options: volumeOptions },
+                  { key: 'output_format', label: '输出格式', tip: '音频编码格式和质量。仅支持 24khz 48kbps/96kbps。', options: formatOptions },
+                ];
+                return (
+                  <div style={{ marginBottom: '1.25rem' }}>
+                    <div style={sectionHeaderStyle}>语音参数</div>
+                    <div style={{
+                      padding: '0.5rem 0.7rem', marginBottom: '0.6rem',
+                      backgroundColor: 'rgba(224,122,47,0.06)', border: '1px solid rgba(224,122,47,0.2)',
+                      borderRadius: '8px', fontSize: '0.75rem', color: '#718096', lineHeight: 1.5,
+                    }}>
+                      不选则使用默认值。选择「默认」可清除已配置的参数。
+                    </div>
+                    {voiceParamDefs.map(def => {
+                      const currentVal = advParams[def.key];
+                      return (
+                        <div key={def.key} style={{ marginBottom: '0.6rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginBottom: '0.4rem' }}>
+                            <label style={{ ...labelStyle, marginBottom: 0 }}>{def.label}</label>
+                            <span
+                              onClick={() => setTipOpen(prev => ({ ...prev, [def.key]: !prev[def.key] }))}
+                              style={{
+                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                width: '16px', height: '16px', borderRadius: '50%',
+                                backgroundColor: tipOpen[def.key] ? 'rgba(224,122,47,0.15)' : 'rgba(113,128,150,0.1)',
+                                color: tipOpen[def.key] ? '#e07a2f' : '#a0aec0',
+                                fontSize: '0.65rem', cursor: 'pointer', userSelect: 'none',
+                                transition: 'all 0.2s',
+                              }}
+                              title="查看说明"
+                            >
+                              ?
+                            </span>
+                          </div>
+                          {tipOpen[def.key] && (
+                            <div style={{
+                              padding: '0.4rem 0.6rem', marginBottom: '0.4rem',
+                              backgroundColor: 'rgba(224,122,47,0.06)', border: '1px solid rgba(224,122,47,0.15)',
+                              borderRadius: '6px', fontSize: '0.72rem', color: '#718096', lineHeight: 1.5,
+                            }}>
+                              {def.tip}
+                            </div>
+                          )}
+                          <select
+                            value={currentVal != null ? String(currentVal) : '__default__'}
+                            onChange={e => handleVoiceParamChange(def.key, e.target.value)}
+                            style={{ ...inputStyle, width: '100%', fontFamily: 'monospace' }}
+                          >
+                            {def.options.map(opt => (
+                              <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            ))}
+                          </select>
                         </div>
                       );
                     })}

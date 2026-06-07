@@ -29,5 +29,8 @@ export function useConfig() {
     readCallHistory: (lines?: number) => invoke<string>('read_call_history', { lines: lines || null }),
     resetConfig: () => invoke<void>('reset_config'),
     getBuiltinProviderTemplates: () => invoke<any[]>('get_builtin_provider_templates'),
+    deleteProvider: (providerId: string) => invoke<void>('delete_provider', { providerId }),
+    copyProvider: (providerId: string) => invoke<string>('copy_provider', { providerId }),
+    resetProvider: (providerId: string) => invoke<void>('reset_provider', { providerId }),
   }), []);
 }

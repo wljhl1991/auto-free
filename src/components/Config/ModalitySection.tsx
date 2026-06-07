@@ -7,6 +7,9 @@ interface ModalitySectionProps {
   providers: AIProviderConfig[];
   onConfigure: (id: string) => void;
   onCheck: (id: string, testPrompt?: string, modelId?: string) => void;
+  onCopy: (id: string) => void;
+  onDelete: (id: string) => void;
+  onReset: (id: string) => void;
 }
 
 const modalityIcons: Record<string, string> = {
@@ -23,6 +26,9 @@ export default function ModalitySection({
   providers,
   onConfigure,
   onCheck,
+  onCopy,
+  onDelete,
+  onReset,
 }: ModalitySectionProps) {
   if (providers.length === 0) return null;
 
@@ -59,6 +65,9 @@ export default function ModalitySection({
             provider={provider}
             onConfigure={() => onConfigure(provider.id)}
             onCheck={() => onCheck(provider.id)}
+            onCopy={() => onCopy(provider.id)}
+            onDelete={() => onDelete(provider.id)}
+            onReset={() => onReset(provider.id)}
           />
         ))}
       </div>

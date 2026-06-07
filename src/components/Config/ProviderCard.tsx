@@ -5,9 +5,12 @@ interface ProviderCardProps {
   provider: AIProviderConfig;
   onConfigure: () => void;
   onCheck: () => void;
+  onCopy: () => void;
+  onDelete: () => void;
+  onReset: () => void;
 }
 
-export default function ProviderCard({ provider, onConfigure, onCheck }: ProviderCardProps) {
+export default function ProviderCard({ provider, onConfigure, onCheck, onCopy, onDelete, onReset }: ProviderCardProps) {
   const defaultModel = provider.models.find((m) => m.isDefault) || provider.models[0];
 
   return (
@@ -82,6 +85,7 @@ export default function ProviderCard({ provider, onConfigure, onCheck }: Provide
       <div style={{
         display: 'flex',
         gap: '0.5rem',
+        flexWrap: 'wrap',
       }}>
         <button
           className="btn btn-secondary"
@@ -96,6 +100,27 @@ export default function ProviderCard({ provider, onConfigure, onCheck }: Provide
           onClick={onCheck}
         >
           检测连接
+        </button>
+        <button
+          className="btn btn-secondary"
+          style={{ padding: '0.4rem 1rem', fontSize: '0.85rem' }}
+          onClick={onCopy}
+        >
+          复制
+        </button>
+        <button
+          className="btn btn-secondary"
+          style={{ padding: '0.4rem 1rem', fontSize: '0.85rem' }}
+          onClick={onReset}
+        >
+          重置
+        </button>
+        <button
+          className="btn btn-secondary"
+          style={{ padding: '0.4rem 1rem', fontSize: '0.85rem', backgroundColor: '#fef2f2', color: '#991b1b', borderColor: '#fecaca' }}
+          onClick={onDelete}
+        >
+          删除
         </button>
       </div>
     </div>

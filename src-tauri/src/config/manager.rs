@@ -214,6 +214,85 @@ impl ConfigManager {
         // 不 save()，避免频繁写入磁盘。下次 update_provider 时会统一保存。
     }
 
+    /// 删除服务商
+    pub fn delete_provider(&mut self, provider_id: &str) -> Result<(), String> {
+        log::info!("删除服务商: id={}", provider_id);
+        let original_len = self.config.providers.len();
+        self.config.providers.retain(|p| p.id != provider_id);
+        if self.config.providers.len() == original_len {
+            return Err(format!("服务商 '{}' 不存在", provider_id));
+        }
+        self.save()
+    }
+
+    /// 复制服务商（返回新的 provider ID）
+    pub fn copy_provider(&mut self, provider_id: &str) -> Result<String, String> {
+        log::info!("复制服务商: id={}", provider_id);
+        let original = self.config.providers.iter()
+            .find(|p| p.id == provider_id)
+            .ok_or_else(|| format!("服务商 '{}' 不存在", provider_id))?;
+        
+        let mut copied = original.clone();
+        let new_id = format!("copy_{}_{}", copied.id, std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs());
+        copied.id = new_id.clone();
+        copied.name = format!("{} (副本)", copied.name);
+        copied.status = crate::types::ai_provider::ProviderStatus::Configured;
+        copied.last_checked = None;
+        copied.error_message = None;
+        
+        self.config.providers.push(copied);
+        self.save()?;
+        Ok(new_id)
+    }
+
+    /// 重置服务商为内置默认值
+    pub fn reset_provider(&mut self, provider_id: &str) -> Result<(), String> {
+        log::info!("重置服务商: id={}", provider_id);
+        let config_dir = std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join("gen")
+            .join("config");
+        let all_providers = providers::builtin_providers_with_override(&config_dir);
+        
+        // 找到要重置的 provider，获取其 vendor 和 modality
+        let original = self.config.providers.iter()
+            .find(|p| p.id == provider_id)
+            .ok_or_else(|| format!("服务商 '{}' 不存在", provider_id))?;
+        
+        let vendor = original.vendor.clone();
+        let modalities = original.modality.clone();
+        
+        // 从内置模板中找到匹配的
+        let builtin = all_providers.iter()
+            .find(|p| p.vendor == vendor && p.modality.iter().any(|m| modalities.contains(m)))
+            .or_else(|| all_providers.iter().find(|p| p.vendor == vendor))
+            .ok_or_else(|| format!("服务商 '{}' 没有对应的内置模板", vendor))?;
+        
+        // 替换配置，但保留 ID
+        let mut reset_provider = builtin.clone();
+        reset_provider.id = provider_id.to_string();
+        reset_provider.modality = modalities.clone();
+        reset_provider.models.retain(|m| modalities.contains(&m.modality));
+        if reset_provider.models.is_empty() {
+            reset_provider.models = builtin.models.iter()
+                .filter(|m| modalities.contains(&m.modality))
+                .cloned()
+                .collect();
+        }
+        if !reset_provider.models.is_empty() && reset_provider.models.iter().all(|m| !m.is_default) {
+            reset_provider.models[0].is_default = true;
+        }
+        
+        // 更新列表
+        if let Some(existing) = self.config.providers.iter_mut().find(|p| p.id == provider_id) {
+            *existing = reset_provider;
+        }
+        self.save()
+    }
+
     pub fn get_presets(&self) -> &[ConfigPreset] {
         &self.config.presets
     }

@@ -327,6 +327,39 @@ pub async fn reset_config(
     cm.reset_to_default()
 }
 
+/// 删除服务商
+#[command]
+pub async fn delete_provider(
+    provider_id: String,
+    config_manager: tauri::State<'_, Arc<RwLock<ConfigManager>>>,
+) -> Result<(), String> {
+    log::info!("删除服务商命令: id={}", provider_id);
+    let mut cm = config_manager.write().await;
+    cm.delete_provider(&provider_id)
+}
+
+/// 复制服务商（返回新的 provider ID）
+#[command]
+pub async fn copy_provider(
+    provider_id: String,
+    config_manager: tauri::State<'_, Arc<RwLock<ConfigManager>>>,
+) -> Result<String, String> {
+    log::info!("复制服务商命令: id={}", provider_id);
+    let mut cm = config_manager.write().await;
+    cm.copy_provider(&provider_id)
+}
+
+/// 重置服务商为内置默认值
+#[command]
+pub async fn reset_provider(
+    provider_id: String,
+    config_manager: tauri::State<'_, Arc<RwLock<ConfigManager>>>,
+) -> Result<(), String> {
+    log::info!("重置服务商命令: id={}", provider_id);
+    let mut cm = config_manager.write().await;
+    cm.reset_provider(&provider_id)
+}
+
 /// 获取内置服务商模板列表（静态数据，用于前端添加服务商时选择）
 #[command]
 pub async fn get_builtin_provider_templates() -> Result<Vec<AIProviderConfig>, String> {

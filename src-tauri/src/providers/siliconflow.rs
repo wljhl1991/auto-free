@@ -85,6 +85,51 @@ struct ImageData {
     url: String,
 }
 
+/// 文本生成请求体（OpenAI 兼容格式）
+#[derive(Debug, Serialize)]
+struct TextGenerationRequest {
+    model: String,
+    messages: Vec<ChatMessage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f64>,
+}
+
+#[derive(Debug, Serialize)]
+struct ChatMessage {
+    role: String,
+    content: String,
+}
+
+/// 文本生成响应体（OpenAI 兼容格式）
+#[derive(Debug, Deserialize)]
+struct TextGenerationResponse {
+    choices: Vec<Choice>,
+    #[serde(default)]
+    usage: Option<Usage>,
+}
+
+#[derive(Debug, Deserialize)]
+struct Choice {
+    message: Message,
+}
+
+#[derive(Debug, Deserialize)]
+struct Message {
+    content: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct Usage {
+    #[serde(default)]
+    prompt_tokens: Option<u32>,
+    #[serde(default)]
+    completion_tokens: Option<u32>,
+    #[serde(default)]
+    total_tokens: Option<u32>,
+}
+
 #[derive(Debug, Deserialize)]
 struct ApiError {
     error: Option<ApiErrorDetail>,
@@ -348,6 +393,75 @@ impl SiliconFlowProvider {
         }
     }
 
+    /// 发送文本生成请求（使用 /chat/completions 端点）
+    async fn send_text_request(&self, request: &TextGenerationRequest) -> Result<String, ProviderError> {
+        let text_endpoint = "https://api.siliconflow.cn/v1/chat/completions";
+        
+        log::info!("[SiliconFlow] 文本生成请求: endpoint={}, model={}, messages_count={}",
+            text_endpoint, request.model, request.messages.len());
+        
+        // 记录请求体
+        let request_body = serde_json::to_string(request).unwrap_or_default();
+        let truncated_body = if request_body.len() > 2000 {
+            format!("{}...(共{}字符)", truncate_str(&request_body, 2000), request_body.len())
+        } else {
+            request_body.clone()
+        };
+        log::info!("[SiliconFlow] 文本请求体: {}", truncated_body);
+
+        let response = self.client
+            .post(text_endpoint)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(request)
+            .send()
+            .await
+            .map_err(|e| {
+                log::error!("[SiliconFlow] 文本请求发送失败: {} (is_timeout={}, is_connect={}, is_request={})", 
+                    e, e.is_timeout(), e.is_connect(), e.is_request());
+                if e.is_timeout() {
+                    ProviderError::Timeout(format!("请求超时: {}", e))
+                } else if e.is_connect() {
+                    ProviderError::NetworkError(format!("连接失败: {} (请检查网络或API地址是否正确)", e))
+                } else {
+                    ProviderError::NetworkError(format!("网络错误: {}", e))
+                }
+            })?;
+
+        let status = response.status();
+        log::info!("[SiliconFlow] 文本响应状态: {} {}", status.as_u16(), status.canonical_reason().unwrap_or(""));
+
+        let body = response.text().await
+            .map_err(|e| {
+                log::error!("[SiliconFlow] 读取文本响应体失败: {}", e);
+                ProviderError::NetworkError(format!("读取响应失败: {}", e))
+            })?;
+
+        let truncated_response = if body.len() > 1000 {
+            format!("{}...(共{}字符)", truncate_str(&body, 1000), body.len())
+        } else {
+            body.clone()
+        };
+        log::info!("[SiliconFlow] 文本响应体: {}", truncated_response);
+        save_raw_response("siliconflow", "text_gen", &body);
+
+        if status.is_success() {
+            let gen_response: TextGenerationResponse = serde_json::from_str(&body)
+                .map_err(|e| {
+                    log::error!("[SiliconFlow] 解析文本响应JSON失败: {} (原始响应前200字: {})", e, truncate_str(&body, 200));
+                    ProviderError::GenerationFailed(format!("解析响应失败: {}", e))
+                })?;
+            gen_response.choices.first()
+                .and_then(|c| c.message.content.clone())
+                .ok_or_else(|| {
+                    log::error!("[SiliconFlow] 文本响应中没有内容");
+                    ProviderError::GenerationFailed("响应中没有文本内容".to_string())
+                })
+        } else {
+            self.handle_error_status(status.as_u16(), &body)
+        }
+    }
+
     /// 下载图片
     async fn download_image(&self, url: &str) -> Result<Vec<u8>, ProviderError> {
         log::info!("[SiliconFlow] 下载图片: url={}", &url[..url.len().min(200)]);
@@ -536,119 +650,244 @@ impl IAssetProvider for SiliconFlowProvider {
             "a beautiful sunset over mountains, digital art"
         };
 
-        // 从当前模型的 advanced_params 读取高级参数，测试时也使用用户配置的值
-        let (num_inference_steps, guidance_scale, seed) = self.get_advanced_params(&self.default_image_model);
+        // 找到当前选中的模型（is_default=true）
+        let selected_model = self.config.models.iter().find(|m| m.is_default)
+            .or_else(|| self.config.models.first());
 
-        // 生成测试图片验证连通性（使用 512x512 以获得更好的预览效果）
-        let request = ImageGenerationRequest {
-            model: self.default_image_model.clone(),
-            prompt: test_prompt.to_string(),
-            negative_prompt: None,
-            image_size: Some("512x512".to_string()),
-            num_inference_steps,
-            guidance_scale,
-            seed,
-        };
+        // 根据模型的 modality 决定调用哪种 API
+        let modality = selected_model.map(|m| m.modality.clone()).unwrap_or(AIModality::Image);
+        let text_endpoint = "https://api.siliconflow.cn/v1/chat/completions";
 
-        let request_body = serde_json::to_string(&request).unwrap_or_default();
-        let request_headers = r#"{"Authorization":"Bearer ***","Content-Type":"application/json"}"#.to_string();
+        if modality == AIModality::Text {
+            // 文本模型：调用 /chat/completions 端点
+            let model_id = selected_model.map(|m| m.id.clone())
+                .unwrap_or_else(|| self.default_text_model.clone());
+            
+            let request = TextGenerationRequest {
+                model: model_id.clone(),
+                messages: vec![
+                    ChatMessage {
+                        role: "user".to_string(),
+                        content: test_prompt.to_string(),
+                    }
+                ],
+                max_tokens: Some(100),
+                temperature: Some(0.7),
+            };
 
-        let result = self.send_image_request(&request).await;
-        let latency = SystemTime::now()
-            .duration_since(start)
-            .unwrap_or_default()
-            .as_millis() as u64;
+            let request_body = serde_json::to_string(&request).unwrap_or_default();
+            let request_headers = r#"{"Authorization":"Bearer ***","Content-Type":"application/json"}"#.to_string();
 
-        match result {
-            Ok(image_url) => {
-                // 下载并保存测试图片
-                let media_url = self.download_and_save_test_image(&image_url, "siliconflow").await.ok();
-                Ok(ConnectivityCheck {
+            let result = self.send_text_request(&request).await;
+            let latency = SystemTime::now()
+                .duration_since(start)
+                .unwrap_or_default()
+                .as_millis() as u64;
+
+            match result {
+                Ok(text_response) => {
+                    // 截断过长的响应
+                    let response_preview = if text_response.len() > 500 {
+                        format!("{}...(共{}字符)", &text_response[..500], text_response.len())
+                    } else {
+                        text_response
+                    };
+                    Ok(ConnectivityCheck {
+                        provider_id: self.config.id.clone(),
+                        timestamp: SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs(),
+                        status: ConnectivityStatus::Ok,
+                        latency: Some(latency),
+                        error_message: None,
+                        quota_info: None,
+                        response_preview: Some(response_preview),
+                        test_prompt: Some(test_prompt.to_string()),
+                        media_url: None,
+                        media_type: None,
+                        request_endpoint: Some(text_endpoint.to_string()),
+                        request_model: Some(model_id),
+                        request_headers: Some(request_headers),
+                        request_body: Some(truncate_str(&request_body, 2000).to_string()),
+                        response_status: Some(200),
+                    })
+                }
+                Err(ProviderError::AuthFailed(msg)) => Ok(ConnectivityCheck {
                     provider_id: self.config.id.clone(),
                     timestamp: SystemTime::now()
                         .duration_since(UNIX_EPOCH)
                         .unwrap_or_default()
                         .as_secs(),
-                    status: ConnectivityStatus::Ok,
+                    status: ConnectivityStatus::AuthFailed,
                     latency: Some(latency),
-                    error_message: None,
+                    error_message: Some(msg),
                     quota_info: None,
                     response_preview: None,
                     test_prompt: Some(test_prompt.to_string()),
-                    media_url,
-                    media_type: Some("image".to_string()),
+                    media_url: None,
+                    media_type: None,
+                    request_endpoint: Some(text_endpoint.to_string()),
+                    request_model: None,
+                    request_headers: Some(request_headers),
+                    request_body: Some(truncate_str(&request_body, 2000).to_string()),
+                    response_status: Some(401),
+                }),
+                Err(ProviderError::QuotaExceeded(msg)) => Ok(ConnectivityCheck {
+                    provider_id: self.config.id.clone(),
+                    timestamp: SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs(),
+                    status: ConnectivityStatus::QuotaExceeded,
+                    latency: Some(latency),
+                    error_message: Some(msg),
+                    quota_info: None,
+                    response_preview: None,
+                    test_prompt: Some(test_prompt.to_string()),
+                    media_url: None,
+                    media_type: None,
+                    request_endpoint: Some(text_endpoint.to_string()),
+                    request_model: None,
+                    request_headers: Some(request_headers),
+                    request_body: Some(truncate_str(&request_body, 2000).to_string()),
+                    response_status: Some(429),
+                }),
+                Err(e) => Ok(ConnectivityCheck {
+                    provider_id: self.config.id.clone(),
+                    timestamp: SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs(),
+                    status: ConnectivityStatus::NetworkError,
+                    latency: Some(latency),
+                    error_message: Some(format!("{:?}", e)),
+                    quota_info: None,
+                    response_preview: None,
+                    test_prompt: Some(test_prompt.to_string()),
+                    media_url: None,
+                    media_type: None,
+                    request_endpoint: Some(text_endpoint.to_string()),
+                    request_model: None,
+                    request_headers: Some(request_headers),
+                    request_body: Some(truncate_str(&request_body, 2000).to_string()),
+                    response_status: None,
+                }),
+            }
+        } else {
+            // 图片模型：调用 /images/generations 端点（原有逻辑）
+            let (num_inference_steps, guidance_scale, seed) = self.get_advanced_params(&self.default_image_model);
+
+            let request = ImageGenerationRequest {
+                model: self.default_image_model.clone(),
+                prompt: test_prompt.to_string(),
+                negative_prompt: None,
+                image_size: Some("512x512".to_string()),
+                num_inference_steps,
+                guidance_scale,
+                seed,
+            };
+
+            let request_body = serde_json::to_string(&request).unwrap_or_default();
+            let request_headers = r#"{"Authorization":"Bearer ***","Content-Type":"application/json"}"#.to_string();
+
+            let result = self.send_image_request(&request).await;
+            let latency = SystemTime::now()
+                .duration_since(start)
+                .unwrap_or_default()
+                .as_millis() as u64;
+
+            match result {
+                Ok(image_url) => {
+                    // 下载并保存测试图片
+                    let media_url = self.download_and_save_test_image(&image_url, "siliconflow").await.ok();
+                    Ok(ConnectivityCheck {
+                        provider_id: self.config.id.clone(),
+                        timestamp: SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs(),
+                        status: ConnectivityStatus::Ok,
+                        latency: Some(latency),
+                        error_message: None,
+                        quota_info: None,
+                        response_preview: None,
+                        test_prompt: Some(test_prompt.to_string()),
+                        media_url,
+                        media_type: Some("image".to_string()),
+                        request_endpoint: Some(self.endpoint.clone()),
+                        request_model: Some(self.default_image_model.clone()),
+                        request_headers: Some(request_headers.clone()),
+                        request_body: Some(truncate_str(&request_body, 2000).to_string()),
+                        response_status: Some(200),
+                    })
+                }
+                Err(ProviderError::AuthFailed(msg)) => Ok(ConnectivityCheck {
+                    provider_id: self.config.id.clone(),
+                    timestamp: SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs(),
+                    status: ConnectivityStatus::AuthFailed,
+                    latency: Some(latency),
+                    error_message: Some(msg),
+                    quota_info: None,
+                    response_preview: None,
+                    test_prompt: Some(test_prompt.to_string()),
+                    media_url: None,
+                    media_type: None,
                     request_endpoint: Some(self.endpoint.clone()),
                     request_model: Some(self.default_image_model.clone()),
                     request_headers: Some(request_headers.clone()),
                     request_body: Some(truncate_str(&request_body, 2000).to_string()),
-                    response_status: Some(200),
-                })
+                    response_status: Some(401),
+                }),
+                Err(ProviderError::QuotaExceeded(msg)) => Ok(ConnectivityCheck {
+                    provider_id: self.config.id.clone(),
+                    timestamp: SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs(),
+                    status: ConnectivityStatus::QuotaExceeded,
+                    latency: Some(latency),
+                    error_message: Some(msg),
+                    quota_info: None,
+                    response_preview: None,
+                    test_prompt: Some(test_prompt.to_string()),
+                    media_url: None,
+                    media_type: None,
+                    request_endpoint: Some(self.endpoint.clone()),
+                    request_model: Some(self.default_image_model.clone()),
+                    request_headers: Some(request_headers.clone()),
+                    request_body: Some(truncate_str(&request_body, 2000).to_string()),
+                    response_status: Some(429),
+                }),
+                Err(e) => Ok(ConnectivityCheck {
+                    provider_id: self.config.id.clone(),
+                    timestamp: SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs(),
+                    status: ConnectivityStatus::NetworkError,
+                    latency: Some(latency),
+                    error_message: Some(format!("{:?}", e)),
+                    quota_info: None,
+                    response_preview: None,
+                    test_prompt: Some(test_prompt.to_string()),
+                    media_url: None,
+                    media_type: None,
+                    request_endpoint: Some(self.endpoint.clone()),
+                    request_model: Some(self.default_image_model.clone()),
+                    request_headers: Some(request_headers),
+                    request_body: Some(truncate_str(&request_body, 2000).to_string()),
+                    response_status: None,
+                }),
             }
-            Err(ProviderError::AuthFailed(msg)) => Ok(ConnectivityCheck {
-                provider_id: self.config.id.clone(),
-                timestamp: SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs(),
-                status: ConnectivityStatus::AuthFailed,
-                latency: Some(latency),
-                error_message: Some(msg),
-                quota_info: None,
-                response_preview: None,
-                test_prompt: Some(test_prompt.to_string()),
-                media_url: None,
-                media_type: None,
-                request_endpoint: Some(self.endpoint.clone()),
-                request_model: Some(self.default_image_model.clone()),
-                request_headers: Some(request_headers.clone()),
-                request_body: Some(truncate_str(&request_body, 2000).to_string()),
-                response_status: Some(401),
-            }),
-            Err(ProviderError::QuotaExceeded(msg)) => Ok(ConnectivityCheck {
-                provider_id: self.config.id.clone(),
-                timestamp: SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs(),
-                status: ConnectivityStatus::QuotaExceeded,
-                latency: Some(latency),
-                error_message: Some(msg),
-                quota_info: None,
-                response_preview: None,
-                test_prompt: Some(test_prompt.to_string()),
-                media_url: None,
-                media_type: None,
-                request_endpoint: Some(self.endpoint.clone()),
-                request_model: Some(self.default_image_model.clone()),
-                request_headers: Some(request_headers.clone()),
-                request_body: Some(truncate_str(&request_body, 2000).to_string()),
-                response_status: Some(429),
-            }),
-            Err(e) => Ok(ConnectivityCheck {
-                provider_id: self.config.id.clone(),
-                timestamp: SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs(),
-                status: ConnectivityStatus::NetworkError,
-                latency: Some(latency),
-                error_message: Some(format!("{:?}", e)),
-                quota_info: None,
-                response_preview: None,
-                test_prompt: Some(test_prompt.to_string()),
-                media_url: None,
-                media_type: None,
-                request_endpoint: Some(self.endpoint.clone()),
-                request_model: Some(self.default_image_model.clone()),
-                request_headers: Some(request_headers),
-                request_body: Some(truncate_str(&request_body, 2000).to_string()),
-                response_status: None,
-            }),
         }
     }
 
     fn supported_modalities(&self) -> Vec<AIModality> {
-        vec![AIModality::Image]
+        vec![AIModality::Text, AIModality::Image]
     }
 
     fn provider_id(&self) -> &str {

@@ -197,6 +197,44 @@ export default function Settings() {
     }
   };
 
+  const handleCopyProvider = async (providerId: string) => {
+    try {
+      await config.copyProvider(providerId);
+      // 重新加载 providers 列表
+      const providersData = await config.getProviders();
+      setProviders(providersData || []);
+    } catch (err) {
+      console.error('Failed to copy provider:', err);
+      alert('复制服务商失败: ' + err);
+    }
+  };
+
+  const handleDeleteProvider = async (providerId: string) => {
+    if (!confirm('确定要删除这个服务商吗？')) return;
+    try {
+      await config.deleteProvider(providerId);
+      // 重新加载 providers 列表
+      const providersData = await config.getProviders();
+      setProviders(providersData || []);
+    } catch (err) {
+      console.error('Failed to delete provider:', err);
+      alert('删除服务商失败: ' + err);
+    }
+  };
+
+  const handleResetProvider = async (providerId: string) => {
+    if (!confirm('确定要重置这个服务商为默认配置吗？这将清除您的所有自定义配置。')) return;
+    try {
+      await config.resetProvider(providerId);
+      // 重新加载 providers 列表
+      const providersData = await config.getProviders();
+      setProviders(providersData || []);
+    } catch (err) {
+      console.error('Failed to reset provider:', err);
+      alert('重置服务商失败: ' + err);
+    }
+  };
+
   const handleExport = async () => {
     try {
       const json = await config.exportConfig();
@@ -390,15 +428,18 @@ export default function Settings() {
           </div>
 
           {MODALITY_SECTIONS.map(({ modality, title }) => (
-            <ModalitySection
-              key={modality}
-              modality={modality}
-              title={title}
-              providers={getProvidersByModality(modality)}
-              onConfigure={handleConfigure}
-              onCheck={handleCheckProvider}
-            />
-          ))}
+        <ModalitySection
+          key={modality}
+          modality={modality}
+          title={title}
+          providers={getProvidersByModality(modality)}
+          onConfigure={handleConfigure}
+          onCheck={handleCheckProvider}
+          onCopy={handleCopyProvider}
+          onDelete={handleDeleteProvider}
+          onReset={handleResetProvider}
+        />
+      ))}
 
           <div style={{
             display: 'flex',
