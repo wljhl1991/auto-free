@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { invoke, listen, convertFileSrc } from '../adapters/tauri';
+import { invoke, listen, convertFileSrc, loadTauriModules } from '../adapters/tauri';
 import { SceneExecutor, SceneEventType } from '../engine/SceneExecutor';
 import { StateManager } from '../engine/StateManager';
 import { AssetLoader } from '../engine/AssetLoader';
@@ -213,86 +213,18 @@ function GamePlay() {
   useEffect(() => {
     if (!gameId) return;
 
-    game.getGameScript(gameId).then(async (script) => {
-      // 初始化所有已存在的资源 URL 到 AssetLoader 和 assetUrlMapRef
-      for (const chapter of script.chapters) {
-        for (const scene of chapter.scenes) {
-          // 场景资产
-          if (scene.assets.backgroundImage?.url) {
-            const assetRef = scene.assets.backgroundImage;
-            try {
-              const dataUrl = await invoke<string>('read_file_as_data_url', {
-                filePath: assetRef.url
-              });
-              assetLoaderRef.current.setCachedUrl(assetRef.id, dataUrl);
-              assetUrlMapRef.current[assetRef.id] = dataUrl;
-            } catch {
-              const resolvedUrl = resolveAssetUrl(assetRef.url);
-              assetLoaderRef.current.setCachedUrl(assetRef.id, resolvedUrl);
-              assetUrlMapRef.current[assetRef.id] = resolvedUrl;
-            }
-          }
-          if (scene.assets.backgroundVideo?.url) {
-            const assetRef = scene.assets.backgroundVideo;
-            try {
-              const dataUrl = await invoke<string>('read_file_as_data_url', {
-                filePath: assetRef.url
-              });
-              assetLoaderRef.current.setCachedUrl(assetRef.id, dataUrl);
-              assetUrlMapRef.current[assetRef.id] = dataUrl;
-            } catch {
-              const resolvedUrl = resolveAssetUrl(assetRef.url);
-              assetLoaderRef.current.setCachedUrl(assetRef.id, resolvedUrl);
-              assetUrlMapRef.current[assetRef.id] = resolvedUrl;
-            }
-          }
-          if (scene.assets.bgm?.url) {
-            const assetRef = scene.assets.bgm;
-            try {
-              const dataUrl = await invoke<string>('read_file_as_data_url', {
-                filePath: assetRef.url
-              });
-              assetLoaderRef.current.setCachedUrl(assetRef.id, dataUrl);
-              assetUrlMapRef.current[assetRef.id] = dataUrl;
-            } catch {
-              const resolvedUrl = resolveAssetUrl(assetRef.url);
-              assetLoaderRef.current.setCachedUrl(assetRef.id, resolvedUrl);
-              assetUrlMapRef.current[assetRef.id] = resolvedUrl;
-            }
-          }
-          if (scene.assets.ambientSound?.url) {
-            const assetRef = scene.assets.ambientSound;
-            try {
-              const dataUrl = await invoke<string>('read_file_as_data_url', {
-                filePath: assetRef.url
-              });
-              assetLoaderRef.current.setCachedUrl(assetRef.id, dataUrl);
-              assetUrlMapRef.current[assetRef.id] = dataUrl;
-            } catch {
-              const resolvedUrl = resolveAssetUrl(assetRef.url);
-              assetLoaderRef.current.setCachedUrl(assetRef.id, resolvedUrl);
-              assetUrlMapRef.current[assetRef.id] = resolvedUrl;
-            }
-          }
-          if (scene.assets.cgAnimation?.url) {
-            const assetRef = scene.assets.cgAnimation;
-            try {
-              const dataUrl = await invoke<string>('read_file_as_data_url', {
-                filePath: assetRef.url
-              });
-              assetLoaderRef.current.setCachedUrl(assetRef.id, dataUrl);
-              assetUrlMapRef.current[assetRef.id] = dataUrl;
-            } catch {
-              const resolvedUrl = resolveAssetUrl(assetRef.url);
-              assetLoaderRef.current.setCachedUrl(assetRef.id, resolvedUrl);
-              assetUrlMapRef.current[assetRef.id] = resolvedUrl;
-            }
-          }
-          
-          // 节点资产
-          for (const node of scene.sequence) {
-            if ('speakerAvatar' in node && node.speakerAvatar?.url) {
-              const assetRef = node.speakerAvatar;
+    const loadGame = async () => {
+      try {
+        // 先预加载 Tauri 模块
+        await loadTauriModules();
+        
+        const script = await game.getGameScript(gameId);
+        // 初始化所有已存在的资源 URL 到 AssetLoader 和 assetUrlMapRef
+        for (const chapter of script.chapters) {
+          for (const scene of chapter.scenes) {
+            // 场景资产
+            if (scene.assets.backgroundImage?.url) {
+              const assetRef = scene.assets.backgroundImage;
               try {
                 const dataUrl = await invoke<string>('read_file_as_data_url', {
                   filePath: assetRef.url
@@ -305,8 +237,8 @@ function GamePlay() {
                 assetUrlMapRef.current[assetRef.id] = resolvedUrl;
               }
             }
-            if ('voiceAsset' in node && node.voiceAsset?.url) {
-              const assetRef = node.voiceAsset;
+            if (scene.assets.backgroundVideo?.url) {
+              const assetRef = scene.assets.backgroundVideo;
               try {
                 const dataUrl = await invoke<string>('read_file_as_data_url', {
                   filePath: assetRef.url
@@ -319,82 +251,158 @@ function GamePlay() {
                 assetUrlMapRef.current[assetRef.id] = resolvedUrl;
               }
             }
+            if (scene.assets.bgm?.url) {
+              const assetRef = scene.assets.bgm;
+              try {
+                const dataUrl = await invoke<string>('read_file_as_data_url', {
+                  filePath: assetRef.url
+                });
+                assetLoaderRef.current.setCachedUrl(assetRef.id, dataUrl);
+                assetUrlMapRef.current[assetRef.id] = dataUrl;
+              } catch {
+                const resolvedUrl = resolveAssetUrl(assetRef.url);
+                assetLoaderRef.current.setCachedUrl(assetRef.id, resolvedUrl);
+                assetUrlMapRef.current[assetRef.id] = resolvedUrl;
+              }
+            }
+            if (scene.assets.ambientSound?.url) {
+              const assetRef = scene.assets.ambientSound;
+              try {
+                const dataUrl = await invoke<string>('read_file_as_data_url', {
+                  filePath: assetRef.url
+                });
+                assetLoaderRef.current.setCachedUrl(assetRef.id, dataUrl);
+                assetUrlMapRef.current[assetRef.id] = dataUrl;
+              } catch {
+                const resolvedUrl = resolveAssetUrl(assetRef.url);
+                assetLoaderRef.current.setCachedUrl(assetRef.id, resolvedUrl);
+                assetUrlMapRef.current[assetRef.id] = resolvedUrl;
+              }
+            }
+            if (scene.assets.cgAnimation?.url) {
+              const assetRef = scene.assets.cgAnimation;
+              try {
+                const dataUrl = await invoke<string>('read_file_as_data_url', {
+                  filePath: assetRef.url
+                });
+                assetLoaderRef.current.setCachedUrl(assetRef.id, dataUrl);
+                assetUrlMapRef.current[assetRef.id] = dataUrl;
+              } catch {
+                const resolvedUrl = resolveAssetUrl(assetRef.url);
+                assetLoaderRef.current.setCachedUrl(assetRef.id, resolvedUrl);
+                assetUrlMapRef.current[assetRef.id] = resolvedUrl;
+              }
+            }
+            
+            // 节点资产
+            for (const node of scene.sequence) {
+              if ('speakerAvatar' in node && node.speakerAvatar?.url) {
+                const assetRef = node.speakerAvatar;
+                try {
+                  const dataUrl = await invoke<string>('read_file_as_data_url', {
+                    filePath: assetRef.url
+                  });
+                  assetLoaderRef.current.setCachedUrl(assetRef.id, dataUrl);
+                  assetUrlMapRef.current[assetRef.id] = dataUrl;
+                } catch {
+                  const resolvedUrl = resolveAssetUrl(assetRef.url);
+                  assetLoaderRef.current.setCachedUrl(assetRef.id, resolvedUrl);
+                  assetUrlMapRef.current[assetRef.id] = resolvedUrl;
+                }
+              }
+              if ('voiceAsset' in node && node.voiceAsset?.url) {
+                const assetRef = node.voiceAsset;
+                try {
+                  const dataUrl = await invoke<string>('read_file_as_data_url', {
+                    filePath: assetRef.url
+                  });
+                  assetLoaderRef.current.setCachedUrl(assetRef.id, dataUrl);
+                  assetUrlMapRef.current[assetRef.id] = dataUrl;
+                } catch {
+                  const resolvedUrl = resolveAssetUrl(assetRef.url);
+                  assetLoaderRef.current.setCachedUrl(assetRef.id, resolvedUrl);
+                  assetUrlMapRef.current[assetRef.id] = resolvedUrl;
+                }
+              }
+            }
           }
         }
-      }
 
-      const executor = new SceneExecutor(
-        script,
-        stateManagerRef.current,
-        assetLoaderRef.current,
-        audioEngineRef.current,
-      );
+        const executor = new SceneExecutor(
+          script,
+          stateManagerRef.current,
+          assetLoaderRef.current,
+          audioEngineRef.current,
+        );
 
-      executor.setOnEvent((event) => {
-        setCurrentEvent(event);
+        executor.setOnEvent((event) => {
+          setCurrentEvent(event);
 
-        // 记录对话/旁白/选择到历史
-        if (event.type === 'narration') {
-          setHistory(prev => [...prev, { type: 'narration', text: event.text, timestamp: Date.now() }]);
-        } else if (event.type === 'dialogue') {
-          setHistory(prev => [...prev, { type: 'dialogue', speaker: event.speaker, text: event.text, timestamp: Date.now() }]);
-        } else if (event.type === 'choice') {
-          // 选择事件先记录提示，选择结果在 onChoiceSelected 中记录
-        }
+          // 记录对话/旁白/选择到历史
+          if (event.type === 'narration') {
+            setHistory(prev => [...prev, { type: 'narration', text: event.text, timestamp: Date.now() }]);
+          } else if (event.type === 'dialogue') {
+            setHistory(prev => [...prev, { type: 'dialogue', speaker: event.speaker, text: event.text, timestamp: Date.now() }]);
+          } else if (event.type === 'choice') {
+            // 选择事件先记录提示，选择结果在 onChoiceSelected 中记录
+          }
 
-        if (event.type === 'scene_change') {
-          setSceneBackground(event.backgroundImage);
-          setSceneVideo(event.backgroundVideo);
-          setCurrentBgAssetRefId(event.bgAssetRefId);
-        }
-        if (event.type === 'scene_transition') {
-          // 场景转场由 SceneExecutor 自动处理（延迟后 enterScene）
-        }
-        if (event.type === 'chapter_end') {
-          // 章节结束，显示过渡UI
-          setChapterTransition({
-            show: true,
-            chapterTitle: event.chapterTitle,
-            nextChapterTitle: event.nextChapterTitle,
-          });
-        }
-        if (event.type === 'game_end') {
-          // 游戏结束
-          setGameEnded(true);
-        }
+          if (event.type === 'scene_change') {
+            setSceneBackground(event.backgroundImage);
+            setSceneVideo(event.backgroundVideo);
+            setCurrentBgAssetRefId(event.bgAssetRefId);
+          }
+          if (event.type === 'scene_transition') {
+            // 场景转场由 SceneExecutor 自动处理（延迟后 enterScene）
+          }
+          if (event.type === 'chapter_end') {
+            // 章节结束，显示过渡UI
+            setChapterTransition({
+              show: true,
+              chapterTitle: event.chapterTitle,
+              nextChapterTitle: event.nextChapterTitle,
+            });
+          }
+          if (event.type === 'game_end') {
+            // 游戏结束
+            setGameEnded(true);
+          }
 
-        // 播放语音
-        if ((event.type === 'narration' || event.type === 'dialogue') && event.voiceUrl) {
-          // 直接用 event.voiceUrl，它已经通过 AssetLoader 加载过
-          audioEngineRef.current.playVoice(event.voiceUrl).catch(() => {});
-        } else if ((event.type === 'narration' || event.type === 'dialogue') && event.voiceAssetRefId) {
-          // voiceUrl 为空但 voiceAssetRefId 存在，从 assetUrlMap 中查找
-          const mappedUrl = assetUrlMapRef.current[event.voiceAssetRefId];
-          if (mappedUrl) {
-            audioEngineRef.current.playVoice(mappedUrl).catch(() => {});
-          } else {
+          // 播放语音
+          if ((event.type === 'narration' || event.type === 'dialogue') && event.voiceUrl) {
+            // 直接用 event.voiceUrl，它已经通过 AssetLoader 加载过
+            audioEngineRef.current.playVoice(event.voiceUrl).catch(() => {});
+          } else if ((event.type === 'narration' || event.type === 'dialogue') && event.voiceAssetRefId) {
+            // voiceUrl 为空但 voiceAssetRefId 存在，从 assetUrlMap 中查找
+            const mappedUrl = assetUrlMapRef.current[event.voiceAssetRefId];
+            if (mappedUrl) {
+              audioEngineRef.current.playVoice(mappedUrl).catch(() => {});
+            } else {
+              audioEngineRef.current.stopVoice();
+            }
+          } else if (event.type === 'narration' || event.type === 'dialogue') {
+            // 没有语音资源时停止当前语音
             audioEngineRef.current.stopVoice();
           }
-        } else if (event.type === 'narration' || event.type === 'dialogue') {
-          // 没有语音资源时停止当前语音
-          audioEngineRef.current.stopVoice();
-        }
-      });
+        });
 
-      executorRef.current = executor;
-      // 设置初始章节标题
-      const firstChapter = script.chapters[0];
-      if (firstChapter) {
-        setChapterTitle(firstChapter.title);
+        executorRef.current = executor;
+        // 设置初始章节标题
+        const firstChapter = script.chapters[0];
+        if (firstChapter) {
+          setChapterTitle(firstChapter.title);
+        }
+        executor.start().catch(err => {
+          console.error('Failed to start game:', err);
+        });
+        setIsLoading(false);
+      } catch (err) {
+        console.error('Failed to load game:', err);
+        setIsLoading(false);
       }
-      executor.start().catch(err => {
-        console.error('Failed to start game:', err);
-      });
-      setIsLoading(false);
-    }).catch(err => {
-      console.error('Failed to load game:', err);
-      setIsLoading(false);
-    });
+    };
+
+    loadGame();
   }, [gameId]);
 
   useEffect(() => {
@@ -490,6 +498,9 @@ function GamePlay() {
     setIsLoading(true);
     
     try {
+      // 预加载 Tauri 模块
+      await loadTauriModules();
+      
       const script = await game.getGameScript(gameId);
       
       // 重新初始化所有资源 URL 到 AssetLoader 和 assetUrlMapRef
