@@ -80,19 +80,19 @@ export class SceneExecutor {
     ].filter((ref): ref is NonNullable<typeof ref> => ref != null);
     await this.assetLoader.preloadAssets(assetRefs);
 
-    // 通过 AssetLoader 解析资源 URL（优先使用已缓存的解析结果）
+    // 通过 AssetLoader 解析资源 URL（确保经过 convertFileSrc 转换）
     const bgImageRef = scene.assets.backgroundImage;
     const bgVideoRef = scene.assets.backgroundVideo;
     const bgmRef = scene.assets.bgm;
 
-    const resolvedBgImage = bgImageRef
-      ? (bgImageRef.url || this.assetLoader.getCachedUrl(bgImageRef.id))
+    const resolvedBgImage = bgImageRef 
+      ? (await this.assetLoader.loadAsset(bgImageRef))
       : undefined;
-    const resolvedBgVideo = bgVideoRef
-      ? (bgVideoRef.url || this.assetLoader.getCachedUrl(bgVideoRef.id))
+    const resolvedBgVideo = bgVideoRef 
+      ? (await this.assetLoader.loadAsset(bgVideoRef))
       : undefined;
-    const resolvedBgmUrl = bgmRef
-      ? (bgmRef.url || this.assetLoader.getCachedUrl(bgmRef.id))
+    const resolvedBgmUrl = bgmRef 
+      ? (await this.assetLoader.loadAsset(bgmRef))
       : undefined;
 
     // 发送场景变更事件（背景图/BGM）
@@ -131,17 +131,27 @@ export class SceneExecutor {
 
     switch (node.type) {
       case 'narration': {
-        const voiceUrl = node.voiceAsset?.url || this.assetLoader.getCachedUrl(node.voiceAsset?.id ?? '');
+        let voiceUrl: string | undefined;
+        if (node.voiceAsset) {
+          voiceUrl = await this.assetLoader.loadAsset(node.voiceAsset);
+        }
         this.emitEvent({ type: 'narration', text: node.text, voiceUrl, voiceAssetRefId: node.voiceAsset?.id });
         break;
       }
       case 'dialogue': {
-        const voiceUrl = node.voiceAsset?.url || this.assetLoader.getCachedUrl(node.voiceAsset?.id ?? '');
+        let voiceUrl: string | undefined;
+        let avatarUrl: string | undefined;
+        if (node.voiceAsset) {
+          voiceUrl = await this.assetLoader.loadAsset(node.voiceAsset);
+        }
+        if (node.speakerAvatar) {
+          avatarUrl = await this.assetLoader.loadAsset(node.speakerAvatar);
+        }
         this.emitEvent({
           type: 'dialogue',
           speaker: node.speaker,
           text: node.text,
-          avatarUrl: node.speakerAvatar?.url || this.assetLoader.getCachedUrl(node.speakerAvatar?.id ?? ''),
+          avatarUrl,
           emotion: node.emotion,
           voiceUrl,
           voiceAssetRefId: node.voiceAsset?.id,
@@ -157,9 +167,11 @@ export class SceneExecutor {
       case 'action':
         this.handleActionNode(node);
         break;
-      case 'cg':
-        this.emitEvent({ type: 'cg', videoUrl: node.videoAsset.url ?? '', duration: node.duration, skipAllowed: node.skipAllowed });
+      case 'cg': {
+        const videoUrl = node.videoAsset ? await this.assetLoader.loadAsset(node.videoAsset) : undefined;
+        this.emitEvent({ type: 'cg', videoUrl: videoUrl ?? '', duration: node.duration, skipAllowed: node.skipAllowed });
         break;
+      }
       case 'scene_transition': {
         // 场景转场：先发出事件（用于视觉转场效果），然后自动进入目标场景
         this.emitEvent({ type: 'scene_transition', targetSceneId: node.targetSceneId, transitionType: node.transitionType, duration: node.duration });

@@ -213,6 +213,52 @@ function GamePlay() {
     if (!gameId) return;
 
     game.getGameScript(gameId).then(script => {
+      // 初始化所有已存在的资源 URL 到 AssetLoader 和 assetUrlMapRef
+      for (const chapter of script.chapters) {
+        for (const scene of chapter.scenes) {
+          // 场景资产
+          if (scene.assets.backgroundImage?.url) {
+            const resolvedUrl = resolveAssetUrl(scene.assets.backgroundImage.url);
+            assetLoaderRef.current.setCachedUrl(scene.assets.backgroundImage.id, resolvedUrl);
+            assetUrlMapRef.current[scene.assets.backgroundImage.id] = resolvedUrl;
+          }
+          if (scene.assets.backgroundVideo?.url) {
+            const resolvedUrl = resolveAssetUrl(scene.assets.backgroundVideo.url);
+            assetLoaderRef.current.setCachedUrl(scene.assets.backgroundVideo.id, resolvedUrl);
+            assetUrlMapRef.current[scene.assets.backgroundVideo.id] = resolvedUrl;
+          }
+          if (scene.assets.bgm?.url) {
+            const resolvedUrl = resolveAssetUrl(scene.assets.bgm.url);
+            assetLoaderRef.current.setCachedUrl(scene.assets.bgm.id, resolvedUrl);
+            assetUrlMapRef.current[scene.assets.bgm.id] = resolvedUrl;
+          }
+          if (scene.assets.ambientSound?.url) {
+            const resolvedUrl = resolveAssetUrl(scene.assets.ambientSound.url);
+            assetLoaderRef.current.setCachedUrl(scene.assets.ambientSound.id, resolvedUrl);
+            assetUrlMapRef.current[scene.assets.ambientSound.id] = resolvedUrl;
+          }
+          if (scene.assets.cgAnimation?.url) {
+            const resolvedUrl = resolveAssetUrl(scene.assets.cgAnimation.url);
+            assetLoaderRef.current.setCachedUrl(scene.assets.cgAnimation.id, resolvedUrl);
+            assetUrlMapRef.current[scene.assets.cgAnimation.id] = resolvedUrl;
+          }
+          
+          // 节点资产
+          for (const node of scene.sequence) {
+            if ('speakerAvatar' in node && node.speakerAvatar?.url) {
+              const resolvedUrl = resolveAssetUrl(node.speakerAvatar.url);
+              assetLoaderRef.current.setCachedUrl(node.speakerAvatar.id, resolvedUrl);
+              assetUrlMapRef.current[node.speakerAvatar.id] = resolvedUrl;
+            }
+            if ('voiceAsset' in node && node.voiceAsset?.url) {
+              const resolvedUrl = resolveAssetUrl(node.voiceAsset.url);
+              assetLoaderRef.current.setCachedUrl(node.voiceAsset.id, resolvedUrl);
+              assetUrlMapRef.current[node.voiceAsset.id] = resolvedUrl;
+            }
+          }
+        }
+      }
+
       const executor = new SceneExecutor(
         script,
         stateManagerRef.current,
@@ -322,10 +368,11 @@ function GamePlay() {
   }, [showMenu, showInventory, showStats, showGallery, showProgress, chapterTransition, gameEnded]);
 
   const handleClick = useCallback(() => {
-    // 点击空白区域时，如果当前是 narration/dialogue/cg，也执行 advance
-    // 但 NarrationBox/DialogueBox 会 stopPropagation，所以只有点击它们以外的区域才会触发
+    // 点击空白区域时，只有在字幕显示完成后才执行 advance
     if (showMenu || showInventory || showStats || showGallery || showProgress || chapterTransition || gameEnded) return;
-    if (currentEvent?.type === 'narration' || currentEvent?.type === 'dialogue' || currentEvent?.type === 'cg') {
+    // 对于 narration/dialogue 类型，我们不在这里处理，而是由专门的字幕组件处理点击
+    // 对于 cg 类型，直接推进
+    if (currentEvent?.type === 'cg') {
       executorRef.current?.advance();
     }
   }, [currentEvent, showMenu, showInventory, showStats, showProgress, chapterTransition, gameEnded]);

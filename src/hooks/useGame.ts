@@ -25,6 +25,7 @@ export function useGame() {
     getGameScript: (gameId: string) => invoke<any>('get_game_script', { gameId }),
     listGames: () => invoke<GameInfo[]>('list_games'),
     deleteGame: (gameId: string) => invoke<void>('delete_game', { gameId }),
+    repairGame: (gameId: string) => invoke<number>('repair_game', { gameId }),
     saveGame: (gameId: string, state: any) => invoke<string>('save_game', { gameId, state }),
     loadSave: (gameId: string, saveId: string) => invoke<any>('load_save', { gameId, saveId }),
     listSaves: (gameId: string) => invoke<any[]>('list_saves', { gameId }),

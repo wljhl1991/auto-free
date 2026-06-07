@@ -166,7 +166,14 @@ export default function GenerationProgress() {
       const payload = event.payload as GenerationStepEvent;
       if (!payload || payload.gameId !== gameId) return;
 
-      setProgressSteps(prev => [...prev, payload]);
+      setProgressSteps(prev => {
+        // 防止重复添加相同步骤（基于步骤名和时间戳）
+        const lastStep = prev[prev.length - 1];
+        if (lastStep && lastStep.step === payload.step && lastStep.timestamp === payload.timestamp) {
+          return prev;
+        }
+        return [...prev, payload];
+      });
       setCurrentStep(payload);
 
       // 自动滚动到底部

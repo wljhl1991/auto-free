@@ -21,13 +21,15 @@ function formatDate(timestamp: number): string {
 
 export default function GameList() {
   const navigate = useNavigate();
-  const { listGames } = useGame();
+  const { listGames, repairGame } = useGame();
 
   const [games, setGames] = useState<GameInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [repairingId, setRepairingId] = useState<string | null>(null);
+  const [repairMessage, setRepairMessage] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadGames = () => {
     listGames()
       .then((data) => {
         setGames(data || []);
@@ -39,7 +41,30 @@ export default function GameList() {
       .finally(() => {
         setLoading(false);
       });
+  };
+
+  useEffect(() => {
+    loadGames();
   }, [listGames]);
+
+  const handleRepair = async (gameId: string, event: React.MouseEvent) => {
+    event.stopPropagation();
+    setRepairingId(gameId);
+    setRepairMessage(null);
+    
+    try {
+      const count = await repairGame(gameId);
+      setRepairMessage(`修复完成！成功移动了 ${count} 个资源到正确位置`);
+      // 重新加载游戏列表
+      loadGames();
+    } catch (err) {
+      console.error('Failed to repair game:', err);
+      setRepairMessage(`修复失败：${err}`);
+    } finally {
+      setRepairingId(null);
+      setTimeout(() => setRepairMessage(null), 3000);
+    }
+  };
 
   return (
     <div className="page game-list">
@@ -48,6 +73,12 @@ export default function GameList() {
       </button>
 
       <h2 className="page-title">游戏列表</h2>
+
+      {repairMessage && (
+        <div className="form-success" style={{ marginBottom: '1rem' }}>
+          {repairMessage}
+        </div>
+      )}
 
       {loading && (
         <div className="empty-state">
@@ -88,6 +119,15 @@ export default function GameList() {
               <div className="game-card-meta">
                 <span>📖 {game.totalChapters} 章</span>
                 <span>📅 {formatDate(game.createdAt)}</span>
+              </div>
+              <div style={{ marginTop: '1rem' }}>
+                <button
+                  className="btn btn-small"
+                  onClick={(e) => handleRepair(game.id, e)}
+                  disabled={repairingId === game.id}
+                >
+                  {repairingId === game.id ? '修复中...' : '🔧 修复资源'}
+                </button>
               </div>
             </div>
           ))}

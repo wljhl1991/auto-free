@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import styles from './NarrationBox.module.css';
 
 interface NarrationBoxProps {
@@ -18,6 +18,7 @@ function NarrationBox({
 }: NarrationBoxProps) {
   const [displayedLength, setDisplayedLength] = useState(0);
   const [typingDone, setTypingDone] = useState(false);
+  const timerRef = useRef<number | null>(null);
 
   useEffect(() => {
     setDisplayedLength(0);
@@ -43,22 +44,28 @@ function NarrationBox({
       setDisplayedLength((prev) => {
         const next = prev + 1;
         if (next >= text.length) {
-          clearInterval(timer);
+          if (timerRef.current) clearInterval(timerRef.current);
         }
         return next;
       });
     }, TYPING_INTERVAL);
+    timerRef.current = timer;
 
-    return () => clearInterval(timer);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
   }, [text, displayedLength, isTyping, typingDone, onTypingComplete]);
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     if (displayedLength < text.length) {
+      // 打字动画未完成，点击直接显示完整文本
+      if (timerRef.current) clearInterval(timerRef.current);
       setDisplayedLength(text.length);
       setTypingDone(true);
       onTypingComplete?.();
     } else {
+      // 打字动画已完成，点击推进剧情
       onAdvance?.();
     }
   }, [displayedLength, text.length, onTypingComplete, onAdvance]);

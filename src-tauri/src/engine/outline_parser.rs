@@ -2,7 +2,7 @@ use crate::engine::validator::GameScriptValidator;
 use crate::providers::deepseek::DeepSeekProvider;
 use crate::providers::ProviderError;
 use crate::types::game_script::{
-    AssetRef, AssetStatus, GameScript, GameType, SceneAssets, SceneNode,
+    AssetRef, AssetStatus, GameScript, GameType, SceneAssets, SceneNode, AssetType, AssetSource
 };
 
 // 内嵌 Prompt 模板，编译时加载，不依赖运行时文件路径
@@ -198,9 +198,63 @@ impl OutlineParser {
                 if scene.id.is_empty() {
                     scene.id = format!("scene_{}_{}", ch_idx + 1, sc_idx + 1);
                 }
+                
+                // 确保所有场景都有 background_image
+                if scene.assets.background_image.is_none() {
+                    scene.assets.background_image = Some(AssetRef {
+                        id: format!("bg_{}_{}", ch_idx + 1, sc_idx + 1),
+                        asset_type: AssetType::Image,
+                        prompt: format!("{}, {}", chapter.title, scene.title),
+                        negative_prompt: None,
+                        style: None,
+                        source: AssetSource::AiGenerated,
+                        status: AssetStatus::Pending,
+                        url: None,
+                        builtin_asset_id: None,
+                        cache_key: None,
+                    });
+                }
+                
                 for (node_idx, node) in scene.sequence.iter_mut().enumerate() {
                     let node_id = format!("node_{}_{}_{}", ch_idx + 1, sc_idx + 1, node_idx + 1);
                     Self::fix_node_id(node, &node_id);
+                    
+                    // 确保所有的 Narration 和 Dialogue 节点都有 voice_asset
+                    match node {
+                        SceneNode::Narration(n) => {
+                            if n.voice_asset.is_none() {
+                                n.voice_asset = Some(AssetRef {
+                                    id: format!("voice_{}_{}_{}", ch_idx + 1, sc_idx + 1, node_idx + 1),
+                                    asset_type: AssetType::Voice,
+                                    prompt: n.text.clone(),
+                                    negative_prompt: None,
+                                    style: None,
+                                    source: AssetSource::AiGenerated,
+                                    status: AssetStatus::Pending,
+                                    url: None,
+                                    builtin_asset_id: None,
+                                    cache_key: None,
+                                });
+                            }
+                        },
+                        SceneNode::Dialogue(d) => {
+                            if d.voice_asset.is_none() {
+                                d.voice_asset = Some(AssetRef {
+                                    id: format!("voice_{}_{}_{}", ch_idx + 1, sc_idx + 1, node_idx + 1),
+                                    asset_type: AssetType::Voice,
+                                    prompt: format!("{}: {}", d.speaker, d.text),
+                                    negative_prompt: None,
+                                    style: None,
+                                    source: AssetSource::AiGenerated,
+                                    status: AssetStatus::Pending,
+                                    url: None,
+                                    builtin_asset_id: None,
+                                    cache_key: None,
+                                });
+                            }
+                        },
+                        _ => {}
+                    }
                 }
             }
         }
@@ -355,7 +409,7 @@ impl OutlineParser {
         };
 
         let mut fixed = false;
-        Self::normalize_value(&mut value, &mut fixed);
+        Self::normalize_value_with_context(&mut value, &mut fixed, false);
 
         if fixed {
             log::warn!("AI 返回的 JSON 包含非标准字段，已自动修正");
@@ -364,15 +418,17 @@ impl OutlineParser {
         serde_json::to_string(&value).unwrap_or_else(|_| json_str.to_string())
     }
 
-    fn normalize_value(value: &mut serde_json::Value, fixed: &mut bool) {
+    /// 带有上下文追踪的 normalize_value
+    /// in_sequence: 当前是否在 sequence 数组内部（只有这里面的对象才是 SceneNode）
+    fn normalize_value_with_context(value: &mut serde_json::Value, fixed: &mut bool, in_sequence: bool) {
         match value {
             serde_json::Value::Object(map) => {
-                // 判断当前对象是否为 SceneNode（在 sequence 数组中的对象）
+                // 只有当我们明确在 sequence 数组内部时，才认为是 SceneNode
                 // AssetRef 有 source/prompt 字段，globalVariables 有 name/defaultValue 字段
                 // 这些对象的 type 字段不应被 normalize_node_type 处理
                 let is_asset_ref = map.contains_key("source") && map.contains_key("prompt");
                 let is_global_var = map.contains_key("name") && map.contains_key("defaultValue");
-                let is_scene_node = !is_asset_ref && !is_global_var;
+                let is_scene_node = in_sequence && !is_asset_ref && !is_global_var;
 
                 // type: 仅对 SceneNode 的 type 字段做修正
                 if is_scene_node {
@@ -423,14 +479,17 @@ impl OutlineParser {
                     }
                 }
 
-                // 递归处理嵌套值
-                for (_, v) in map.iter_mut() {
-                    Self::normalize_value(v, fixed);
+                // 递归处理嵌套值，特殊处理 sequence 数组
+                for (key, v) in map.iter_mut() {
+                    // 当我们遇到 "sequence" 键时，说明下面的数组中的对象都是 SceneNode
+                    let is_sequence_array = key == "sequence";
+                    Self::normalize_value_with_context(v, fixed, is_sequence_array);
                 }
             }
             serde_json::Value::Array(arr) => {
                 for v in arr.iter_mut() {
-                    Self::normalize_value(v, fixed);
+                    // 如果在 sequence 数组内部，那么里面的每个对象都是 SceneNode
+                    Self::normalize_value_with_context(v, fixed, in_sequence);
                 }
             }
             _ => {}
@@ -497,8 +556,13 @@ impl OutlineParser {
 
     /// 宽松解析 GameScript JSON：逐章解析，跳过有问题的节点
     fn parse_script_lenient(json_str: &str) -> Result<GameScript, ProviderError> {
-        let value: serde_json::Value = serde_json::from_str(json_str)
+        let mut value: serde_json::Value = serde_json::from_str(json_str)
             .map_err(|e| ProviderError::GenerationFailed(format!("JSON 格式无效: {}", e)))?;
+
+        // 在宽松解析之前，先再次进行一次全面的 normalize
+        // 确保 sequence 数组中的所有节点类型都被正确修正
+        let mut fixed = false;
+        Self::normalize_value_with_context(&mut value, &mut fixed, false);
 
         // 提取 meta
         let meta = value.get("meta")
@@ -517,20 +581,51 @@ impl OutlineParser {
                                     if let Some(seq) = scene.get("sequence").and_then(|v| v.as_array()) {
                                         let fixed_seq: Vec<serde_json::Value> = seq.iter()
                                             .filter_map(|node| {
-                                                match serde_json::from_value::<SceneNode>(node.clone()) {
-                                                    Ok(_) => Some(node.clone()),
-                                                    Err(e) => {
-                                                        log::warn!("跳过无法解析的节点: {}", e);
-                                                        // 尝试降级为 action
-                                                        let mut fixed = node.clone();
-                                                        if let Some(obj) = fixed.as_object_mut() {
-                                                            obj.insert("type".to_string(), serde_json::Value::String("action".to_string()));
-                                                        }
-                                                        match serde_json::from_value::<SceneNode>(fixed.clone()) {
-                                                            Ok(_) => Some(fixed),
-                                                            Err(_) => None,
-                                                        }
+                                                // 先尝试直接解析
+                                                if serde_json::from_value::<SceneNode>(node.clone()).is_ok() {
+                                                    return Some(node.clone());
+                                                }
+                                                
+                                                log::warn!("无法解析节点，尝试修复: {:?}", node);
+                                                
+                                                // 尝试各种修复策略
+                                                let mut fixed_node = node.clone();
+                                                
+                                                // 策略1: 强制设置 type 为 action
+                                                if let Some(obj) = fixed_node.as_object_mut() {
+                                                    obj.insert("type".to_string(), serde_json::Value::String("action".to_string()));
+                                                    // 确保 action 节点有必要的字段
+                                                    if !obj.contains_key("id") {
+                                                        obj.insert("id".to_string(), serde_json::Value::String(uuid::Uuid::new_v4().to_string()));
                                                     }
+                                                    if !obj.contains_key("actionType") {
+                                                        obj.insert("actionType".to_string(), serde_json::Value::String("set_variable".to_string()));
+                                                    }
+                                                    if !obj.contains_key("params") {
+                                                        obj.insert("params".to_string(), serde_json::Value::Object(serde_json::Map::new()));
+                                                    }
+                                                }
+                                                
+                                                // 尝试解析修复后的节点
+                                                if serde_json::from_value::<SceneNode>(fixed_node.clone()).is_ok() {
+                                                    log::warn!("节点修复成功");
+                                                    return Some(fixed_node);
+                                                }
+                                                
+                                                // 策略2: 如果还是不行，尝试创建一个最基本的 narration 节点
+                                                log::warn!("节点修复失败，创建兜底的 narration 节点");
+                                                let fallback_node = serde_json::json!({
+                                                    "type": "narration",
+                                                    "id": uuid::Uuid::new_v4().to_string(),
+                                                    "text": "（内容解析失败，已跳过）",
+                                                    "voicePrompt": null,
+                                                    "voiceAsset": null
+                                                });
+                                                
+                                                if serde_json::from_value::<SceneNode>(fallback_node.clone()).is_ok() {
+                                                    Some(fallback_node)
+                                                } else {
+                                                    None
                                                 }
                                             })
                                             .collect();

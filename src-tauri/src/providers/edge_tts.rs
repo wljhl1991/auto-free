@@ -507,7 +507,7 @@ impl IAssetProvider for EdgeTTSProvider {
             .clone()
             .unwrap_or_else(|| Self::generate_cache_key(asset_ref));
 
-        let dest_dir = self.asset_base_path.join(&cache_key);
+        let dest_dir = self.asset_base_path.join("cacheAssets").join(&cache_key);
         std::fs::create_dir_all(&dest_dir)
             .map_err(|e| ProviderError::GenerationFailed(format!("创建资源目录失败: {}", e)))?;
 

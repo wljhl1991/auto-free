@@ -117,6 +117,11 @@ pub struct GameInfo {
     pub updated_at: u64,
 }
 
+/// 辅助函数：将秒级时间戳转换为毫秒级
+fn to_ms(secs: u64) -> u64 {
+    secs * 1000
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveInfo {
@@ -170,7 +175,7 @@ pub async fn create_game(
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
-        .as_secs();
+        .as_millis() as u64;
 
     // 立即返回 GameInfo，title 使用临时值，后续通过事件更新
     Ok(GameInfo {
@@ -210,7 +215,7 @@ pub async fn create_game_from_script(
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
-        .as_secs();
+        .as_millis() as u64;
 
     Ok(GameInfo {
         id: game_id,
@@ -248,13 +253,13 @@ pub async fn get_game(
         .unwrap_or_else(|_| SystemTime::now())
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
-        .as_secs();
+        .as_millis() as u64;
 
     let updated_at = metadata.modified()
         .unwrap_or_else(|_| SystemTime::now())
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
-        .as_secs();
+        .as_millis() as u64;
 
     Ok(GameInfo {
         id: game_id,
@@ -315,32 +320,33 @@ pub async fn list_games(
             Err(_) => continue,
         };
 
-        const MIN_REASONABLE_TIMESTAMP: u64 = 1577836800; // 2020-01-01
+        const MIN_REASONABLE_TIMESTAMP: u64 = 1577836800; // 2020-01-01 (秒)
+        const MIN_REASONABLE_TIMESTAMP_MS: u64 = MIN_REASONABLE_TIMESTAMP * 1000;
 
         let created_at = {
-            let secs = metadata.modified()
+            let ms = metadata.modified()
                 .or_else(|_| metadata.created())
                 .unwrap_or_else(|_| SystemTime::now())
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
-                .as_secs();
-            if secs < MIN_REASONABLE_TIMESTAMP {
-                SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()
+                .as_millis() as u64;
+            if ms < MIN_REASONABLE_TIMESTAMP_MS {
+                SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64
             } else {
-                secs
+                ms
             }
         };
 
         let updated_at = {
-            let secs = metadata.modified()
+            let ms = metadata.modified()
                 .unwrap_or_else(|_| SystemTime::now())
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
-                .as_secs();
-            if secs < MIN_REASONABLE_TIMESTAMP {
-                SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()
+                .as_millis() as u64;
+            if ms < MIN_REASONABLE_TIMESTAMP_MS {
+                SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64
             } else {
-                secs
+                ms
             }
         };
 
@@ -363,6 +369,14 @@ pub async fn list_games(
 #[command]
 pub async fn delete_game(_game_id: String) -> Result<(), String> {
     Err("not implemented".to_string())
+}
+
+#[command]
+pub async fn repair_game(
+    game_id: String,
+    asset_manager: tauri::State<'_, Arc<AssetManager>>,
+) -> Result<usize, String> {
+    asset_manager.repair_game(&game_id)
 }
 
 #[command]

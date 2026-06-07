@@ -199,15 +199,20 @@ impl AssetManager {
         Self { base_path, cache_path }
     }
 
+    /// 获取游戏目录
+    pub fn get_game_dir(&self, game_id: &str) -> PathBuf {
+        self.base_path.join("games").join(game_id)
+    }
+
     /// 获取游戏资源目录
     pub fn get_game_asset_dir(&self, game_id: &str) -> PathBuf {
-        self.base_path.join("games").join(game_id)
+        self.get_game_dir(game_id).join("assets")
     }
 
     /// 确保游戏目录存在
     pub fn ensure_game_dirs(&self, game_id: &str) -> Result<(), String> {
-        let game_dir = self.get_game_asset_dir(game_id);
-        let asset_dir = game_dir.join("assets");
+        let _game_dir = self.get_game_dir(game_id);
+        let asset_dir = self.get_game_asset_dir(game_id);
         std::fs::create_dir_all(&asset_dir)
             .map_err(|e| format!("Failed to create game directories: {}", e))?;
         Ok(())
@@ -221,7 +226,7 @@ impl AssetManager {
     /// 保存 GameScript 到游戏目录的 script.json
     pub fn save_game_script(&self, game_id: &str, script: &GameScript) -> Result<(), String> {
         self.ensure_game_dirs(game_id)?;
-        let script_path = self.get_game_asset_dir(game_id).join("script.json");
+        let script_path = self.get_game_dir(game_id).join("script.json");
         let json = serde_json::to_string_pretty(script)
             .map_err(|e| format!("Failed to serialize GameScript: {}", e))?;
         std::fs::write(&script_path, json)
@@ -231,11 +236,104 @@ impl AssetManager {
 
     /// 从游戏目录加载 GameScript
     pub fn load_game_script(&self, game_id: &str) -> Result<GameScript, String> {
-        let script_path = self.get_game_asset_dir(game_id).join("script.json");
+        let script_path = self.get_game_dir(game_id).join("script.json");
         let json = std::fs::read_to_string(&script_path)
             .map_err(|e| format!("Failed to read script.json: {}", e))?;
         serde_json::from_str(&json)
             .map_err(|e| format!("Failed to parse GameScript: {}", e))
+    }
+
+    /// 修复游戏资源：把错误位置的资源移动到 assets 目录，并更新 GameScript
+    pub fn repair_game(&self, game_id: &str) -> Result<usize, String> {
+        self.ensure_game_dirs(game_id)?;
+        
+        let mut script = self.load_game_script(game_id)?;
+        let mut assets_moved = 0;
+        
+        // 辅助函数：移动资源并更新 AssetRef
+        let mut repair_asset_ref = |ar: &mut crate::types::game_script::AssetRef| {
+            if let Some(old_url) = &ar.url {
+                let old_path = PathBuf::from(old_url);
+                
+                // 确定新文件名
+                let file_ext = match ar.asset_type {
+                    crate::types::game_script::AssetType::Image => "png",
+                    crate::types::game_script::AssetType::Video => "mp4",
+                    crate::types::game_script::AssetType::Audio | crate::types::game_script::AssetType::Voice => "mp3",
+                };
+                
+                let new_path = self.get_game_asset_dir(game_id).join(format!("{}.{}", ar.id, file_ext));
+                
+                // 如果旧文件存在，且不是已经在正确位置，则移动
+                if old_path.exists() && old_path != new_path {
+                    // 确保目标目录存在
+                    if let Some(parent) = new_path.parent() {
+                        let _ = std::fs::create_dir_all(parent);
+                    }
+                    
+                    match std::fs::copy(&old_path, &new_path) {
+                        Ok(_) => {
+                            // 更新 AssetRef 的 URL
+                            ar.url = Some(new_path.to_string_lossy().to_string());
+                            assets_moved += 1;
+                        }
+                        Err(e) => {
+                            log::warn!("Failed to move asset {}: {:?}", ar.id, e);
+                        }
+                    }
+                }
+            }
+        };
+        
+        // 遍历所有场景和节点，修复所有 AssetRef
+        for chapter in &mut script.chapters {
+            for scene in &mut chapter.scenes {
+                // 修复场景资源
+                if let Some(ref mut bg) = scene.assets.background_image {
+                    repair_asset_ref(bg);
+                }
+                if let Some(ref mut bv) = scene.assets.background_video {
+                    repair_asset_ref(bv);
+                }
+                if let Some(ref mut bgm) = scene.assets.bgm {
+                    repair_asset_ref(bgm);
+                }
+                if let Some(ref mut amb) = scene.assets.ambient_sound {
+                    repair_asset_ref(amb);
+                }
+                if let Some(ref mut cg) = scene.assets.cg_animation {
+                    repair_asset_ref(cg);
+                }
+                
+                // 修复节点资源
+                for node in &mut scene.sequence {
+                    match node {
+                        crate::types::game_script::SceneNode::Dialogue(d) => {
+                            if let Some(ref mut sa) = d.speaker_avatar {
+                                repair_asset_ref(sa);
+                            }
+                            if let Some(ref mut va) = d.voice_asset {
+                                repair_asset_ref(va);
+                            }
+                        }
+                        crate::types::game_script::SceneNode::Narration(n) => {
+                            if let Some(ref mut va) = n.voice_asset {
+                                repair_asset_ref(va);
+                            }
+                        }
+                        crate::types::game_script::SceneNode::Cg(c) => {
+                            repair_asset_ref(&mut c.video_asset);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        
+        // 保存修复后的 GameScript
+        self.save_game_script(game_id, &script)?;
+        
+        Ok(assets_moved)
     }
 }
 

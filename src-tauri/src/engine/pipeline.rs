@@ -590,13 +590,32 @@ impl GenerationPipeline {
             let (chapter_id, asset_ref) = &first_chapter_refs[i];
             match result {
                 Ok(ref local_asset) => {
+                    // 复制资源到游戏的 assets 目录
+                    let game_asset_path = asset_manager.get_game_asset_dir(game_id);
+                    // 根据资源类型确定文件名扩展名
+                    let file_ext = match asset_ref.asset_type {
+                        ScriptAssetType::Image => "png",
+                        ScriptAssetType::Video => "mp4",
+                        ScriptAssetType::Audio | ScriptAssetType::Voice => "mp3",
+                    };
+                    let target_path = game_asset_path.join(format!("{}.{}", asset_ref.id, file_ext));
+                    
+                    // 确保目录存在
+                    let _ = std::fs::create_dir_all(&game_asset_path);
+                    
+                    // 复制文件
+                    let final_path = match std::fs::copy(&local_asset.local_path, &target_path) {
+                        Ok(_) => target_path.to_string_lossy().to_string(),
+                        Err(_) => local_asset.local_path.clone(), // 如果复制失败，继续用原路径
+                    };
+                    
                     // 更新 GameScript
                     {
                         let mut scripts_lock = scripts.write().await;
                         if let Some(script) = scripts_lock.get_mut(game_id) {
                             Self::update_script_assets(script, |ar: &mut AssetRef| {
                                 if ar.id == asset_ref.id {
-                                    ar.url = Some(local_asset.local_path.clone());
+                                    ar.url = Some(final_path.clone());
                                     ar.status = AssetStatus::Ready;
                                     ar.source = ScriptAssetSource::AiGenerated;
                                 }
@@ -612,7 +631,7 @@ impl GenerationPipeline {
                                 "gameId": game_id,
                                 "assetRefId": asset_ref.id,
                                 "assetType": format!("{:?}", asset_ref.asset_type),
-                                "localPath": local_asset.local_path,
+                                "localPath": final_path,
                                 "source": format!("{:?}", local_asset.source),
                             }),
                         );
@@ -758,12 +777,31 @@ impl GenerationPipeline {
                         let (_, asset_ref) = &refs[i];
                         match result {
                             Ok(ref local_asset) => {
+                                // 复制资源到游戏的 assets 目录
+                                let game_asset_path = asset_manager_bg.get_game_asset_dir(&game_id_bg);
+                                // 根据资源类型确定文件名扩展名
+                                let file_ext = match asset_ref.asset_type {
+                                    ScriptAssetType::Image => "png",
+                                    ScriptAssetType::Video => "mp4",
+                                    ScriptAssetType::Audio | ScriptAssetType::Voice => "mp3",
+                                };
+                                let target_path = game_asset_path.join(format!("{}.{}", asset_ref.id, file_ext));
+                                
+                                // 确保目录存在
+                                let _ = std::fs::create_dir_all(&game_asset_path);
+                                
+                                // 复制文件
+                                let final_path = match std::fs::copy(&local_asset.local_path, &target_path) {
+                                    Ok(_) => target_path.to_string_lossy().to_string(),
+                                    Err(_) => local_asset.local_path.clone(), // 如果复制失败，继续用原路径
+                                };
+                                
                                 {
                                     let mut scripts_lock = scripts_bg.write().await;
                                     if let Some(script) = scripts_lock.get_mut(&game_id_bg) {
                                         Self::update_script_assets(script, |ar: &mut AssetRef| {
                                             if ar.id == asset_ref.id {
-                                                ar.url = Some(local_asset.local_path.clone());
+                                                ar.url = Some(final_path.clone());
                                                 ar.status = AssetStatus::Ready;
                                                 ar.source = ScriptAssetSource::AiGenerated;
                                             }
@@ -778,7 +816,7 @@ impl GenerationPipeline {
                                             "gameId": game_id_bg,
                                             "assetRefId": asset_ref.id,
                                             "assetType": format!("{:?}", asset_ref.asset_type),
-                                            "localPath": local_asset.local_path,
+                                            "localPath": final_path,
                                             "source": format!("{:?}", local_asset.source),
                                             "chapterId": chapter_id,
                                         }),
