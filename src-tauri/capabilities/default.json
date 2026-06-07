@@ -4,15 +4,6 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "opener:default",
-    "core:app:allow-version",
-    "core:shell:allow-open",
-    "core:fs:allow-read",
-    "core:fs:allow-write",
-    "core:fs:allow-create-dir",
-    "core:fs:allow-remove-file",
-    "core:fs:allow-remove-dir",
-    "core:fs:allow-exists",
-    "core:assets:allow-get"
+    "opener:default"
   ]
 }
