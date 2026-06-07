@@ -14,6 +14,7 @@ import CGGallery from '../components/CG/CGGallery';
 import { GameMenu } from '../components/HUD/GameMenu';
 import { InventoryPanel } from '../components/HUD/InventoryPanel';
 import { StatsPanel } from '../components/HUD/StatsPanel';
+import AudioControl from '../components/HUD/AudioControl';
 import PromptEditor from '../components/Config/PromptEditor';
 import CandidateSelector from '../components/Choice/CandidateSelector';
 import { useGame } from '../hooks/useGame';
@@ -75,6 +76,7 @@ function GamePlay() {
   const [showGallery, setShowGallery] = useState(false);
   const [showProgress, setShowProgress] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showAudioControl, setShowAudioControl] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isRepairing, setIsRepairing] = useState(false);
 
@@ -356,17 +358,20 @@ function GamePlay() {
             // 场景转场由 SceneExecutor 自动处理（延迟后 enterScene）
           }
           if (event.type === 'chapter_end') {
-            // 章节结束，显示过渡UI
-            setChapterTransition({
-              show: true,
-              chapterTitle: event.chapterTitle,
-              nextChapterTitle: event.nextChapterTitle,
-            });
-          }
-          if (event.type === 'game_end') {
-            // 游戏结束
-            setGameEnded(true);
-          }
+        // 章节结束，停止语音（保留 BGM）
+        audioEngineRef.current.stopVoice();
+        // 章节结束，显示过渡UI
+        setChapterTransition({
+          show: true,
+          chapterTitle: event.chapterTitle,
+          nextChapterTitle: event.nextChapterTitle,
+        });
+      }
+      if (event.type === 'game_end') {
+        // 游戏结束，停止所有声音
+        audioEngineRef.current.stopAll();
+        setGameEnded(true);
+      }
 
           // 播放语音
           if ((event.type === 'narration' || event.type === 'dialogue') && event.voiceUrl) {
@@ -460,7 +465,7 @@ function GamePlay() {
 
   // 游戏结束 - 返回主菜单
   const handleGameEndBackToMenu = useCallback(() => {
-    audioEngineRef.current.stopBgm();
+    audioEngineRef.current.stopAll();
     navigate('/');
   }, []);
 
@@ -635,7 +640,7 @@ function GamePlay() {
   }, []);
 
   const handleBackToMenu = useCallback(() => {
-    audioEngineRef.current.stopBgm();
+    audioEngineRef.current.stopAll();
     navigate('/');
   }, []);
 
@@ -798,6 +803,7 @@ function GamePlay() {
               <button onClick={(e) => { e.stopPropagation(); setShowGallery(true); }}>CG回廊</button>
               <button onClick={(e) => { e.stopPropagation(); setShowInventory(true); }}>物品栏</button>
               <button onClick={(e) => { e.stopPropagation(); setShowStats(true); }}>状态</button>
+              <button onClick={(e) => { e.stopPropagation(); setShowAudioControl(true); }}>🔊</button>
               <button onClick={(e) => { e.stopPropagation(); setShowMenu(true); }}>菜单</button>
             </div>
           </div>
@@ -1127,6 +1133,14 @@ function GamePlay() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* 声音控制面板 */}
+      {showAudioControl && (
+        <AudioControl
+          audioEngine={audioEngineRef.current}
+          onClose={() => setShowAudioControl(false)}
+        />
       )}
     </div>
   );

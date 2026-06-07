@@ -5,7 +5,10 @@ export class AudioEngine {
   private currentBgmUrl: string | null = null;
   private currentVoice: Howl | null = null;
   private sfxCache: Map<string, Howl> = new Map();
-  private volume: number = 1;
+  private masterVolume: number = 1;
+  private bgmVolume: number = 1;
+  private voiceVolume: number = 1;
+  private sfxVolume: number = 1;
   private muted: boolean = false;
 
   // BGM 播放/切换/淡入淡出
@@ -16,12 +19,14 @@ export class AudioEngine {
 
     const oldBgm = this.currentBgm;
 
+    const effectiveBgmVolume = this.muted ? 0 : (this.masterVolume * this.bgmVolume);
+
     this.currentBgm = new Howl({
       src: [url],
       loop: true,
       volume: 0,
       onplay: () => {
-        this.currentBgm?.fade(0, this.muted ? 0 : this.volume, fadeMs);
+        this.currentBgm?.fade(0, effectiveBgmVolume, fadeMs);
       },
     });
 
@@ -55,9 +60,11 @@ export class AudioEngine {
     return new Promise((resolve) => {
       this.stopVoice();
 
+      const effectiveVoiceVolume = this.muted ? 0 : (this.masterVolume * this.voiceVolume);
+
       this.currentVoice = new Howl({
         src: [url],
-        volume: this.muted ? 0 : this.volume,
+        volume: effectiveVoiceVolume,
         onend: () => {
           this.currentVoice = null;
           resolve();
@@ -82,40 +89,77 @@ export class AudioEngine {
   // 音效播放
   playSfx(url: string): void {
     let sfx = this.sfxCache.get(url);
+    const effectiveSfxVolume = this.muted ? 0 : (this.masterVolume * this.sfxVolume);
     if (!sfx) {
       sfx = new Howl({
         src: [url],
-        volume: this.muted ? 0 : this.volume,
+        volume: effectiveSfxVolume,
       });
       this.sfxCache.set(url, sfx);
     }
+    sfx.volume(effectiveSfxVolume);
     sfx.play();
   }
 
-  // 全局音量
-  setVolume(volume: number): void {
-    this.volume = volume;
-    if (!this.muted) {
-      if (this.currentBgm) {
-        this.currentBgm.volume(volume);
-      }
-      if (this.currentVoice) {
-        this.currentVoice.volume(volume);
-      }
-      this.sfxCache.forEach(sfx => sfx.volume(volume));
-    }
+  // 停止所有声音
+  stopAll(): void {
+    this.stopVoice();
+    this.stopBgm(0);
+  }
+
+  // 主音量控制
+  setMasterVolume(volume: number): void {
+    this.masterVolume = volume;
+    this.updateAllVolumes();
+  }
+
+  // BGM 音量控制
+  setBgmVolume(volume: number): void {
+    this.bgmVolume = volume;
+    this.updateAllVolumes();
+  }
+
+  // 语音音量控制
+  setVoiceVolume(volume: number): void {
+    this.voiceVolume = volume;
+    this.updateAllVolumes();
+  }
+
+  // 音效音量控制
+  setSfxVolume(volume: number): void {
+    this.sfxVolume = volume;
+    this.updateAllVolumes();
   }
 
   // 静音
   setMuted(muted: boolean): void {
     this.muted = muted;
-    const vol = muted ? 0 : this.volume;
+    this.updateAllVolumes();
+  }
+
+  // 获取当前音量设置
+  getSettings() {
+    return {
+      masterVolume: this.masterVolume,
+      bgmVolume: this.bgmVolume,
+      voiceVolume: this.voiceVolume,
+      sfxVolume: this.sfxVolume,
+      muted: this.muted,
+    };
+  }
+
+  // 更新所有音量
+  private updateAllVolumes(): void {
+    const effectiveBgmVolume = this.muted ? 0 : (this.masterVolume * this.bgmVolume);
+    const effectiveVoiceVolume = this.muted ? 0 : (this.masterVolume * this.voiceVolume);
+    const effectiveSfxVolume = this.muted ? 0 : (this.masterVolume * this.sfxVolume);
+
     if (this.currentBgm) {
-      this.currentBgm.volume(vol);
+      this.currentBgm.volume(effectiveBgmVolume);
     }
     if (this.currentVoice) {
-      this.currentVoice.volume(vol);
+      this.currentVoice.volume(effectiveVoiceVolume);
     }
-    this.sfxCache.forEach(sfx => sfx.volume(vol));
+    this.sfxCache.forEach(sfx => sfx.volume(effectiveSfxVolume));
   }
 }
