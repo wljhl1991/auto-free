@@ -427,24 +427,10 @@ export default function Settings() {
             })}
           </div>
 
-          {MODALITY_SECTIONS.map(({ modality, title }) => (
-        <ModalitySection
-          key={modality}
-          modality={modality}
-          title={title}
-          providers={getProvidersByModality(modality)}
-          onConfigure={handleConfigure}
-          onCheck={handleCheckProvider}
-          onCopy={handleCopyProvider}
-          onDelete={handleDeleteProvider}
-          onReset={handleResetProvider}
-        />
-      ))}
-
           <div style={{
             display: 'flex',
             justifyContent: 'center',
-            marginTop: '1.5rem',
+            marginBottom: '1.5rem',
           }}>
             <button
               className="btn btn-secondary"
@@ -459,6 +445,20 @@ export default function Settings() {
               + 添加服务商
             </button>
           </div>
+
+          {MODALITY_SECTIONS.map(({ modality, title }) => (
+            <ModalitySection
+              key={modality}
+              modality={modality}
+              title={title}
+              providers={getProvidersByModality(modality)}
+              onConfigure={handleConfigure}
+              onCheck={handleCheckProvider}
+              onCopy={handleCopyProvider}
+              onDelete={handleDeleteProvider}
+              onReset={handleResetProvider}
+            />
+          ))}
 
           <div style={{
             display: 'flex',
