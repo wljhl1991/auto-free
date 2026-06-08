@@ -11,7 +11,6 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const DEFAULT_BASE_URL: &str = "https://ai.growingth.com/api";
 const DEFAULT_MODEL: &str = "moka-v9";
-const POLL_INTERVAL_SECS: u64 = 5;
 const MAX_POLL_DURATION_SECS: u64 = 300; // 5 minutes
 
 #[derive(Debug, Serialize)]
@@ -267,6 +266,11 @@ impl MiaoYinProvider {
                 error: Option<String>,
             }
 
+            // 清理URL中可能包含的反引号
+            fn clean_url(url: &str) -> String {
+                url.trim_matches('`').to_string()
+            }
+
             let query_response: QueryResponse = serde_json::from_str(&body)
                 .map_err(|e| {
                     log::error!("[MiaoYin] 解析轮询响应失败: {}", e);
@@ -279,16 +283,18 @@ impl MiaoYinProvider {
                         if task.id == task_id {
                             if task.status.as_deref() == Some("complete") {
                                 if let Some(audio_url) = task.audio_url {
-                                    if !audio_url.is_empty() {
-                                        log::info!("[MiaoYin] 音乐生成完成: task_id={}", task_id);
-                                        return Ok(audio_url);
+                                    let cleaned_url = clean_url(&audio_url);
+                                    if !cleaned_url.is_empty() {
+                                        log::info!("[MiaoYin] 音乐生成完成: task_id={}, url={}", task_id, cleaned_url);
+                                        return Ok(cleaned_url);
                                     }
                                 }
                                 // 如果没有 audio_url 但有 video_url，尝试使用 video_url
                                 if let Some(video_url) = task.video_url {
-                                    if !video_url.is_empty() {
-                                        log::info!("[MiaoYin] 音乐生成完成(使用video_url): task_id={}", task_id);
-                                        return Ok(video_url);
+                                    let cleaned_url = clean_url(&video_url);
+                                    if !cleaned_url.is_empty() {
+                                        log::info!("[MiaoYin] 音乐生成完成(使用video_url): task_id={}, url={}", task_id, cleaned_url);
+                                        return Ok(cleaned_url);
                                     }
                                 }
                                 return Err(ProviderError::GenerationFailed("音频生成完成但未返回音频URL".to_string()));
@@ -443,6 +449,21 @@ impl MiaoYinProvider {
         hasher.update(asset_ref.prompt.as_bytes());
         format!("{:x}", hasher.finalize())[..16].to_string()
     }
+
+    /// 保存测试音频到 gen/cache/ 目录，返回本地文件路径
+    fn save_test_audio(&self, audio_data: &[u8], provider_name: &str) -> Result<String, ProviderError> {
+        let cache_dir = self.asset_base_path.join("cache");
+        std::fs::create_dir_all(&cache_dir)
+            .map_err(|e| ProviderError::GenerationFailed(format!("创建缓存目录失败: {}", e))?;
+
+        let filename = format!("{}_test_{}.mp3", provider_name,
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs());
+        let dest_path = cache_dir.join(&filename);
+        std::fs::write(&dest_path, audio_data)
+            .map_err(|e| ProviderError::GenerationFailed(format!("写入测试音频失败: {}", e))?;
+
+        Ok(dest_path.to_string_lossy().to_string())
+    }
 }
 
 #[async_trait]
@@ -486,138 +507,77 @@ impl IAssetProvider for MiaoYinProvider {
     }
 
     async fn check_connectivity(&self) -> Result<ConnectivityCheck, ProviderError> {
-        let start = SystemTime::now();
+        self.check_connectivity_with_prompt("一首轻松的背景音乐").await
+    }
 
-        // 尝试发起一个轻量级请求验证连通性
-        let url = format!("{}/song/proxy?name=generate", self.base_url);
+    async fn check_connectivity_with_prompt(&self, prompt: &str) -> Result<ConnectivityCheck, ProviderError> {
+        let start = SystemTime::now();
+        let request_url = format!("{}/song/proxy?name=generate", self.base_url);
         let request = MusicGenerationRequest {
-            prompt: "test".to_string(),
+            prompt: prompt.to_string(),
             desc: Some("connectivity test".to_string()),
             make_instrumental: true,
         };
+        let request_body = serde_json::to_string(&request).unwrap_or_default();
 
-        let result = self.client
-            .post(&url)
-            .header("api-token", &self.api_token)
-            .header("Content-Type", "application/json")
-            .json(&request)
-            .send()
-            .await;
-
+        // 尝试实际生成音乐
+        let result = self.generate_music(prompt, true).await;
         let latency = SystemTime::now()
             .duration_since(start)
             .unwrap_or_default()
             .as_millis() as u64;
 
         match result {
-            Ok(response) => {
-                let status = response.status();
-                if status.is_success() || status.as_u16() == 400 {
-                    // 400 可能是因为参数不完整，但说明 API 可达
-                    Ok(ConnectivityCheck {
-                        provider_id: self.config.id.clone(),
-                        timestamp: SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_secs(),
-                        status: ConnectivityStatus::Ok,
-                        latency: Some(latency),
-                        error_message: None,
-                        quota_info: None,
-                        response_preview: Some("妙音AI服务可用".to_string()),
-                        test_prompt: None,
-                        media_url: None,
-                        media_type: None,
-                        request_endpoint: None,
-                        request_model: None,
-                        request_headers: None,
-                        request_body: None,
-                        response_status: None,
-                    })
-                } else if status.as_u16() == 401 || status.as_u16() == 403 {
-                    Ok(ConnectivityCheck {
-                        provider_id: self.config.id.clone(),
-                        timestamp: SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_secs(),
-                        status: ConnectivityStatus::AuthFailed,
-                        latency: Some(latency),
-                        error_message: Some("认证失败".to_string()),
-                        quota_info: None,
-                        response_preview: None,
-                        test_prompt: None,
-                        media_url: None,
-                        media_type: None,
-                        request_endpoint: None,
-                        request_model: None,
-                        request_headers: None,
-                        request_body: None,
-                        response_status: None,
-                    })
-                } else if status.as_u16() == 429 {
-                    Ok(ConnectivityCheck {
-                        provider_id: self.config.id.clone(),
-                        timestamp: SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_secs(),
-                        status: ConnectivityStatus::QuotaExceeded,
-                        latency: Some(latency),
-                        error_message: Some("请求频率超限".to_string()),
-                        quota_info: None,
-                        response_preview: None,
-                        test_prompt: None,
-                        media_url: None,
-                        media_type: None,
-                        request_endpoint: None,
-                        request_model: None,
-                        request_headers: None,
-                        request_body: None,
-                        response_status: None,
-                    })
-                } else {
-                    Ok(ConnectivityCheck {
-                        provider_id: self.config.id.clone(),
-                        timestamp: SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_secs(),
-                        status: ConnectivityStatus::UnknownError,
-                        latency: Some(latency),
-                        error_message: Some(format!("未知状态: {}", status)),
-                        quota_info: None,
-                        response_preview: None,
-                        test_prompt: None,
-                        media_url: None,
-                        media_type: None,
-                        request_endpoint: None,
-                        request_model: None,
-                        request_headers: None,
-                        request_body: None,
-                        response_status: None,
-                    })
-                }
-            }
-            Err(e) => {
+            Ok(audio_data) => {
+                // 保存测试音频到 gen/cache/ 目录
+                let media_url = self.save_test_audio(&audio_data, "miaoyin").ok();
                 Ok(ConnectivityCheck {
                     provider_id: self.config.id.clone(),
                     timestamp: SystemTime::now()
                         .duration_since(UNIX_EPOCH)
                         .unwrap_or_default()
                         .as_secs(),
-                    status: ConnectivityStatus::NetworkError,
+                    status: ConnectivityStatus::Ok,
                     latency: Some(latency),
-                    error_message: Some(format!("网络错误: {}", e)),
+                    error_message: None,
+                    quota_info: None,
+                    response_preview: Some(format!("音乐生成成功，音频大小: {}KB", audio_data.len() / 1024)),
+                    test_prompt: Some(prompt.to_string()),
+                    media_url,
+                    media_type: Some("audio".to_string()),
+                    request_endpoint: Some(request_url),
+                    request_model: Some(self.default_model.clone()),
+                    request_headers: Some(r#"{"api-token": "***"}"#.to_string()),
+                    request_body: Some(truncate_str(&request_body, 2000).to_string()),
+                    response_status: Some(200),
+                })
+            }
+            Err(e) => {
+                let status = match &e {
+                    ProviderError::AuthFailed(_) => ConnectivityStatus::AuthFailed,
+                    ProviderError::QuotaExceeded(_) => ConnectivityStatus::QuotaExceeded,
+                    ProviderError::NetworkError(_) => ConnectivityStatus::NetworkError,
+                    _ => ConnectivityStatus::UnknownError,
+                };
+
+                Ok(ConnectivityCheck {
+                    provider_id: self.config.id.clone(),
+                    timestamp: SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs(),
+                    status,
+                    latency: Some(latency),
+                    error_message: Some(format!("{:?}", e)),
                     quota_info: None,
                     response_preview: None,
-                    test_prompt: None,
+                    test_prompt: Some(prompt.to_string()),
                     media_url: None,
                     media_type: None,
-                    request_endpoint: None,
-                    request_model: None,
-                    request_headers: None,
-                    request_body: None,
+                    request_endpoint: Some(request_url),
+                    request_model: Some(self.default_model.clone()),
+                    request_headers: Some(r#"{"api-token": "***"}"#.to_string()),
+                    request_body: Some(truncate_str(&request_body, 2000).to_string()),
                     response_status: None,
                 })
             }
