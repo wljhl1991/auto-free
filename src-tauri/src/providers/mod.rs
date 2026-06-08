@@ -4,6 +4,7 @@ pub mod edge_tts;
 pub mod hailuo;
 pub mod jimeng;
 pub mod kling;
+pub mod miaoyin;
 pub mod netease_music;
 pub mod qwen;
 pub mod siliconflow;
@@ -113,6 +114,9 @@ impl ProviderFactory {
             }
             "skymusic" => {
                 Ok(Box::new(skymusic::SkyMusicProvider::new(config, asset_base_path.to_path_buf())?))
+            }
+            "miaoyin" => {
+                Ok(Box::new(miaoyin::MiaoYinProvider::new(config, asset_base_path.to_path_buf())?))
             }
             "xfyun-spark-lite" => {
                 Ok(Box::new(xfyun_spark::XfyunSparkProvider::new(config, asset_base_path.to_path_buf())?))

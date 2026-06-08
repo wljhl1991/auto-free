@@ -466,6 +466,59 @@
     "errorMessage": null
   },
   {
+    "id": "miaoyin",
+    "name": "妙音AI",
+    "vendor": "妙音AI",
+    "description": "集成 SUNO、Mureka 等顶级音乐模型，支持根据提示词生成歌曲",
+    "officialUrl": "https://ai.growingth.com",
+    "registerUrl": "https://ai.growingth.com/api-service?from=landing",
+    "docsUrl": "https://ai.growingth.com/api-service?from=landing",
+    "modality": ["music"],
+    "authType": "api_key",
+    "authConfig": {
+      "apiKey": {
+        "value": "",
+        "label": "API Token",
+        "placeholder": "请输入您的 API Token",
+        "helpUrl": "https://ai.growingth.com/api-service?from=landing"
+      },
+      "account": null,
+      "oauth": null,
+      "extraParams": null
+    },
+    "models": [
+      {
+        "id": "moka-v9",
+        "name": "Mureka V9",
+        "modality": "music",
+        "isDefault": true,
+        "endpoint": "https://ai.growingth.com/api",
+        "maxTokens": null,
+        "supportedSizes": null,
+        "maxDuration": null,
+        "costPerCall": null,
+        "freeQuota": "查看妙音AI官网",
+        "quality": "standard"
+      },
+      {
+        "id": "chirp-v5-5",
+        "name": "SUNO Chirp V5.5",
+        "modality": "music",
+        "isDefault": false,
+        "endpoint": "https://ai.growingth.com/api",
+        "maxTokens": null,
+        "supportedSizes": null,
+        "maxDuration": null,
+        "costPerCall": null,
+        "freeQuota": "查看妙音AI官网",
+        "quality": "standard"
+      }
+    ],
+    "status": "unconfigured",
+    "lastChecked": null,
+    "errorMessage": null
+  },
+  {
     "id": "edge-tts",
     "name": "Edge TTS",
     "vendor": "微软",

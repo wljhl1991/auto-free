@@ -3,13 +3,13 @@ use crate::types::ai_provider::{
 };
 use crate::types::asset::AIModality;
 
-/// 默认推荐预设方案：DeepSeek + 硅基流动 + 可灵 + 天工 + Edge TTS
+/// 默认推荐预设方案：DeepSeek + 硅基流动 + 可灵 + 妙音AI + Edge TTS
 /// 覆盖所有模态，推荐给大多数用户
 pub fn preset() -> ConfigPreset {
     ConfigPreset {
         id: "default".to_string(),
         name: "默认推荐方案".to_string(),
-        description: "DeepSeek V4 Flash（便宜但速度和效果更好） + 硅基流动（免费文本+图片） + 可灵视频 + 天工音乐 + Edge TTS（免费语音），高性价比全模态配置".to_string(),
+        description: "DeepSeek V4 Flash（便宜但速度和效果更好） + 硅基流动（免费文本+图片） + 可灵视频 + 妙音AI + Edge TTS（免费语音），高性价比全模态配置".to_string(),
         vendor_count: 5,
         providers: vec![
             PresetProvider {
@@ -37,10 +37,10 @@ pub fn preset() -> ConfigPreset {
                 note: Some("每日免费 6 条".to_string()),
             },
             PresetProvider {
-                provider_id: "skymusic".to_string(),
+                provider_id: "miaoyin".to_string(),
                 modality: AIModality::Music,
-                model_id: "skymusic-v1".to_string(),
-                note: Some("每日免费生成额度".to_string()),
+                model_id: "moka-v9".to_string(),
+                note: Some("集成 SUNO、Mureka 等顶级模型".to_string()),
             },
             PresetProvider {
                 provider_id: "edge-tts".to_string(),

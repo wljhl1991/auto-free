@@ -3,13 +3,13 @@ use crate::types::ai_provider::{
 };
 use crate::types::asset::AIModality;
 
-/// 零成本预设方案：硅基流动（免费文本+图片）+ 天工音乐 + Edge TTS（免费语音）
+/// 零成本预设方案：硅基流动（免费文本+图片）+ 妙音AI + Edge TTS（免费语音）
 /// 完全免费，零花费体验 AI 游戏制作
 pub fn preset() -> ConfigPreset {
     ConfigPreset {
         id: "zero_cost".to_string(),
         name: "零成本方案".to_string(),
-        description: "完全免费！硅基流动（免费文本+图片）+ 天工音乐 + Edge TTS（免费语音），推荐也可搭配 DeepSeek V4 Flash（便宜但速度和效果更好）".to_string(),
+        description: "完全免费！硅基流动（免费文本+图片）+ 妙音AI + Edge TTS（免费语音），推荐也可搭配 DeepSeek V4 Flash（便宜但速度和效果更好）".to_string(),
         vendor_count: 3,
         providers: vec![
             PresetProvider {
@@ -25,10 +25,10 @@ pub fn preset() -> ConfigPreset {
                 note: Some("Kolors 免费出图".to_string()),
             },
             PresetProvider {
-                provider_id: "skymusic".to_string(),
+                provider_id: "miaoyin".to_string(),
                 modality: AIModality::Music,
-                model_id: "skymusic-v1".to_string(),
-                note: Some("每日免费生成额度".to_string()),
+                model_id: "moka-v9".to_string(),
+                note: Some("集成 SUNO、Mureka 等顶级模型".to_string()),
             },
             PresetProvider {
                 provider_id: "edge-tts".to_string(),
