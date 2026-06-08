@@ -454,13 +454,13 @@ impl MiaoYinProvider {
     fn save_test_audio(&self, audio_data: &[u8], provider_name: &str) -> Result<String, ProviderError> {
         let cache_dir = self.asset_base_path.join("cache");
         std::fs::create_dir_all(&cache_dir)
-            .map_err(|e| ProviderError::GenerationFailed(format!("创建缓存目录失败: {}", e))?;
+            .map_err(|e| ProviderError::GenerationFailed(format!("创建缓存目录失败: {}", e)))?;
 
         let filename = format!("{}_test_{}.mp3", provider_name,
             SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs());
         let dest_path = cache_dir.join(&filename);
         std::fs::write(&dest_path, audio_data)
-            .map_err(|e| ProviderError::GenerationFailed(format!("写入测试音频失败: {}", e))?;
+            .map_err(|e| ProviderError::GenerationFailed(format!("写入测试音频失败: {}", e)))?;
 
         Ok(dest_path.to_string_lossy().to_string())
     }
