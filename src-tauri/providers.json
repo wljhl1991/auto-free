@@ -413,59 +413,6 @@
     "errorMessage": null
   },
   {
-    "id": "skymusic",
-    "name": "天工音乐 SkyMusic",
-    "vendor": "昆仑万维",
-    "description": "国内最早的 AI 音乐生成平台，每日免费额度",
-    "officialUrl": "https://music.tiangong.cn",
-    "registerUrl": "https://music.tiangong.cn/register",
-    "docsUrl": "https://open.tiangong.cn/docs",
-    "modality": ["music", "voice"],
-    "authType": "api_key",
-    "authConfig": {
-      "apiKey": {
-        "value": "",
-        "label": "API Key",
-        "placeholder": "tg-xxxxxxxxxxxxxxxx",
-        "helpUrl": "https://open.tiangong.cn/console/api-key"
-      },
-      "account": null,
-      "oauth": null,
-      "extraParams": null
-    },
-    "models": [
-      {
-        "id": "skymusic-v1",
-        "name": "天工音乐 V1",
-        "modality": "music",
-        "isDefault": true,
-        "endpoint": "https://api.tiangong.cn/v1/music/generations",
-        "maxTokens": null,
-        "supportedSizes": null,
-        "maxDuration": 180,
-        "costPerCall": 1.0,
-        "freeQuota": "每日免费生成额度",
-        "quality": "standard"
-      },
-      {
-        "id": "skymusic-tts",
-        "name": "天工 TTS",
-        "modality": "voice",
-        "isDefault": false,
-        "endpoint": "https://api.tiangong.cn/v1/tts/generations",
-        "maxTokens": null,
-        "supportedSizes": null,
-        "maxDuration": null,
-        "costPerCall": 0.1,
-        "freeQuota": "每日免费额度",
-        "quality": "standard"
-      }
-    ],
-    "status": "unconfigured",
-    "lastChecked": null,
-    "errorMessage": null
-  },
-  {
     "id": "miaoyin",
     "name": "妙音AI",
     "vendor": "妙音AI",

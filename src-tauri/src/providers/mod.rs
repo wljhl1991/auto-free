@@ -8,7 +8,6 @@ pub mod miaoyin;
 pub mod netease_music;
 pub mod qwen;
 pub mod siliconflow;
-pub mod skymusic;
 pub mod vidu;
 pub mod volcengine_tts;
 pub mod xfyun_spark;
@@ -111,9 +110,6 @@ impl ProviderFactory {
             }
             "kling" => {
                 Ok(Box::new(kling::KlingProvider::new(config, asset_base_path.to_path_buf())?))
-            }
-            "skymusic" => {
-                Ok(Box::new(skymusic::SkyMusicProvider::new(config, asset_base_path.to_path_buf())?))
             }
             "miaoyin" => {
                 Ok(Box::new(miaoyin::MiaoYinProvider::new(config, asset_base_path.to_path_buf())?))

@@ -369,7 +369,7 @@ impl ConfigManager {
             (crate::types::asset::AIModality::Text, "deepseek"),
             (crate::types::asset::AIModality::Image, "siliconflow"),
             (crate::types::asset::AIModality::Video, "kling"),
-            (crate::types::asset::AIModality::Music, "skymusic"),
+            (crate::types::asset::AIModality::Music, "miaoyin"),
             (crate::types::asset::AIModality::Voice, "edge-tts"),
         ];
         let mut init_providers = Vec::new();
