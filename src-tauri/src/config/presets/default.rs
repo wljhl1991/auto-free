@@ -9,20 +9,26 @@ pub fn preset() -> ConfigPreset {
     ConfigPreset {
         id: "default".to_string(),
         name: "默认推荐方案".to_string(),
-        description: "DeepSeek文本 + 硅基流动图片 + 可灵视频 + 天工音乐 + Edge TTS语音，覆盖全模态".to_string(),
+        description: "DeepSeek V4 Flash（便宜但速度和效果更好） + 硅基流动（免费文本+图片） + 可灵视频 + 天工音乐 + Edge TTS（免费语音），高性价比全模态配置".to_string(),
         vendor_count: 5,
         providers: vec![
             PresetProvider {
                 provider_id: "deepseek".to_string(),
                 modality: AIModality::Text,
-                model_id: "deepseek-v3.2".to_string(),
-                note: Some("注册送 100 万 tokens/月".to_string()),
+                model_id: "deepseek-v4-flash".to_string(),
+                note: Some("便宜但速度和效果更好".to_string()),
+            },
+            PresetProvider {
+                provider_id: "siliconflow".to_string(),
+                modality: AIModality::Text,
+                model_id: "deepseek-ai/DeepSeek-R1".to_string(),
+                note: Some("硅基流动托管的 DeepSeek-R1（免费）".to_string()),
             },
             PresetProvider {
                 provider_id: "siliconflow".to_string(),
                 modality: AIModality::Image,
                 model_id: "flux-1-schnell".to_string(),
-                note: Some("注册送 2000 万 tokens".to_string()),
+                note: Some("免费图片生成".to_string()),
             },
             PresetProvider {
                 provider_id: "kling".to_string(),

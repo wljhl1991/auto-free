@@ -25,7 +25,7 @@ export default function PresetSelector({ presets, activePresetId, onSelect }: Pr
         {presets.map((preset) => {
           const isActive = preset.id === activePresetId;
           const isZeroCost = preset.id === 'zero_cost';
-          const isTextOnly = preset.id === 'text_only';
+          const isDefault = preset.id === 'default';
 
           return (
             <div
@@ -78,7 +78,7 @@ export default function PresetSelector({ presets, activePresetId, onSelect }: Pr
                     推荐体验
                   </span>
                 )}
-                {isTextOnly && (
+                {isDefault && (
                   <span style={{
                     fontSize: '0.7rem',
                     padding: '2px 8px',
@@ -87,7 +87,7 @@ export default function PresetSelector({ presets, activePresetId, onSelect }: Pr
                     color: '#fff',
                     fontWeight: 500,
                   }}>
-                    推荐入门
+                    默认推荐
                   </span>
                 )}
               </div>

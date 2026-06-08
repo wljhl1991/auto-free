@@ -384,47 +384,52 @@ export default function Settings() {
             <p style={{ margin: '0 0 1rem 0', fontSize: '0.8rem', color: '#718096' }}>
               为每种模态指定优先使用的服务商。生成游戏时，系统会优先使用您指定的服务商。
             </p>
-            {['text', 'image', 'video', 'music', 'voice'].map((modality) => {
-              const modalityProviders = providers.filter((p) => p.modality.includes(modality as AIModality));
-              const currentPreferred = globalSettings?.preferredProviders?.[modality] || '';
-              return (
-                <div key={modality} style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.75rem',
-                  marginBottom: '0.5rem',
-                }}>
-                  <span style={{
-                    minWidth: '80px',
-                    fontSize: '0.85rem',
-                    color: '#4a5568',
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: '0.75rem',
+            }}>
+              {['text', 'image', 'video', 'music', 'voice'].map((modality) => {
+                const modalityProviders = providers.filter((p) => p.modality.includes(modality as AIModality));
+                const currentPreferred = globalSettings?.preferredProviders?.[modality] || '';
+                return (
+                  <div key={modality} style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
                   }}>
-                    {MODALITY_LABELS[modality]}
-                  </span>
-                  <select
-                    value={currentPreferred}
-                    onChange={(e) => handlePreferredProviderChange(modality, e.target.value)}
-                    style={{
-                      flex: 1,
-                      padding: '0.5rem 0.7rem',
-                      background: '#ffffff',
-                      border: '1px solid #d4cdc2',
-                      borderRadius: '10px',
-                      color: '#2d3748',
+                    <span style={{
+                      minWidth: '70px',
                       fontSize: '0.85rem',
-                      outline: 'none',
-                    }}
-                  >
-                    <option value="">自动选择</option>
-                    {modalityProviders.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name || p.id} {p.status === 'connected' ? '(已连接)' : p.status === 'auth_failed' ? '(认证失败)' : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              );
-            })}
+                      color: '#4a5568',
+                    }}>
+                      {MODALITY_LABELS[modality]}
+                    </span>
+                    <select
+                      value={currentPreferred}
+                      onChange={(e) => handlePreferredProviderChange(modality, e.target.value)}
+                      style={{
+                        flex: 1,
+                        padding: '0.4rem 0.6rem',
+                        background: '#ffffff',
+                        border: '1px solid #d4cdc2',
+                        borderRadius: '10px',
+                        color: '#2d3748',
+                        fontSize: '0.85rem',
+                        outline: 'none',
+                      }}
+                    >
+                      <option value="">自动选择</option>
+                      {modalityProviders.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name || p.id} {p.status === 'connected' ? '(已连接)' : p.status === 'auth_failed' ? '(认证失败)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
           <div style={{

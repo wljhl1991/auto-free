@@ -861,15 +861,26 @@ export default function ProviderConfigModal({
                   <label style={labelStyle}>模型能力</label>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem' }}>
                     {MODALITY_OPTIONS.map(opt => (
-                      <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem', color: '#4a5568', cursor: 'pointer' }}>
-                        <input type="radio" name="modality" checked={editedProvider.modality.includes(opt.value)}
-                          onChange={() => {
-                            setEditedProvider(prev => prev ? { ...prev, modality: [opt.value] } : prev);
-                          }} style={{ cursor: 'pointer' }} />
+                      <span key={opt.value} style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                        fontSize: '0.8rem', color: '#4a5568',
+                        padding: '0.35rem 0.7rem',
+                        backgroundColor: editedProvider.modality.includes(opt.value) ? 'rgba(224,122,47,0.08)' : '#f5f0e8',
+                        borderRadius: '6px',
+                        border: editedProvider.modality.includes(opt.value) ? '1px solid rgba(224,122,47,0.3)' : '1px solid #e8e2d8',
+                      }}>
+                        {editedProvider.modality.includes(opt.value) && (
+                          <span style={{ color: '#e07a2f', fontWeight: 600 }}>✓</span>
+                        )}
                         {opt.label}
-                      </label>
+                      </span>
                     ))}
                   </div>
+                  {isNew && (
+                    <span style={{ fontSize: '0.7rem', color: '#a0aec0', marginTop: '0.3rem', display: 'block' }}>
+                      选择服务商后可更改
+                    </span>
+                  )}
                 </div>
               </div>
 
