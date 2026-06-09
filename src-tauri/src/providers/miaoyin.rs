@@ -2,38 +2,87 @@ use async_trait::async_trait;
 use super::{truncate_str, save_raw_response, IAssetProvider, ProviderError};
 use crate::types::game_script::AssetRef;
 use crate::types::asset::{LocalAsset, AIModality, AssetType, AssetSource};
-use crate::types::ai_provider::{AIProviderConfig, ConnectivityCheck, ConnectivityStatus};
+use crate::types::ai_provider::{AIProviderConfig, ConnectivityCheck, ConnectivityStatus, MediaItem};
+use base64::Engine;
 use reqwest::Client;
 use serde::{Serialize, Deserialize};
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+/// 妙音 AI 查询返回的单条音乐数据（直接从 data 数组项解析）
+#[derive(Debug, Clone, Deserialize)]
+struct MiaoYinTaskInfo {
+    #[serde(default)]
+    id: Option<String>,
+    #[serde(alias = "taskId", default)]
+    task_id: Option<String>,
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(alias = "image_url", default)]
+    image_url: Option<String>,
+    #[serde(alias = "audio_url", default)]
+    audio_url: Option<String>,
+    #[serde(alias = "stream_url", default)]
+    stream_url: Option<String>,
+    #[serde(default)]
+    status: Option<String>,
+    #[serde(default)]
+    tags: Option<String>,
+    #[serde(default)]
+    model_name: Option<String>,
+    #[serde(alias = "errorMsg", default)]
+    error_msg: Option<String>,
+    #[serde(alias = "duration", default)]
+    duration: Option<serde_json::Value>,
+    #[serde(default)]
+    metadata: Option<serde_json::Value>,
+}
+
 const DEFAULT_BASE_URL: &str = "https://ai.growingth.com/api";
 const DEFAULT_MODEL: &str = "moka-v9";
 const MAX_POLL_DURATION_SECS: u64 = 300; // 5 minutes
 
+/// 妙音 AI 生成请求 - 参数需包装在 data 字段中
 #[derive(Debug, Serialize)]
-struct MusicGenerationRequest {
+struct MusicGenerationRequestInner {
     prompt: String,
     desc: Option<String>,
     make_instrumental: bool,
 }
 
+#[derive(Debug, Serialize)]
+struct MusicGenerationRequest {
+    data: MusicGenerationRequestInner,
+}
+
+/// 妙音 AI 生成响应 - data 字段可能是数组或对象
 #[derive(Debug, Deserialize)]
 struct MusicGenerationResponse {
     status: String,
     message: String,
     #[serde(default)]
-    data: Option<Vec<TaskData>>,
+    data: Option<serde_json::Value>,
 }
 
+/// 从响应 data 中提取任务信息（可能是数组第一项或直接是对象）
 #[derive(Debug, Deserialize)]
 struct TaskData {
     #[serde(alias = "taskId")]
     task_id: Option<String>,
     #[serde(alias = "clipId")]
     clip_id: Option<String>,
+}
+
+/// 妙音 AI 查询请求 - 参数需包装在 data 字段中
+#[derive(Debug, Serialize)]
+struct QueryRequestInner {
+    ids: String,
+}
+
+#[derive(Debug, Serialize)]
+struct QueryRequest {
+    data: QueryRequestInner,
 }
 
 #[derive(Debug, Deserialize)]
@@ -97,10 +146,13 @@ impl MiaoYinProvider {
         prompt: &str,
         make_instrumental: bool,
     ) -> Result<Vec<u8>, ProviderError> {
+        // 妙音 AI API 要求将参数包装在 data 字段中
         let request = MusicGenerationRequest {
-            prompt: prompt.to_string(),
-            desc: None,
-            make_instrumental,
+            data: MusicGenerationRequestInner {
+                prompt: prompt.to_string(),
+                desc: None,
+                make_instrumental,
+            },
         };
 
         let url = format!("{}/song/proxy?name=generate", self.base_url);
@@ -159,18 +211,8 @@ impl MiaoYinProvider {
             ));
         }
 
-        let task_data = gen_response.data
-            .and_then(|d| d.into_iter().next())
-            .ok_or_else(|| {
-                log::error!("[MiaoYin] 响应中未找到任务数据");
-                ProviderError::GenerationFailed("响应中未找到任务数据".to_string())
-            })?;
-
-        let task_id = task_data.task_id.or(task_data.clip_id)
-            .ok_or_else(|| {
-                log::error!("[MiaoYin] 响应中未找到 taskId 或 clipId");
-                ProviderError::GenerationFailed("响应中未找到 taskId 或 clipId".to_string())
-            })?;
+        // data 字段可能是数组、对象或 null，需要灵活处理
+        let task_id = Self::extract_task_id(gen_response.data)?;
 
         log::info!("[MiaoYin] 任务已提交: task_id={}", task_id);
 
@@ -179,6 +221,50 @@ impl MiaoYinProvider {
 
         // 下载音频
         self.download_audio(&audio_url).await
+    }
+
+    /// 从响应的 data 字段中提取 task_id - 支持数组或对象格式
+    fn extract_task_id(data: Option<serde_json::Value>) -> Result<String, ProviderError> {
+        let data_value = match data {
+            Some(d) => d,
+            None => {
+                log::error!("[MiaoYin] 响应中 data 字段为 null");
+                return Err(ProviderError::GenerationFailed("响应中未找到任务数据".to_string()));
+            }
+        };
+
+        // 先尝试按数组解析
+        if let Some(arr) = data_value.as_array() {
+            if let Some(first) = arr.first() {
+                return Self::extract_task_id_from_json(first);
+            }
+            log::error!("[MiaoYin] data 数组为空");
+            return Err(ProviderError::GenerationFailed("响应中 data 数组为空".to_string()));
+        }
+
+        // 再尝试按对象解析
+        if data_value.is_object() {
+            return Self::extract_task_id_from_json(&data_value);
+        }
+
+        log::error!("[MiaoYin] data 字段格式无法解析: {:?}", data_value);
+        Err(ProviderError::GenerationFailed("响应中 data 格式不正确".to_string()))
+    }
+
+    /// 从单个 JSON 对象中提取 task_id
+    fn extract_task_id_from_json(value: &serde_json::Value) -> Result<String, ProviderError> {
+        // 尝试解析为 TaskData
+        let task: TaskData = serde_json::from_value(value.clone())
+            .map_err(|e| {
+                log::error!("[MiaoYin] 解析任务数据失败: {}", e);
+                ProviderError::GenerationFailed("解析任务数据失败".to_string())
+            })?;
+
+        task.task_id.or(task.clip_id)
+            .ok_or_else(|| {
+                log::error!("[MiaoYin] 响应中未找到 taskId 或 clipId");
+                ProviderError::GenerationFailed("响应中未找到 taskId 或 clipId".to_string())
+            })
     }
 
     /// 异步轮询等待生成完成
@@ -204,13 +290,11 @@ impl MiaoYinProvider {
 
             log::info!("[MiaoYin] 轮询状态: task_id={}, elapsed={}s", task_id, elapsed);
 
-            #[derive(Debug, Serialize)]
-            struct QueryRequest {
-                ids: String,
-            }
-
+            // 妙音 AI API 要求将参数包装在 data 字段中
             let request = QueryRequest {
-                ids: task_id.to_string(),
+                data: QueryRequestInner {
+                    ids: task_id.to_string(),
+                },
             };
 
             let response = self.client
@@ -244,19 +328,20 @@ impl MiaoYinProvider {
                 return Err(self.handle_error_status(status.as_u16(), &body));
             }
 
-            // 解析轮询响应，查找音频URL
-            // 响应格式: { status: "Success", data: [{ audio_url: "...", status: "complete", ... }] }
+            // 解析轮询响应 - data 可能是数组或对象，需要灵活处理
             #[derive(Debug, Deserialize)]
             struct QueryResponse {
                 status: String,
                 message: Option<String>,
                 #[serde(default)]
-                data: Option<Vec<QueryTaskData>>,
+                data: Option<serde_json::Value>,
             }
 
             #[derive(Debug, Deserialize)]
             struct QueryTaskData {
-                id: String,
+                #[serde(alias = "id")]
+                #[serde(default)]
+                id: Option<String>,
                 #[serde(alias = "audio_url")]
                 audio_url: Option<String>,
                 #[serde(alias = "video_url")]
@@ -278,35 +363,57 @@ impl MiaoYinProvider {
                 })?;
 
             if query_response.status == "Success" {
-                if let Some(data) = query_response.data {
-                    for task in data {
-                        if task.id == task_id {
-                            if task.status.as_deref() == Some("complete") {
-                                if let Some(audio_url) = task.audio_url {
-                                    let cleaned_url = clean_url(&audio_url);
-                                    if !cleaned_url.is_empty() {
-                                        log::info!("[MiaoYin] 音乐生成完成: task_id={}, url={}", task_id, cleaned_url);
-                                        return Ok(cleaned_url);
-                                    }
-                                }
-                                // 如果没有 audio_url 但有 video_url，尝试使用 video_url
-                                if let Some(video_url) = task.video_url {
-                                    let cleaned_url = clean_url(&video_url);
-                                    if !cleaned_url.is_empty() {
-                                        log::info!("[MiaoYin] 音乐生成完成(使用video_url): task_id={}, url={}", task_id, cleaned_url);
-                                        return Ok(cleaned_url);
-                                    }
-                                }
-                                return Err(ProviderError::GenerationFailed("音频生成完成但未返回音频URL".to_string()));
-                            } else if task.status.as_deref() == Some("failed") {
-                                return Err(ProviderError::GenerationFailed(
-                                    task.error.unwrap_or_else(|| "音乐生成失败".to_string())
-                                ));
-                            }
-                            // pending 或其他状态，继续轮询
-                            log::info!("[MiaoYin] 任务进行中: task_id={}, status={:?}", task_id, task.status);
-                            break;
+                // data 可能是数组或对象，灵活处理
+                let tasks: Vec<QueryTaskData> = match query_response.data {
+                    Some(serde_json::Value::Array(arr)) => {
+                        // 数组格式：data: [ {...}, {...} ]
+                        arr.into_iter()
+                            .filter_map(|v| serde_json::from_value::<QueryTaskData>(v).ok())
+                            .collect()
+                    }
+                    Some(serde_json::Value::Object(_)) => {
+                        // 对象格式：data: { "id": "...", ... }
+                        if let Ok(task) = serde_json::from_value::<QueryTaskData>(query_response.data.unwrap()) {
+                            vec![task]
+                        } else {
+                            Vec::new()
                         }
+                    }
+                    _ => {
+                        log::warn!("[MiaoYin] 轮询响应中 data 格式不可识别");
+                        Vec::new()
+                    }
+                };
+
+                for task in tasks {
+                    // 任务ID匹配：id 字段可能缺失（整个 data 就是任务本身）
+                    let id_matches = task.id.as_deref() == Some(task_id) || task.id.is_none();
+                    if id_matches {
+                        if task.status.as_deref() == Some("complete") {
+                            if let Some(audio_url) = task.audio_url {
+                                let cleaned_url = clean_url(&audio_url);
+                                if !cleaned_url.is_empty() {
+                                    log::info!("[MiaoYin] 音乐生成完成: task_id={}, url={}", task_id, cleaned_url);
+                                    return Ok(cleaned_url);
+                                }
+                            }
+                            // 如果没有 audio_url 但有 video_url，尝试使用 video_url
+                            if let Some(video_url) = task.video_url {
+                                let cleaned_url = clean_url(&video_url);
+                                if !cleaned_url.is_empty() {
+                                    log::info!("[MiaoYin] 音乐生成完成(使用video_url): task_id={}, url={}", task_id, cleaned_url);
+                                    return Ok(cleaned_url);
+                                }
+                            }
+                            return Err(ProviderError::GenerationFailed("音频生成完成但未返回音频URL".to_string()));
+                        } else if task.status.as_deref() == Some("failed") {
+                            return Err(ProviderError::GenerationFailed(
+                                task.error.unwrap_or_else(|| "音乐生成失败".to_string())
+                            ));
+                        }
+                        // pending 或其他状态，继续轮询
+                        log::info!("[MiaoYin] 任务进行中: task_id={}, status={:?}", task_id, task.status);
+                        break;
                     }
                 }
             } else if let Some(msg) = query_response.message {
@@ -464,6 +571,207 @@ impl MiaoYinProvider {
 
         Ok(dest_path.to_string_lossy().to_string())
     }
+
+    /// 生成音乐并轮询结果，返回所有音乐任务的详情（封面 + 音频）
+    pub async fn generate_music_with_details(
+        &self,
+        prompt: &str,
+        make_instrumental: bool,
+    ) -> Result<(String, Vec<MediaItem>, u64), ProviderError> {
+        let poll_start = SystemTime::now();
+
+        // 1. 发送生成请求（请求体包装在 data 字段）
+        let request = MusicGenerationRequest {
+            data: MusicGenerationRequestInner {
+                prompt: prompt.to_string(),
+                desc: None,
+                make_instrumental,
+            },
+        };
+        let url = format!("{}/song/proxy?name=generate", self.base_url);
+
+        let response = self.client
+            .post(&url)
+            .header("api-token", &self.api_token)
+            .header("Content-Type", "application/json")
+            .json(&request)
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(format!("发送生成请求失败: {}", e)))?;
+
+        let body = response.text().await
+            .map_err(|e| ProviderError::NetworkError(format!("读取生成响应失败: {}", e)))?;
+        save_raw_response("miaoyin", "music_gen", &body);
+
+        let gen_resp: MusicGenerationResponse = serde_json::from_str(&body)
+            .map_err(|e| ProviderError::GenerationFailed(format!("解析生成响应失败: {}", e)))?;
+
+        if gen_resp.status != "Success" {
+            return Err(ProviderError::GenerationFailed(gen_resp.message));
+        }
+
+        // 2. 提取 task_id（data 是数组时取第一项的 taskId）
+        let task_id = Self::extract_task_id(gen_resp.data)?;
+        log::info!("[MiaoYin] 任务已提交: task_id={}", task_id);
+
+        // 3. 轮询：等待所有音乐项完成
+        let poll_url = format!("{}/song/proxy?name=getMusic", self.base_url);
+        let mut final_items: Vec<MediaItem> = Vec::new();
+        let mut last_seen_ids: Vec<String> = Vec::new();
+
+        loop {
+            let elapsed = SystemTime::now()
+                .duration_since(poll_start)
+                .unwrap_or_default()
+                .as_secs();
+
+            if elapsed >= MAX_POLL_DURATION_SECS {
+                log::warn!("[MiaoYin] 轮询超时: task_id={}, elapsed={}s, 使用当前已获取的结果", task_id, elapsed);
+                break;
+            }
+
+            tokio::time::sleep(Duration::from_secs(10)).await;
+
+            let poll_request = QueryRequest {
+                data: QueryRequestInner {
+                    ids: task_id.to_string(),
+                },
+            };
+
+            let poll_response = self.client
+                .post(&poll_url)
+                .header("api-token", &self.api_token)
+                .header("Content-Type", "application/json")
+                .json(&poll_request)
+                .send()
+                .await;
+
+            let poll_body = match poll_response {
+                Ok(r) => r.text().await.unwrap_or_default(),
+                Err(e) => {
+                    log::warn!("[MiaoYin] 轮询请求失败: {}, 继续等待", e);
+                    continue;
+                }
+            };
+
+            save_raw_response("miaoyin", "music_gen_query", &poll_body);
+
+            // 解析响应：data 可能是数组或对象
+            let parsed: Result<MusicGenerationResponse, _> = serde_json::from_str(&poll_body);
+            let data_value = match parsed {
+                Ok(r) => r.data.unwrap_or(serde_json::Value::Array(vec![])),
+                Err(_) => continue,
+            };
+
+            // 将 data 统一转换为 Vec<MiaoYinTaskInfo>
+            let task_items: Vec<MiaoYinTaskInfo> = match data_value {
+                serde_json::Value::Array(arr) => {
+                    arr.into_iter()
+                        .filter_map(|v| serde_json::from_value::<MiaoYinTaskInfo>(v).ok())
+                        .collect()
+                }
+                serde_json::Value::Object(obj) => {
+                    if let Ok(item) = serde_json::from_value::<MiaoYinTaskInfo>(serde_json::Value::Object(obj)) {
+                        vec![item]
+                    } else {
+                        Vec::new()
+                    }
+                }
+                _ => Vec::new(),
+            };
+
+            // 更新任务状态跟踪
+            let current_ids: Vec<String> = task_items.iter().filter_map(|t| t.id.clone()).collect();
+            if !current_ids.is_empty() {
+                last_seen_ids = current_ids;
+            }
+
+            // 检查所有任务的状态
+            let all_known = task_items.iter().all(|t| match t.status.as_deref() {
+                Some("complete") | Some("failed") | Some("streaming") => true,
+                _ => false,
+            });
+
+            // 如果已经确定最终结果（所有项都有结束状态，或空数组但之前有数据），则退出
+            if !task_items.is_empty() && all_known {
+                final_items = Self::task_items_to_media_items(&task_items, &task_id);
+                break;
+            }
+
+            // 持续更新中间状态（最后一次轮询结果也会被使用）
+            final_items = Self::task_items_to_media_items(&task_items, &task_id);
+        }
+
+        let elapsed_secs = SystemTime::now()
+            .duration_since(poll_start)
+            .unwrap_or_default()
+            .as_secs();
+
+        // 4. 对每个 complete 的音乐项，下载音频到本地并生成 data URL
+        let mut enriched_items: Vec<MediaItem> = Vec::new();
+        for item in final_items {
+            if item.status.as_deref() != Some("complete") {
+                // 未完成的项目直接原样保留
+                enriched_items.push(item);
+                continue;
+            }
+
+            // 尝试下载音频（如果有 audio_url）
+            let mut enriched = item.clone();
+            if let Some(audio_url) = &item.audio_url {
+                match self.download_audio(audio_url).await {
+                    Ok(audio_data) => {
+                        // 保存到 cache 目录并生成 data URL
+                        let local_path = self.save_test_audio(&audio_data, &format!("miaoyin_{}", item.id)).ok();
+                        if let Some(path) = &local_path {
+                            let data_url = Self::read_file_as_data_url(path);
+                            enriched.local_path = Some(path.clone());
+                            enriched.data_url = data_url;
+                            enriched.media_url = Some(audio_url.clone());
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!("[MiaoYin] 下载音频失败 id={}: {}", item.id, e);
+                        enriched.error = Some(format!("下载失败: {}", e));
+                    }
+                }
+            }
+            enriched_items.push(enriched);
+        }
+
+        Ok((task_id, enriched_items, elapsed_secs))
+    }
+
+    /// 将妙音 AI 的任务数据转换为 MediaItem
+    fn task_items_to_media_items(items: &[MiaoYinTaskInfo], task_id: &str) -> Vec<MediaItem> {
+        items.iter().map(|t| {
+            let item_id = t.id.clone().unwrap_or_else(|| format!("{}_{}", task_id, "unknown"));
+            MediaItem {
+                id: item_id.clone(),
+                media_type: "audio".to_string(),
+                title: t.title.clone().filter(|s| !s.is_empty()),
+                media_url: t.audio_url.clone(),
+                image_url: t.image_url.clone(),
+                audio_url: t.audio_url.clone(),
+                local_path: None,
+                data_url: None,
+                status: t.status.clone(),
+                tags: t.tags.clone().filter(|s| !s.is_empty()),
+                progress: None,
+                error: t.error_msg.clone(),
+            }
+        }).collect()
+    }
+
+    /// 读取本地文件为 base64 data URL（用于前端直接播放音频）
+    fn read_file_as_data_url(path: &str) -> Option<String> {
+        use std::io::Read;
+        let mut file = std::fs::File::open(path).ok()?;
+        let mut buffer = Vec::new();
+        file.read_to_end(&mut buffer).ok()?;
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&buffer);
+        Some(format!("data:audio/mpeg;base64,{}", b64))
+    }
 }
 
 #[async_trait]
@@ -513,38 +821,66 @@ impl IAssetProvider for MiaoYinProvider {
     async fn check_connectivity_with_prompt(&self, prompt: &str) -> Result<ConnectivityCheck, ProviderError> {
         let start = SystemTime::now();
         let request_url = format!("{}/song/proxy?name=generate", self.base_url);
+        // 妙音 AI API 要求将参数包装在 data 字段中
         let request = MusicGenerationRequest {
-            prompt: prompt.to_string(),
-            desc: Some("connectivity test".to_string()),
-            make_instrumental: true,
+            data: MusicGenerationRequestInner {
+                prompt: prompt.to_string(),
+                desc: Some("connectivity test".to_string()),
+                make_instrumental: true,
+            },
         };
         let request_body = serde_json::to_string(&request).unwrap_or_default();
 
-        // 尝试实际生成音乐
-        let result = self.generate_music(prompt, true).await;
+        // 调用新的生成+轮询方法，获取详细结果
+        let result = self.generate_music_with_details(prompt, true).await;
         let latency = SystemTime::now()
             .duration_since(start)
             .unwrap_or_default()
             .as_millis() as u64;
 
         match result {
-            Ok(audio_data) => {
-                // 保存测试音频到 gen/cache/ 目录
-                let media_url = self.save_test_audio(&audio_data, "miaoyin").ok();
+            Ok((task_id, media_items, elapsed_secs)) => {
+                // 统计结果
+                let complete_count = media_items.iter().filter(|m| m.status.as_deref() == Some("complete")).count();
+                let failed_count = media_items.iter().filter(|m| m.status.as_deref() == Some("failed")).count();
+                let total_kb: u64 = media_items.iter()
+                    .filter_map(|m| m.data_url.as_ref().map(|d| d.len() as u64 / 1024))
+                    .sum();
+
+                let status = if complete_count > 0 {
+                    ConnectivityStatus::Ok
+                } else if failed_count > 0 {
+                    ConnectivityStatus::UnknownError
+                } else {
+                    ConnectivityStatus::NetworkError
+                };
+
+                let msg = if complete_count > 0 {
+                    format!("成功生成 {} 首音乐，总音频大小: {}KB，用时 {}s", complete_count, total_kb, elapsed_secs)
+                } else if failed_count > 0 {
+                    format!("生成失败: {} 首音乐失败", failed_count)
+                } else {
+                    format!("轮询超时（{}s），未能获取结果", elapsed_secs)
+                };
+
                 Ok(ConnectivityCheck {
                     provider_id: self.config.id.clone(),
                     timestamp: SystemTime::now()
                         .duration_since(UNIX_EPOCH)
                         .unwrap_or_default()
                         .as_secs(),
-                    status: ConnectivityStatus::Ok,
+                    status,
                     latency: Some(latency),
-                    error_message: None,
+                    error_message: if complete_count > 0 { None } else { Some(msg.clone()) },
                     quota_info: None,
-                    response_preview: Some(format!("音乐生成成功，音频大小: {}KB", audio_data.len() / 1024)),
+                    response_preview: Some(msg),
                     test_prompt: Some(prompt.to_string()),
-                    media_url,
+                    media_url: media_items.first().and_then(|m| m.local_path.clone()),
                     media_type: Some("audio".to_string()),
+                    polling_task_id: Some(task_id),
+                    polling_status: Some(if complete_count > 0 { "done".to_string() } else { "failed".to_string() }),
+                    polling_elapsed_secs: Some(elapsed_secs),
+                    media_items: Some(media_items),
                     request_endpoint: Some(request_url),
                     request_model: Some(self.default_model.clone()),
                     request_headers: Some(r#"{"api-token": "***"}"#.to_string()),
@@ -574,6 +910,10 @@ impl IAssetProvider for MiaoYinProvider {
                     test_prompt: Some(prompt.to_string()),
                     media_url: None,
                     media_type: None,
+                    polling_task_id: None,
+                    polling_status: Some("failed".to_string()),
+                    polling_elapsed_secs: None,
+                    media_items: None,
                     request_endpoint: Some(request_url),
                     request_model: Some(self.default_model.clone()),
                     request_headers: Some(r#"{"api-token": "***"}"#.to_string()),

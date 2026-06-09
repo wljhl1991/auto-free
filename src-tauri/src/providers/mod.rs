@@ -50,6 +50,20 @@ pub enum ProviderError {
     Timeout(String),
 }
 
+impl std::fmt::Display for ProviderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ProviderError::NetworkError(s) => write!(f, "网络错误: {}", s),
+            ProviderError::AuthFailed(s) => write!(f, "认证失败: {}", s),
+            ProviderError::QuotaExceeded(s) => write!(f, "配额超限: {}", s),
+            ProviderError::GenerationFailed(s) => write!(f, "生成失败: {}", s),
+            ProviderError::InvalidConfig(s) => write!(f, "配置无效: {}", s),
+            ProviderError::NotFound(s) => write!(f, "未找到: {}", s),
+            ProviderError::Timeout(s) => write!(f, "请求超时: {}", s),
+        }
+    }
+}
+
 /// 安全的 UTF-8 字符串截断（不会在多字节字符中间切断）
 /// max_bytes 是字节长度上限，函数会找到不超过此上限的最后一个字符边界
 pub fn truncate_str(s: &str, max_bytes: usize) -> &str {

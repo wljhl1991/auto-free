@@ -208,6 +208,36 @@ pub struct QuotaInfo {
     pub reset_at: Option<u64>,
 }
 
+/// 单个媒体项（音乐/图片/视频等）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MediaItem {
+    /// 媒体 ID（如音乐ID或封面图片URL / 本地文件路径
+    pub id: String,
+    /// 媒体类型: image, audio, video
+    pub media_type: String,
+    /// 媒体标题
+    pub title: Option<String>,
+    /// 本地文件路径或远程 URL（可与 image_url/audio_url 的值）
+    pub media_url: Option<String>,
+    /// 封面图片URL（仅音乐项有封面）
+    pub image_url: Option<String>,
+    /// 音频URL（远程地址）
+    pub audio_url: Option<String>,
+    /// 本地缓存文件路径（本地音频/图片）
+    pub local_path: Option<String>,
+    /// 本地文件的 base64 data URL（前端可直接播放）
+    pub data_url: Option<String>,
+    /// 状态: queued, submitted, streaming, complete, failed
+    pub status: Option<String>,
+    /// 标签/风格（如 "epic orchestral"）
+    pub tags: Option<String>,
+    /// 生成进度 0-100
+    pub progress: Option<u32>,
+    /// 错误信息
+    pub error: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectivityCheck {
@@ -221,6 +251,18 @@ pub struct ConnectivityCheck {
     pub test_prompt: Option<String>,
     pub media_url: Option<String>,
     pub media_type: Option<String>,
+    /// 轮询中的任务 ID（妙音 AI 等异步生成场景）
+    #[serde(default)]
+    pub polling_task_id: Option<String>,
+    /// 轮询状态: polling | done | failed
+    #[serde(default)]
+    pub polling_status: Option<String>,
+    /// 已完成的轮询秒数
+    #[serde(default)]
+    pub polling_elapsed_secs: Option<u64>,
+    /// 多媒体项列表（妙音 AI 返回的多首音乐 + 封面）
+    #[serde(default)]
+    pub media_items: Option<Vec<MediaItem>>,
     /// 请求详情
     pub request_endpoint: Option<String>,
     pub request_model: Option<String>,

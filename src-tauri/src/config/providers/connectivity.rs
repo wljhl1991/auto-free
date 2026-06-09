@@ -9,6 +9,8 @@ pub struct ConnectivityChecker;
 impl ConnectivityChecker {
     /// 检测单个服务商连通性：真正调用 Provider 的 check_connectivity
     pub async fn check_provider(provider: &AIProviderConfig, test_prompt: Option<&str>) -> ConnectivityCheck {
+        use crate::types::asset::AIModality;
+
         let start = SystemTime::now();
 
         // Edge TTS 无需 API Key，跳过凭证检查，直接调用 check_connectivity
@@ -42,6 +44,10 @@ impl ConnectivityChecker {
                 test_prompt: test_prompt.map(|s| s.to_string()),
                 media_url: None,
                 media_type: None,
+                polling_task_id: None,
+                polling_status: None,
+                polling_elapsed_secs: None,
+                media_items: None,
                 request_endpoint: None,
                 request_model: None,
                 request_headers: None,
@@ -49,6 +55,12 @@ impl ConnectivityChecker {
                 response_status: None,
             };
         }
+
+        // 根据模态选择超时时间：music/video/image 需要生成时间，给更长超时
+        let is_generation_modality = provider.modality.iter().any(|m| {
+            matches!(m, AIModality::Music | AIModality::Image | AIModality::Video)
+        });
+        let timeout_secs = if is_generation_modality { 360u64 } else { 30u64 };
 
         // 尝试创建 Provider 并检测连通性
         let base_path = std::env::current_dir()
@@ -58,7 +70,7 @@ impl ConnectivityChecker {
         match ProviderFactory::create(provider, &base_path) {
             Ok(provider_instance) => {
                 let prompt = test_prompt.unwrap_or("hi");
-                match tokio::time::timeout(Duration::from_secs(30), provider_instance.check_connectivity_with_prompt(prompt)).await {
+                match tokio::time::timeout(Duration::from_secs(timeout_secs), provider_instance.check_connectivity_with_prompt(prompt)).await {
                     Ok(Ok(check)) => check,
                     Ok(Err(e)) => {
                         let latency = SystemTime::now()
@@ -79,6 +91,10 @@ impl ConnectivityChecker {
                             test_prompt: Some(prompt.to_string()),
                             media_url: None,
                             media_type: None,
+                            polling_task_id: None,
+                            polling_status: Some("failed".to_string()),
+                            polling_elapsed_secs: None,
+                            media_items: None,
                             request_endpoint: None,
                             request_model: None,
                             request_headers: None,
@@ -94,13 +110,17 @@ impl ConnectivityChecker {
                                 .unwrap_or_default()
                                 .as_secs(),
                             status: ConnectivityStatus::NetworkError,
-                            latency: Some(30000),
-                            error_message: Some("连接超时（30秒）".to_string()),
+                            latency: Some(timeout_secs * 1000),
+                            error_message: Some(format!("连接超时（{}秒）", timeout_secs)),
                             quota_info: None,
                             response_preview: None,
                             test_prompt: Some(prompt.to_string()),
                             media_url: None,
                             media_type: None,
+                            polling_task_id: None,
+                            polling_status: Some("failed".to_string()),
+                            polling_elapsed_secs: Some(timeout_secs),
+                            media_items: None,
                             request_endpoint: None,
                             request_model: None,
                             request_headers: None,
@@ -125,6 +145,10 @@ impl ConnectivityChecker {
                     test_prompt: test_prompt.map(|s| s.to_string()),
                     media_url: None,
                     media_type: None,
+                    polling_task_id: None,
+                    polling_status: None,
+                    polling_elapsed_secs: None,
+                    media_items: None,
                     request_endpoint: None,
                     request_model: None,
                     request_headers: None,
@@ -163,6 +187,10 @@ impl ConnectivityChecker {
                     test_prompt: None,
                     media_url: None,
                     media_type: None,
+                    polling_task_id: None,
+                    polling_status: None,
+                    polling_elapsed_secs: None,
+                    media_items: None,
                     request_endpoint: None,
                     request_model: None,
                     request_headers: None,

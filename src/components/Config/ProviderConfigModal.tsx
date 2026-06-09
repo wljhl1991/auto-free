@@ -20,6 +20,21 @@ const MODALITY_OPTIONS: { value: AIModality; label: string }[] = [
   { value: 'voice', label: '语音' },
 ];
 
+interface MediaItemData {
+  id: string;
+  mediaType?: string;
+  title?: string;
+  mediaUrl?: string;
+  imageUrl?: string;
+  audioUrl?: string;
+  localPath?: string;
+  dataUrl?: string;
+  status?: string;
+  tags?: string;
+  progress?: number;
+  error?: string;
+}
+
 interface CheckResultData {
   status: string;
   message?: string;
@@ -30,6 +45,13 @@ interface CheckResultData {
   mediaDataUrl?: string;  // base64 data URL（前端直接使用）
   mediaType?: string;
   mediaError?: string;  // 媒体文件读取错误
+  // 轮询状态（妙音 AI 等异步生成）
+  pollingTaskId?: string;
+  pollingStatus?: string;
+  pollingElapsedSecs?: number;
+  // 多媒体结果（多首音乐 + 封面）
+  mediaItems?: MediaItemData[];
+  // 请求详情
   requestEndpoint?: string;
   requestModel?: string;
   requestHeaders?: string;
@@ -315,10 +337,10 @@ export default function ProviderConfigModal({
 
       const result = await onCheck(editedProvider.id, testPrompt || undefined, modelIdToTest, editedProvider);
 
-      // 如果有媒体文件，转换为 base64 data URL
+      // 如果有媒体文件，转换为 base64 data URL（兜底：如果后端已返回 dataUrl 则直接使用）
       let mediaDataUrl: string | undefined;
       let mediaError: string | undefined;
-      if (result?.mediaUrl) {
+      if (result?.mediaUrl && !result?.mediaItems) {
         try {
           mediaDataUrl = await invoke<string>('read_file_as_data_url', { filePath: result.mediaUrl });
           console.log('[ProviderConfigModal] 媒体文件加载成功, 大小:', mediaDataUrl.length, '字符');
@@ -327,6 +349,9 @@ export default function ProviderConfigModal({
           mediaError = typeof e === 'string' ? e : (e?.message || '读取失败');
         }
       }
+
+      // 如果后端返回了 mediaItems，则直接使用（已包含 dataUrl 的音频可直接播放）
+      const mediaItems: MediaItemData[] | undefined = result?.mediaItems;
 
       setCheckResult({
         status: result?.status || 'ok',
@@ -338,6 +363,10 @@ export default function ProviderConfigModal({
         mediaDataUrl,
         mediaType: result?.mediaType,
         mediaError,
+        pollingTaskId: result?.pollingTaskId,
+        pollingStatus: result?.pollingStatus,
+        pollingElapsedSecs: result?.pollingElapsedSecs,
+        mediaItems,
         requestEndpoint: result?.requestEndpoint,
         requestModel: result?.requestModel,
         requestHeaders: result?.requestHeaders,
@@ -432,12 +461,23 @@ export default function ProviderConfigModal({
           height: '100%', color: '#718096', fontSize: '0.9rem', textAlign: 'center', padding: '2rem',
         }}>
           <div style={{
-            width: '32px', height: '32px', border: '3px solid #e8e2d8',
+            width: '48px', height: '48px', border: '4px solid #e8e2d8',
             borderTopColor: '#e07a2f', borderRadius: '50%',
-            animation: 'spin 0.8s linear infinite', marginBottom: '1rem',
+            animation: 'spin 1s linear infinite', marginBottom: '1.2rem',
           }} />
-          <div style={{ fontWeight: 500 }}>正在测试连接...</div>
-          <div style={{ fontSize: '0.8rem', marginTop: '0.3rem', color: '#a0aec0' }}>请稍候</div>
+          <div style={{ fontWeight: 500, fontSize: '1rem', color: '#4a5568' }}>正在测试连接...</div>
+          <div style={{ fontSize: '0.8rem', marginTop: '0.5rem', color: '#a0aec0' }}>
+            {editedProvider?.modality?.includes('music')
+              ? 'AI 正在生成音乐，可能需要 1-3 分钟，请耐心等待'
+              : '正在发送请求并等待响应'}
+          </div>
+          <div style={{
+            fontSize: '0.75rem', marginTop: '1rem', padding: '0.4rem 0.8rem',
+            backgroundColor: '#f5f0e8', borderRadius: '6px', color: '#718096',
+            fontFamily: 'monospace', maxWidth: '80%', wordBreak: 'break-all',
+          }}>
+            服务商: {editedProvider?.name || editedProvider?.id || ''}
+          </div>
         </div>
       );
     }
@@ -462,6 +502,7 @@ export default function ProviderConfigModal({
     }
 
     const isSuccess = checkResult.status === 'ok';
+    const hasMultipleMedia = checkResult.mediaItems && checkResult.mediaItems.length > 0;
 
     return (
       <div style={{ padding: '1rem', overflowY: 'auto', height: '100%' }}>
@@ -477,12 +518,28 @@ export default function ProviderConfigModal({
           {checkResult.latency != null && (
             <div style={{ color: '#718096', fontSize: '0.85rem', marginTop: '0.2rem' }}>
               延迟: {checkResult.latency}ms
-              {checkResult.latency < 500 ? ' (很快)' : checkResult.latency < 2000 ? ' (正常)' : ' (较慢)'}
+              {checkResult.latency < 500 ? ' (很快)' : checkResult.latency < 60000 ? ' (正常)' : ' (较慢)'}
             </div>
           )}
           {!isSuccess && checkResult.message && (
             <div style={{ color: '#e53e3e', fontSize: '0.85rem', marginTop: '0.25rem', wordBreak: 'break-word' }}>
               {checkResult.message}
+            </div>
+          )}
+          {/* 轮询任务信息 */}
+          {checkResult.pollingTaskId && (
+            <div style={{
+              marginTop: '0.5rem', padding: '0.4rem 0.6rem',
+              backgroundColor: 'rgba(224,122,47,0.06)', borderRadius: '6px',
+              fontSize: '0.78rem', color: '#718096', fontFamily: 'monospace',
+            }}>
+              <div>任务ID: {checkResult.pollingTaskId}</div>
+              {checkResult.pollingElapsedSecs != null && (
+                <div>生成用时: {checkResult.pollingElapsedSecs}s</div>
+              )}
+              {hasMultipleMedia && (
+                <div>生成结果: {checkResult.mediaItems!.length} 项</div>
+              )}
             </div>
           )}
         </div>
@@ -595,8 +652,119 @@ export default function ProviderConfigModal({
             </div>
           )}
 
-          {/* 图片 */}
-          {checkResult.mediaDataUrl && checkResult.mediaType === 'image' && (
+          {/* 多媒体卡片（妙音 AI 多首音乐 + 封面） */}
+          {hasMultipleMedia && (
+            <div style={{ marginBottom: '1rem' }}>
+              <div style={{ fontSize: '0.75rem', color: '#718096', marginBottom: '0.5rem', fontWeight: 600 }}>
+                🎵 生成结果 ({checkResult.mediaItems!.length})
+              </div>
+              <div style={{
+                display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+                gap: '0.75rem',
+              }}>
+                {checkResult.mediaItems!.map((item, idx) => {
+                  const statusLabel = item.status || '';
+                  const isComplete = statusLabel === 'complete';
+                  const isFailed = statusLabel === 'failed';
+                  const cardBorderColor = isComplete ? 'rgba(56,161,105,0.3)'
+                    : isFailed ? 'rgba(229,62,62,0.3)'
+                    : '#e8e2d8';
+                  const audioSrc = item.dataUrl || item.audioUrl || item.mediaUrl;
+                  return (
+                    <div key={item.id || idx} style={{
+                      border: `1px solid ${cardBorderColor}`,
+                      borderRadius: '10px',
+                      overflow: 'hidden',
+                      backgroundColor: '#fff',
+                      display: 'flex', flexDirection: 'column',
+                    }}>
+                      {/* 封面图 */}
+                      <div style={{
+                        aspectRatio: '1/1', backgroundColor: '#f5f0e8',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        overflow: 'hidden',
+                      }}>
+                        {item.imageUrl ? (
+                          <img
+                            src={item.imageUrl}
+                            alt={item.title || `Track ${idx + 1}`}
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          />
+                        ) : (
+                          <span style={{ fontSize: '2rem', opacity: 0.4 }}>🎵</span>
+                        )}
+                      </div>
+                      {/* 信息区 */}
+                      <div style={{ padding: '0.6rem' }}>
+                        <div style={{
+                          fontSize: '0.85rem', fontWeight: 600, color: '#2d3748',
+                          marginBottom: '0.25rem',
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }}>
+                          {item.title || `Track ${idx + 1}`}
+                        </div>
+                        {item.tags && (
+                          <div style={{
+                            fontSize: '0.7rem', color: '#718096', marginBottom: '0.4rem',
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          }}>
+                            {item.tags}
+                          </div>
+                        )}
+                        {/* 状态标签 */}
+                        {statusLabel && (
+                          <div style={{
+                            display: 'inline-block', padding: '0.15rem 0.4rem',
+                            fontSize: '0.7rem', borderRadius: '4px',
+                            backgroundColor: isComplete ? 'rgba(56,161,105,0.1)'
+                              : isFailed ? 'rgba(229,62,62,0.1)'
+                              : 'rgba(224,122,47,0.1)',
+                            color: isComplete ? '#38a169'
+                              : isFailed ? '#e53e3e'
+                              : '#e07a2f',
+                            marginBottom: '0.4rem',
+                          }}>
+                            {statusLabel}
+                          </div>
+                        )}
+                        {/* 音频播放器 */}
+                        {audioSrc && (
+                          <audio
+                            controls
+                            src={audioSrc}
+                            style={{ width: '100%', height: '32px', marginTop: '0.3rem' }}
+                            preload="metadata"
+                          >
+                            <p>浏览器不支持音频</p>
+                          </audio>
+                        )}
+                        {/* 错误信息 */}
+                        {item.error && (
+                          <div style={{
+                            marginTop: '0.3rem', fontSize: '0.7rem', color: '#e53e3e',
+                            wordBreak: 'break-word',
+                          }}>
+                            {item.error}
+                          </div>
+                        )}
+                        {/* 无音频提示 */}
+                        {!audioSrc && !item.error && (
+                          <div style={{
+                            marginTop: '0.3rem', fontSize: '0.7rem', color: '#a0aec0',
+                          }}>
+                            暂无音频
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* 图片（单张图片 fallback，多媒体时不显示） */}
+          {!hasMultipleMedia && checkResult.mediaDataUrl && checkResult.mediaType === 'image' && (
             <div style={{ marginBottom: '0.5rem' }}>
               <div style={{ fontSize: '0.75rem', color: '#718096', marginBottom: '0.25rem' }}>测试图片</div>
               <img
@@ -607,8 +775,8 @@ export default function ProviderConfigModal({
             </div>
           )}
 
-          {/* 音频 */}
-          {checkResult.mediaType === 'audio' && (
+          {/* 音频（单个音频 fallback，多媒体时不显示） */}
+          {!hasMultipleMedia && checkResult.mediaType === 'audio' && (
             <div style={{ marginBottom: '0.5rem' }}>
               <div style={{ fontSize: '0.75rem', color: '#718096', marginBottom: '0.25rem' }}>测试音频</div>
               {checkResult.mediaDataUrl ? (
@@ -647,8 +815,8 @@ export default function ProviderConfigModal({
             </div>
           )}
 
-          {/* 视频 */}
-          {checkResult.mediaDataUrl && checkResult.mediaType === 'video' && (
+          {/* 视频（单个视频 fallback） */}
+          {!hasMultipleMedia && checkResult.mediaDataUrl && checkResult.mediaType === 'video' && (
             <div style={{ marginBottom: '0.5rem' }}>
               <div style={{ fontSize: '0.75rem', color: '#718096', marginBottom: '0.25rem' }}>测试视频</div>
               <video controls src={checkResult.mediaDataUrl} style={{ maxWidth: '100%', maxHeight: '250px', borderRadius: '8px' }} />
