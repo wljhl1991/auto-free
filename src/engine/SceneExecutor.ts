@@ -239,6 +239,7 @@ export class SceneExecutor {
 
   // 推进到下一个节点（旁白/对话/CG完成后调用）
   async advance() {
+    this.audioEngine.stopVoice();
     await this.advanceToNextNode();
   }
 

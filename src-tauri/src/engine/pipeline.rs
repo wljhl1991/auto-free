@@ -69,6 +69,12 @@ pub struct ChapterStatus {
     pub total_assets: usize,
     pub completed_assets: usize,
     pub status: String,
+    /// asset_ref_id -> status ("pending" / "generating" / "ready" / "failed")
+    pub asset_status: std::collections::HashMap<String, String>,
+    /// asset_ref_id -> source ("AiGenerated" / "Builtin")
+    pub asset_sources: std::collections::HashMap<String, String>,
+    /// asset_ref_id -> asset_type label
+    pub asset_types: std::collections::HashMap<String, String>,
 }
 
 pub struct GenerationPipeline {
@@ -533,16 +539,28 @@ impl GenerationPipeline {
             .into_iter()
             .partition(|(cid, _)| first_chapter_id.as_ref() == Some(cid));
 
-        // 9. 初始化生成状态
+        // 9. 初始化生成状态（为每个 chapter 预填充 asset 信息）
         let total = first_chapter_refs.len() + remaining_refs.len();
         let mut chapter_map: HashMap<String, ChapterStatus> = HashMap::new();
         for chapter in &game_script.chapters {
             let is_first = first_chapter_id.as_ref() == Some(&chapter.id);
-            let chapter_asset_count = if is_first {
-                first_chapter_refs.iter().filter(|(cid, _)| cid == &chapter.id).count()
+            let chapter_refs: Vec<_> = if is_first {
+                first_chapter_refs.iter().filter(|(cid, _)| cid == &chapter.id).collect()
             } else {
-                remaining_refs.iter().filter(|(cid, _)| cid == &chapter.id).count()
+                remaining_refs.iter().filter(|(cid, _)| cid == &chapter.id).collect()
             };
+            let chapter_asset_count = chapter_refs.len();
+
+            let mut asset_status: HashMap<String, String> = HashMap::new();
+            let mut asset_sources: HashMap<String, String> = HashMap::new();
+            let mut asset_types: HashMap<String, String> = HashMap::new();
+            for (_, ar) in &chapter_refs {
+                let type_label = format!("{:?}", ar.asset_type);
+                asset_status.insert(ar.id.clone(), "pending".to_string());
+                asset_sources.insert(ar.id.clone(), format!("{:?}", ar.source));
+                asset_types.insert(ar.id.clone(), type_label);
+            }
+
             chapter_map.insert(
                 chapter.id.clone(),
                 ChapterStatus {
@@ -551,6 +569,9 @@ impl GenerationPipeline {
                     total_assets: chapter_asset_count,
                     completed_assets: 0,
                     status: if is_first { "generating".to_string() } else { "pending".to_string() },
+                    asset_status,
+                    asset_sources,
+                    asset_types,
                 },
             );
         }
@@ -588,6 +609,15 @@ impl GenerationPipeline {
 
         for (i, result) in first_results.into_iter().enumerate() {
             let (chapter_id, asset_ref) = &first_chapter_refs[i];
+            // 在处理前先将状态标记为 generating
+            {
+                let mut s = statuses.write().await;
+                if let Some(status) = s.get_mut(game_id) {
+                    if let Some(cs) = status.chapter_status.get_mut(chapter_id) {
+                        cs.asset_status.insert(asset_ref.id.clone(), "generating".to_string());
+                    }
+                }
+            }
             match result {
                 Ok(ref local_asset) => {
                     // 复制资源到游戏的 assets 目录
@@ -623,6 +653,16 @@ impl GenerationPipeline {
                             let _ = asset_manager.save_game_script(game_id, script);
                         }
                     }
+                    // 更新 asset_status 为 ready
+                    {
+                        let mut s = statuses.write().await;
+                        if let Some(status) = s.get_mut(game_id) {
+                            if let Some(cs) = status.chapter_status.get_mut(chapter_id) {
+                                cs.asset_status.insert(asset_ref.id.clone(), "ready".to_string());
+                                cs.asset_sources.insert(asset_ref.id.clone(), format!("{:?}", local_asset.source));
+                            }
+                        }
+                    }
                     // 发送 asset-ready 事件
                     if let Some(ref handle) = app_handle {
                         let _ = handle.emit(
@@ -640,6 +680,15 @@ impl GenerationPipeline {
                     *chapter_completed.entry(chapter_id.clone()).or_insert(0) += 1;
                 }
                 Err(ref error) => {
+                    // 更新 asset_status 为 failed
+                    {
+                        let mut s = statuses.write().await;
+                        if let Some(status) = s.get_mut(game_id) {
+                            if let Some(cs) = status.chapter_status.get_mut(chapter_id) {
+                                cs.asset_status.insert(asset_ref.id.clone(), "failed".to_string());
+                            }
+                        }
+                    }
                     if let Some(ref handle) = app_handle {
                         let _ = handle.emit(
                             "asset-failed",
@@ -1455,6 +1504,9 @@ impl GenerationPipeline {
                                                 total_assets: 0,
                                                 completed_assets: 0,
                                                 status: "pending".to_string(),
+                                                asset_status: HashMap::new(),
+                                                asset_sources: HashMap::new(),
+                                                asset_types: HashMap::new(),
                                             },
                                         );
                                     }
@@ -1676,16 +1728,28 @@ impl GenerationPipeline {
             .into_iter()
             .partition(|(cid, _)| first_chapter_id.as_ref() == Some(cid));
 
-        // 10. 初始化生成状态
+        // 10. 初始化生成状态（为每个 chapter 预填充 asset 信息）
         let total = first_chapter_refs.len() + remaining_refs.len();
         let mut chapter_map: HashMap<String, ChapterStatus> = HashMap::new();
         for chapter in &game_script.chapters {
             let is_first = first_chapter_id.as_ref() == Some(&chapter.id);
-            let chapter_asset_count = if is_first {
-                first_chapter_refs.iter().filter(|(cid, _)| cid == &chapter.id).count()
+            let chapter_refs: Vec<_> = if is_first {
+                first_chapter_refs.iter().filter(|(cid, _)| cid == &chapter.id).collect()
             } else {
-                remaining_refs.iter().filter(|(cid, _)| cid == &chapter.id).count()
+                remaining_refs.iter().filter(|(cid, _)| cid == &chapter.id).collect()
             };
+            let chapter_asset_count = chapter_refs.len();
+
+            let mut asset_status: HashMap<String, String> = HashMap::new();
+            let mut asset_sources: HashMap<String, String> = HashMap::new();
+            let mut asset_types: HashMap<String, String> = HashMap::new();
+            for (_, ar) in &chapter_refs {
+                let type_label = format!("{:?}", ar.asset_type);
+                asset_status.insert(ar.id.clone(), "pending".to_string());
+                asset_sources.insert(ar.id.clone(), format!("{:?}", ar.source));
+                asset_types.insert(ar.id.clone(), type_label);
+            }
+
             chapter_map.insert(
                 chapter.id.clone(),
                 ChapterStatus {
@@ -1694,6 +1758,9 @@ impl GenerationPipeline {
                     total_assets: chapter_asset_count,
                     completed_assets: 0,
                     status: if is_first { "generating".to_string() } else { "pending".to_string() },
+                    asset_status,
+                    asset_sources,
+                    asset_types,
                 },
             );
         }
@@ -1724,14 +1791,40 @@ impl GenerationPipeline {
 
         for (i, result) in first_results.into_iter().enumerate() {
             let (chapter_id, asset_ref) = &first_chapter_refs[i];
+            // 处理前先标记为 generating
+            {
+                let mut s = self.statuses.write().await;
+                if let Some(status) = s.get_mut(&game_id) {
+                    if let Some(cs) = status.chapter_status.get_mut(chapter_id) {
+                        cs.asset_status.insert(asset_ref.id.clone(), "generating".to_string());
+                    }
+                }
+            }
             match result {
                 Ok(ref local_asset) => {
                     self.on_asset_ready(&game_id, asset_ref, local_asset).await;
+                    {
+                        let mut s = self.statuses.write().await;
+                        if let Some(status) = s.get_mut(&game_id) {
+                            if let Some(cs) = status.chapter_status.get_mut(chapter_id) {
+                                cs.asset_status.insert(asset_ref.id.clone(), "ready".to_string());
+                                cs.asset_sources.insert(asset_ref.id.clone(), format!("{:?}", local_asset.source));
+                            }
+                        }
+                    }
                     completed += 1;
                     *chapter_completed.entry(chapter_id.clone()).or_insert(0) += 1;
                 }
                 Err(ref error) => {
                     self.on_asset_failed(&game_id, asset_ref, error);
+                    {
+                        let mut s = self.statuses.write().await;
+                        if let Some(status) = s.get_mut(&game_id) {
+                            if let Some(cs) = status.chapter_status.get_mut(chapter_id) {
+                                cs.asset_status.insert(asset_ref.id.clone(), "failed".to_string());
+                            }
+                        }
+                    }
                     failed += 1;
                     *chapter_failed.entry(chapter_id.clone()).or_insert(0) += 1;
                 }
@@ -3283,6 +3376,9 @@ impl GenerationPipeline {
                                                     total_assets: 0,
                                                     completed_assets: 0,
                                                     status: "pending".to_string(),
+                                                    asset_status: HashMap::new(),
+                                                    asset_sources: HashMap::new(),
+                                                    asset_types: HashMap::new(),
                                                 },
                                             );
                                         }
