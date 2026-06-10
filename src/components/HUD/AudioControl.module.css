@@ -144,3 +144,47 @@
 .volumeSlider::-moz-range-thumb:hover {
   transform: scale(1.15);
 }
+
+.testSection {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid #e8e2d8;
+}
+
+.testLabel {
+  font-size: 14px;
+  font-weight: 500;
+  color: #4a5568;
+}
+
+.testButtons {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.testBtn {
+  flex: 1;
+  background: #ffffff;
+  border: 1px solid #d9c7a8;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #2d3748;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.testBtn:hover {
+  background: #4a90d9;
+  color: #ffffff;
+  border-color: #4a90d9;
+  transform: translateY(-1px);
+}
+
+.testBtn:active {
+  transform: translateY(0);
+}

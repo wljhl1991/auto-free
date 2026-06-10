@@ -174,11 +174,29 @@ export class SceneExecutor {
       }
       case 'scene_transition': {
         // 场景转场：先发出事件（用于视觉转场效果），然后自动进入目标场景
-        this.emitEvent({ type: 'scene_transition', targetSceneId: node.targetSceneId, transitionType: node.transitionType, duration: node.duration });
+        // 如果 targetSceneId 为空，则进入同章节的下一个场景
+        let resolvedTargetId = node.targetSceneId;
+        if (!resolvedTargetId) {
+          const scene = this.findScene(this.currentSceneId!);
+          const chapter = this.findChapterBySceneId(this.currentSceneId!);
+          if (scene && chapter) {
+            const sceneIndex = chapter.scenes.findIndex(s => s.id === scene.id);
+            const nextScene = chapter.scenes[sceneIndex + 1];
+            if (nextScene) {
+              resolvedTargetId = nextScene.id;
+            }
+          }
+        }
+        this.emitEvent({ type: 'scene_transition', targetSceneId: resolvedTargetId, transitionType: node.transitionType, duration: node.duration });
         // 延迟进入目标场景，让转场动画有时间播放
         const delay = node.duration ? node.duration * 1000 : 500;
         setTimeout(() => {
-          void this.enterScene(node.targetSceneId);
+          if (resolvedTargetId) {
+            void this.enterScene(resolvedTargetId);
+          } else {
+            // 没有下一个场景，触发章节结束逻辑
+            this.handleChapterEnd();
+          }
         }, delay);
         break;
       }
@@ -350,7 +368,7 @@ export class SceneExecutor {
   }
 
   // 处理章节结束
-  private handleChapterEnd() {
+  handleChapterEnd() {
     const currentChapterIndex = this.script.chapters.findIndex(c => c.id === this.currentChapterId);
     const currentChapter = this.script.chapters[currentChapterIndex];
     if (!currentChapter) return;

@@ -2440,7 +2440,7 @@ impl GenerationPipeline {
     fn validate_and_fix_script(script: &mut GameScript) -> Result<(), ProviderError> {
         use crate::engine::validator::GameScriptValidator;
 
-        // 修复缺失的 id
+        // 修复缺失的 id，并为 Narration / Dialogue 补充缺失的 voice_asset
         for (ch_idx, chapter) in script.chapters.iter_mut().enumerate() {
             if chapter.id.is_empty() {
                 chapter.id = format!("chapter_{}", ch_idx + 1);
@@ -2449,22 +2449,73 @@ impl GenerationPipeline {
                 if scene.id.is_empty() {
                     scene.id = format!("scene_{}_{}", ch_idx + 1, sc_idx + 1);
                 }
+                // 确保场景有背景图
+                if scene.assets.background_image.is_none() {
+                    scene.assets.background_image = Some(AssetRef {
+                        id: format!("bg_{}_{}", ch_idx + 1, sc_idx + 1),
+                        asset_type: ScriptAssetType::Image,
+                        prompt: format!("{}, {}", chapter.title, scene.title),
+                        negative_prompt: None,
+                        style: None,
+                        source: ScriptAssetSource::AiGenerated,
+                        status: AssetStatus::Pending,
+                        url: None,
+                        builtin_asset_id: None,
+                        cache_key: None,
+                    });
+                }
                 for (node_idx, node) in scene.sequence.iter_mut().enumerate() {
                     let node_id = format!("node_{}_{}_{}", ch_idx + 1, sc_idx + 1, node_idx + 1);
-                    if let SceneNode::Narration(n) = node {
-                        if n.id.is_empty() { n.id = node_id; }
-                    } else if let SceneNode::Dialogue(d) = node {
-                        if d.id.is_empty() { d.id = node_id; }
-                    } else if let SceneNode::Choice(c) = node {
-                        if c.id.is_empty() { c.id = node_id; }
-                    } else if let SceneNode::Condition(c) = node {
-                        if c.id.is_empty() { c.id = node_id; }
-                    } else if let SceneNode::Action(a) = node {
-                        if a.id.is_empty() { a.id = node_id; }
-                    } else if let SceneNode::Cg(c) = node {
-                        if c.id.is_empty() { c.id = node_id; }
-                    } else if let SceneNode::SceneTransition(t) = node {
-                        if t.id.is_empty() { t.id = node_id; }
+                    match node {
+                        SceneNode::Narration(n) => {
+                            if n.id.is_empty() { n.id = node_id; }
+                            if n.voice_asset.is_none() {
+                                n.voice_asset = Some(AssetRef {
+                                    id: format!("voice_{}_{}_{}", ch_idx + 1, sc_idx + 1, node_idx + 1),
+                                    asset_type: ScriptAssetType::Voice,
+                                    prompt: n.text.clone(),
+                                    negative_prompt: None,
+                                    style: None,
+                                    source: ScriptAssetSource::AiGenerated,
+                                    status: AssetStatus::Pending,
+                                    url: None,
+                                    builtin_asset_id: None,
+                                    cache_key: None,
+                                });
+                            }
+                        }
+                        SceneNode::Dialogue(d) => {
+                            if d.id.is_empty() { d.id = node_id; }
+                            if d.voice_asset.is_none() {
+                                d.voice_asset = Some(AssetRef {
+                                    id: format!("voice_{}_{}_{}", ch_idx + 1, sc_idx + 1, node_idx + 1),
+                                    asset_type: ScriptAssetType::Voice,
+                                    prompt: format!("{}: {}", d.speaker, d.text),
+                                    negative_prompt: None,
+                                    style: None,
+                                    source: ScriptAssetSource::AiGenerated,
+                                    status: AssetStatus::Pending,
+                                    url: None,
+                                    builtin_asset_id: None,
+                                    cache_key: None,
+                                });
+                            }
+                        }
+                        SceneNode::Choice(c) => {
+                            if c.id.is_empty() { c.id = node_id; }
+                        }
+                        SceneNode::Condition(c) => {
+                            if c.id.is_empty() { c.id = node_id; }
+                        }
+                        SceneNode::Action(a) => {
+                            if a.id.is_empty() { a.id = node_id; }
+                        }
+                        SceneNode::Cg(c) => {
+                            if c.id.is_empty() { c.id = node_id; }
+                        }
+                        SceneNode::SceneTransition(t) => {
+                            if t.id.is_empty() { t.id = node_id; }
+                        }
                     }
                 }
             }

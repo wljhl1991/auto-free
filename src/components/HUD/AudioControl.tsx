@@ -149,6 +149,31 @@ function AudioControl({ audioEngine, onClose }: AudioControlProps) {
               />
             </div>
           </div>
+
+          {/* 测试声音 */}
+          <div className={styles.testSection}>
+            <div className={styles.testLabel}>测试声音</div>
+            <div className={styles.testButtons}>
+              <button
+                className={styles.testBtn}
+                onClick={() => audioEngine.playTestSound('voice')}
+              >
+                测试语音
+              </button>
+              <button
+                className={styles.testBtn}
+                onClick={() => audioEngine.playTestSound('bgm')}
+              >
+                测试 BGM
+              </button>
+              <button
+                className={styles.testBtn}
+                onClick={() => audioEngine.playTestSound('sfx')}
+              >
+                测试音效
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>

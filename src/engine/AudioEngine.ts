@@ -148,6 +148,32 @@ export class AudioEngine {
     };
   }
 
+  // 播放测试声音（用于验证音频输出设备是否正常工作）
+  playTestSound(type: 'voice' | 'bgm' | 'sfx' = 'voice'): void {
+    const freq = type === 'bgm' ? 220 : type === 'sfx' ? 880 : 440;
+    const duration = 0.8;
+    try {
+      const AudioCtx = (window.AudioContext || (window as any).webkitAudioContext);
+      const ctx = new AudioCtx();
+      const oscillator = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(freq, ctx.currentTime);
+      const effectiveVolume = this.muted
+        ? 0
+        : this.masterVolume * (type === 'bgm' ? this.bgmVolume : type === 'sfx' ? this.sfxVolume : this.voiceVolume);
+      gainNode.gain.setValueAtTime(0.0001, ctx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(Math.max(effectiveVolume, 0.0001), ctx.currentTime + 0.05);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration);
+      oscillator.connect(gainNode).connect(ctx.destination);
+      oscillator.start();
+      oscillator.stop(ctx.currentTime + duration);
+      oscillator.onended = () => ctx.close();
+    } catch (err) {
+      console.error('playTestSound failed', err);
+    }
+  }
+
   // 更新所有音量
   private updateAllVolumes(): void {
     const effectiveBgmVolume = this.muted ? 0 : (this.masterVolume * this.bgmVolume);
