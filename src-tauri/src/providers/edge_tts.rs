@@ -8,7 +8,8 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use tokio::time::timeout;
 use tokio_tungstenite::{connect_async, tungstenite};
 use tungstenite::client::IntoClientRequest;
 use uuid::Uuid;
@@ -19,6 +20,13 @@ const CHROMIUM_VERSION: &str = "143";
 
 /// 默认输出格式（默认使用较高质量）
 const DEFAULT_OUTPUT_FORMAT: &str = "audio-24khz-96kbitrate-mono-mp3";
+
+/// 最大重试次数
+const MAX_RETRIES: u32 = 3;
+/// 连接超时时间（秒）
+const CONNECT_TIMEOUT_SECS: u64 = 30;
+/// 接收数据超时时间（秒）- 语音合成可能需要较长时间
+const RECEIVE_TIMEOUT_SECS: u64 = 120;
 
 /// Edge TTS 语音质量参数
 #[derive(Debug, Clone)]
@@ -196,7 +204,7 @@ impl EdgeTTSProvider {
         })
     }
 
-    /// 生成语音
+    /// 生成语音（带超时和重试）
     pub async fn synthesize(
         &self,
         text: &str,
@@ -205,7 +213,46 @@ impl EdgeTTSProvider {
     ) -> Result<Vec<u8>, ProviderError> {
         let voice_id = if voice_id.is_empty() { self.default_voice.as_str() } else { voice_id };
         let ssml = self.build_ssml(text, voice_id, params);
-        self.connect_and_synthesize(&ssml, voice_id, &params.output_format).await
+
+        let mut last_error = None;
+        for attempt in 0..=MAX_RETRIES {
+            if attempt > 0 {
+                log::warn!("[EdgeTTS] 第 {}/{} 次重试", attempt, MAX_RETRIES);
+                tokio::time::sleep(Duration::from_millis(500 * attempt as u64)).await;
+            }
+
+            match timeout(
+                Duration::from_secs(RECEIVE_TIMEOUT_SECS),
+                self.connect_and_synthesize(&ssml, voice_id, &params.output_format)
+            ).await {
+                Ok(Ok(audio_data)) => {
+                    log::info!("[EdgeTTS] 语音合成成功 (尝试 {})", attempt + 1);
+                    return Ok(audio_data);
+                }
+                Ok(Err(e)) => {
+                    log::error!("[EdgeTTS] 语音合成失败 (尝试 {}): {}", attempt + 1, e);
+                    // 先检查是否需要重试
+                    let should_retry = matches!(&e, ProviderError::NetworkError(_) | ProviderError::Timeout(_));
+                    last_error = Some(e);
+                    // 非网络错误不重试
+                    if !should_retry {
+                        return Err(last_error.unwrap());
+                    }
+                }
+                Err(_) => {
+                    log::error!("[EdgeTTS] 语音合成超时 (尝试 {})", attempt + 1);
+                    let timeout_err = ProviderError::Timeout(format!(
+                        "语音合成超时（超过 {} 秒）",
+                        RECEIVE_TIMEOUT_SECS
+                    ));
+                    last_error = Some(timeout_err.clone());
+                }
+            }
+        }
+
+        Err(last_error.unwrap_or_else(|| {
+            ProviderError::NetworkError("语音合成失败，已达最大重试次数".to_string())
+        }))
     }
 
     /// 根据 NPC 性别和性格选择语音
