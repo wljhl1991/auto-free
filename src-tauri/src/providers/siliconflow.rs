@@ -6,58 +6,12 @@ use crate::types::ai_provider::{AIProviderConfig, ConnectivityCheck, Connectivit
 use reqwest::Client;
 use serde::{Serialize, Deserialize};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, SystemTime, UNIX_EPOCH, Instant};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const MAX_RETRIES: u32 = 3;
 const DEFAULT_ENDPOINT: &str = "https://api.siliconflow.cn/v1/images/generations";
 const DEFAULT_IMAGE_MODEL: &str = "Kwai-Kolors/Kolors";
 const DEFAULT_TEXT_MODEL: &str = "deepseek-ai/DeepSeek-V3";
-/// SiliconFlow 免费用户每分钟最大请求数
-const DEFAULT_REQUESTS_PER_MINUTE: u32 = 5;
-
-/// 简单的滑动窗口速率限制器
-struct RateLimiter {
-    /// 窗口内允许的最大请求数
-    max_requests: u32,
-    /// 滑动窗口时长
-    window: Duration,
-    /// 最近请求的时间戳
-    timestamps: Vec<Instant>,
-}
-
-impl RateLimiter {
-    fn new(max_requests: u32, window: Duration) -> Self {
-        Self {
-            max_requests,
-            window,
-            timestamps: Vec::with_capacity(max_requests as usize + 2),
-        }
-    }
-
-    /// 清除过期的请求记录
-    fn prune(&mut self) {
-        let cutoff = Instant::now() - self.window;
-        self.timestamps.retain(|&t| t > cutoff);
-    }
-
-    /// 检查是否可以立即发起请求，返回需要等待的时间
-    fn wait_duration(&mut self) -> Duration {
-        self.prune();
-        if (self.timestamps.len() as u32) < self.max_requests {
-            return Duration::ZERO;
-        }
-        // 需要等到最早的请求过期
-        let earliest = self.timestamps[0];
-        let wait = self.window - (Instant::now() - earliest);
-        wait.max(Duration::ZERO)
-    }
-
-    /// 记录一次请求
-    fn record(&mut self) {
-        self.timestamps.push(Instant::now());
-    }
-}
 
 #[derive(Debug, Serialize)]
 struct ImageGenerationRequest {
@@ -149,7 +103,6 @@ pub struct SiliconFlowProvider {
     default_text_model: String, // reserved for future text generation support
     endpoint: String,
     asset_base_path: PathBuf,
-    rate_limiter: Arc<Mutex<RateLimiter>>,
 }
 
 impl SiliconFlowProvider {
@@ -190,8 +143,8 @@ impl SiliconFlowProvider {
             .unwrap_or_else(|| DEFAULT_ENDPOINT.to_string());
 
         let client = Client::builder()
-            .connect_timeout(Duration::from_secs(10))
-            .timeout(Duration::from_secs(180))
+            .connect_timeout(Duration::from_secs(15))
+            .timeout(Duration::from_secs(300))
             .build()
             .map_err(|e| ProviderError::NetworkError(format!("创建HTTP客户端失败: {}", e)))?;
 
@@ -203,10 +156,6 @@ impl SiliconFlowProvider {
             default_text_model,
             endpoint,
             asset_base_path,
-            rate_limiter: Arc::new(Mutex::new(RateLimiter::new(
-                DEFAULT_REQUESTS_PER_MINUTE,
-                Duration::from_secs(60),
-            ))),
         })
     }
 
@@ -256,23 +205,12 @@ impl SiliconFlowProvider {
 
         let mut last_error = None;
         for attempt in 0..=MAX_RETRIES {
-            // 在每次请求前检查速率限制
-            {
-                let wait = self.rate_limiter.lock().unwrap().wait_duration();
-                if !wait.is_zero() {
-                    log::info!("[SiliconFlow] 速率限制: 等待 {:?}", wait);
-                    tokio::time::sleep(wait).await;
-                }
-            }
-
             if attempt > 0 {
                 tokio::time::sleep(Duration::from_millis(500 * attempt as u64)).await;
             }
 
             match self.send_image_request(&request).await {
                 Ok(image_url) => {
-                    // 记录成功的请求
-                    self.rate_limiter.lock().unwrap().record();
                     return self.download_image(&image_url).await;
                 }
                 Err(ProviderError::QuotaExceeded(msg)) => {
